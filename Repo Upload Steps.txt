@@ -1,0 +1,19 @@
+USB FILE LOCKER API REPO
+
+Folder:
+C:\Users\jonis\OneDrive\Desktop\USBFileLockerAPI-Repo
+
+Suggested GitHub repo name:
+usb-file-locker-api
+
+Suggested Railway service settings:
+- Source: GitHub repo
+- Root Directory: /
+- Start Command: python main.py
+
+Push flow:
+1. Create an empty GitHub repo.
+2. Copy the remote URL.
+3. In this folder, run:
+   git remote add origin <your-url>
+   git push -u origin main
