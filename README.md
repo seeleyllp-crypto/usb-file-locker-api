@@ -43,7 +43,7 @@ The seven ranks run from `$5 Starter` through `$20,000+ Pro Baseline`. Legacy `p
 ## Local run
 
 ```powershell
-cd C:\Users\jonis\OneDrive\Desktop\USBFileLockerAPI-Repo
+cd C:\path\to\USBFileLockerAPI-Repo
 python main.py
 ```
 
