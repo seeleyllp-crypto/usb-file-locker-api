@@ -113,7 +113,7 @@ class VaultLinkApiTests(unittest.TestCase):
             finally:
                 exc.close()
 
-    def issue_and_activate(self, plan_id="plus", machine_id="TEST-MACHINE"):
+    def issue_and_activate(self, plan_id="personal-plus", machine_id="TEST-MACHINE"):
         status, issued = self.call(
             "/api/v1/licenses/issue",
             method="POST",
@@ -151,12 +151,12 @@ class VaultLinkApiTests(unittest.TestCase):
         status, denied = self.call(
             "/api/v1/licenses/issue",
             method="POST",
-            payload={"plan_id": "pro", "admin_token": TEST_ADMIN_TOKEN},
+            payload={"plan_id": "family-safety", "admin_token": TEST_ADMIN_TOKEN},
         )
         self.assertEqual(status, 403)
         self.assertEqual(denied["error"], "forbidden")
 
-        issued, activated = self.issue_and_activate("pro")
+        issued, activated = self.issue_and_activate("family-safety")
         self.assertTrue(issued["license_key"].startswith("vlk1."))
         self.assertTrue(activated["receipt"].startswith("vlr1."))
 
@@ -186,7 +186,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(wrong_machine["status"], "wrong_machine")
 
     def test_audit_export_strips_private_fields_and_uses_bearer_token(self):
-        issued, activated = self.issue_and_activate("plus")
+        issued, activated = self.issue_and_activate("personal-plus")
         status, uploaded = self.upload_report(issued, activated)
         self.assertEqual(status, 201)
         self.assertNotIn("token=", uploaded["download_path"])
@@ -254,7 +254,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, response = self.call(
             "/api/v1/licenses/issue",
             method="POST",
-            raw_body=b"plan_id=pro",
+            raw_body=b"plan_id=family-safety",
             headers={
                 "Content-Type": "text/plain",
                 "X-License-Admin-Token": TEST_ADMIN_TOKEN,
@@ -272,7 +272,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(response["error"], "not_found")
 
     def test_download_rejects_damaged_stored_identity(self):
-        issued, activated = self.issue_and_activate("plus")
+        issued, activated = self.issue_and_activate("personal-plus")
         status, uploaded = self.upload_report(issued, activated)
         self.assertEqual(status, 201)
         stored_path = api.audit_export_path(uploaded["export_id"])
@@ -291,7 +291,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, response = self.call(
             "/api/v1/licenses/issue",
             method="POST",
-            payload={"plan_id": "pro", "customer_label": "x" * 161},
+            payload={"plan_id": "family-safety", "customer_label": "x" * 161},
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
         )
         self.assertEqual(status, 400)
@@ -299,6 +299,48 @@ class VaultLinkApiTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "too large"):
             api.verify_token("vlk1." + ("x" * api.MAX_SIGNED_TOKEN_CHARS), api.LICENSE_KEY_PREFIX)
+
+    def test_all_seven_ranks_are_public_and_ordered(self):
+        status, response = self.call("/api/v1/ranks")
+        self.assertEqual(status, 200)
+        self.assertEqual(response["count"], 7)
+        items = response["items"]
+        self.assertEqual(
+            [item["id"] for item in items],
+            [
+                "starter",
+                "home",
+                "personal-plus",
+                "family-safety",
+                "small-office",
+                "family-office",
+                "pro-baseline",
+            ],
+        )
+        self.assertEqual([item["rank"] for item in items], list(range(1, 8)))
+        self.assertEqual(items[1]["price_label"], "$10-$25")
+        self.assertEqual(items[5]["price_max_usd"], 3000)
+        self.assertIsNone(items[6]["price_max_usd"])
+        self.assertIn("pro-baseline-pack", items[6]["entitlements"])
+        self.assertGreater(len(items[6]["entitlements"]), len(items[5]["entitlements"]))
+
+    def test_legacy_plan_ids_issue_equivalent_canonical_ranks(self):
+        expected = {
+            "plus": "personal-plus",
+            "pro": "family-safety",
+            "signature": "small-office",
+        }
+        for legacy_id, canonical_id in expected.items():
+            with self.subTest(legacy_id=legacy_id):
+                status, response = self.call(
+                    "/api/v1/licenses/issue",
+                    method="POST",
+                    payload={"plan_id": legacy_id},
+                    headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+                )
+                self.assertEqual(status, 201)
+                self.assertEqual(response["license"]["plan_id"], canonical_id)
+                self.assertEqual(response["plan"]["id"], canonical_id)
 
 
 if __name__ == "__main__":

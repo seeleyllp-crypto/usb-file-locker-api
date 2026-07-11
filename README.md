@@ -4,12 +4,13 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 
 ## What it is
 
-- A small public API for product info, features, companion apps, security notes, and plan tiers
+- A small public API for product info, features, companion apps, security notes, and all seven license ranks
 - API-backed licensing with signed license keys and machine-bound activation receipts
 - Privacy-safe audit report upload with signed, expiring downloads
 - A homepage at `/`
 - A route index at `/docs`
 - A health endpoint at `/health`
+- Ordered rank JSON at `/api/v1/ranks`
 
 ## What it is not
 
@@ -36,6 +37,8 @@ Recommended Railway environment variables:
 Railway will start the service with:
 
 `python main.py`
+
+The seven ranks run from `$5 Starter` through `$20,000+ Pro Baseline`. Legacy `plus`, `pro`, and `signature` issue requests map to matching current ranks so older issuer builds keep working. Rank descriptions do not claim HIPAA certification, legal approval, guaranteed protection, or completed professional review.
 
 ## Local run
 
