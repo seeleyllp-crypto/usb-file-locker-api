@@ -52,7 +52,8 @@ Then open:
 ## License endpoints
 
 - `POST /api/v1/licenses/issue`
-  - Admin-only. Requires `LICENSE_ADMIN_TOKEN`.
+  - Admin-only. Requires `LICENSE_ADMIN_TOKEN` in the `X-License-Admin-Token` header.
+  - The admin token is never accepted inside the JSON body.
 - `POST /api/v1/licenses/activate`
   - Exchanges a valid license key for a machine-bound receipt.
 - `POST /api/v1/licenses/verify`
