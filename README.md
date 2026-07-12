@@ -6,6 +6,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 
 - A small public API for product info, features, companion apps, security notes, and all seven license ranks
 - API-backed licensing with signed keys, machine receipts, device deactivation, and owner revocation
+- Persistent anonymous device-seat enforcement using each license's `max_devices` value
 - An owner-only keys and private notes website at `/owner`
 - Privacy-safe audit report upload with signed, expiring downloads
 - Server-calculated breach summaries plus admin-protected report listing and downloads
@@ -20,7 +21,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not unlock files remotely
 - It does not expose USB secrets, PINs, vault contents, or private file access
 - It does not move the Windows desktop security logic onto the public internet
-- It does not yet enforce strict concurrent seat counts because that needs a database-backed activation ledger
+- It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 
 ## Railway setup
@@ -75,10 +76,14 @@ Then open:
   - Admin-only. Restores a revoked key; individually deactivated receipts stay deactivated.
 - `POST /api/v1/licenses/note`
   - Admin-only. Updates the private owner note without adding it to the signed customer key.
+- `POST /api/v1/licenses/reset-devices`
+  - Admin-only. Releases every active seat for one license and requires those PCs to activate again.
 - `GET /api/v1/admin/licenses`
-  - Admin-only inventory for the owner website. Stored keys and notes are encrypted at rest.
+  - Admin-only inventory for the owner website. Includes anonymous active-device counts; stored keys and notes are encrypted at rest.
+- `GET /api/v1/admin/dashboard`
+  - Admin-only license, device-capacity, audit-export, breach-level, storage, and release totals.
 
-Open `/owner` to issue keys, copy keys, save private notes, revoke licenses, and restore licenses. The admin token stays in page memory, is sent only in the `X-License-Admin-Token` header, and is not placed in a URL.
+Open `/owner` to view the API dashboard, issue keys, enforce device limits, reset lost-device seats, copy keys, save private notes, revoke licenses, and restore licenses. The admin token stays in page memory, is sent only in the `X-License-Admin-Token` header, and is not placed in a URL.
 
 Without `LICENSE_STATE_DIR`, Railway uses local ephemeral storage and a restart can forget revocations and owner records. Mount a Railway Volume and use paths such as `/data/license_state` and `/data/audit_exports`. Keep `LICENSE_RECORDS_SECRET` stable; changing or losing it makes previously encrypted keys and private notes unreadable.
 

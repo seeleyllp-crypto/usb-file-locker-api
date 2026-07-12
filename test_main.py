@@ -353,6 +353,93 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(noted["license"]["license_note"], "Updated private note")
 
+    def test_device_limit_dashboard_and_admin_reset(self):
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"plan_id": "home", "max_devices": 1, "license_note": "Seat test"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        key = issued["license_key"]
+
+        status, first = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": key, "machine_id": "FIRST-PC", "machine_name": "Private PC name"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(first["active"])
+        self.assertEqual(first["device_usage"], {"active": 1, "maximum": 1})
+
+        status, denied = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": key, "machine_id": "SECOND-PC"},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(denied["active"])
+        self.assertEqual(denied["status"], "device_limit")
+
+        activation_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (api.LICENSE_STATE_DIR / "activations").rglob("*.json")
+        )
+        self.assertNotIn("FIRST-PC", activation_text)
+        self.assertNotIn("Private PC name", activation_text)
+
+        status, inventory = self.call(
+            "/api/v1/admin/licenses",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(inventory["items"][0]["active_devices"], 1)
+
+        status, dashboard = self.call(
+            "/api/v1/admin/dashboard",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["licenses"]["active"], 1)
+        self.assertEqual(dashboard["devices"], {"active": 1, "capacity": 1})
+        self.assertEqual(dashboard["audit_exports"]["total"], 0)
+
+        status, denied = self.call(
+            "/api/v1/licenses/reset-devices",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, reset = self.call(
+            "/api/v1/licenses/reset-devices",
+            method="POST",
+            payload={"license_key": key},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(reset["devices_reset"], 1)
+        self.assertEqual(reset["license"]["active_devices"], 0)
+
+        status, old_receipt = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={"license_key": key, "receipt": first["receipt"], "machine_id": "FIRST-PC"},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(old_receipt["active"])
+        self.assertEqual(old_receipt["status"], "reset")
+
+        status, second = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": key, "machine_id": "SECOND-PC"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(second["active"])
+        self.assertEqual(second["device_usage"]["active"], 1)
+
     def test_audit_export_strips_private_fields_and_uses_bearer_token(self):
         issued, activated = self.issue_and_activate("personal-plus")
         status, uploaded = self.upload_report(issued, activated)

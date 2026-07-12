@@ -2,21 +2,21 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.11.3",
-  "minimum_supported_version": "2026.07.11.2",
-  "published_at_utc": "2026-07-12T01:01:34Z",
-  "package_filename": "VaultLink-Windows-2026.07.11.3.zip",
+  "version": "2026.07.12.1",
+  "minimum_supported_version": "2026.07.11.3",
+  "published_at_utc": "2026-07-12T15:24:37Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.1.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "a1ad42d910c5c3e9f3e1a5854fb01741ee16a936669402df134f4454bfa36c7f",
-  "size_bytes": 118913,
+  "sha256": "685f575f81a257a312c76927e52950729e0125b743fdc883949b698e23618948",
+  "size_bytes": 119086,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Owner keys and private notes website with encrypted-at-rest records.",
-    "Customer device deactivation plus owner license revoke and restore controls.",
-    "Privacy-safe breach log upload, owner review, and opt-in automatic snapshots.",
-    "Signed daily update checks with a clear required-update state for unsupported builds.",
-    "User-confirmed staged installation backs up app files and preserves LocalAppData."
+    "Persistent Railway Volume storage for license state and privacy-safe audit reports.",
+    "Anonymous device-seat enforcement for each license maximum.",
+    "Owner dashboard totals for licenses, devices, audits, breach levels, and releases.",
+    "Owner reset control releases lost-PC seats and invalidates old receipts.",
+    "Signed update verification and LocalAppData preservation remain enforced."
   ],
   "preserves_local_app_data": true,
-  "signature": "5EoUM9GD9GJZ7PT1CIypac5u3PUpMjqc3Macm4No8aSDLYugec4sgNT2VAz2EVLqSAzUPnVfYXbqFJTPiWKPAA"
+  "signature": "lIfGQCIIyn4xhIjW1GZLDt4AwHPBKwfeaK4tYW3F6lL1MKO5csmiJtrkWks2ElB3URxmXux6b5FRzR6pHgkqBw"
 }
