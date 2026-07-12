@@ -223,6 +223,51 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertFalse(wrong_machine["active"])
         self.assertEqual(wrong_machine["status"], "wrong_machine")
 
+    def test_automatic_sync_reports_policy_and_enforces_revocation(self):
+        issued, activated = self.issue_and_activate("personal-plus", "SYNC-PC")
+        request_payload = {
+            "license_key": issued["license_key"],
+            "receipt": activated["receipt"],
+            "machine_id": "SYNC-PC",
+            "app_version": "2026.07.12.2",
+        }
+        status, synced = self.call(
+            "/api/v1/licenses/sync",
+            method="POST",
+            payload=request_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(synced["active"])
+        self.assertEqual(synced["api_version"], api.API_VERSION)
+        self.assertTrue(synced["sync"]["automatic"])
+        self.assertEqual(synced["sync"]["recommended_interval_seconds"], api.LICENSE_SYNC_INTERVAL_SECONDS)
+        self.assertEqual(len(synced["sync"]["decision_id"]), 16)
+        status, devices = self.call(
+            f"/api/v1/admin/licenses/{issued['license']['license_id']}/devices",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(devices["items"][0]["app_version"], "2026.07.12.2")
+        self.assertTrue(devices["items"][0]["last_seen_at_utc"])
+
+        status, revoked = self.call(
+            "/api/v1/licenses/revoke",
+            method="POST",
+            payload={"license_key": issued["license_key"]},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(revoked["revoked"])
+        status, synced = self.call(
+            "/api/v1/licenses/sync",
+            method="POST",
+            payload=request_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(synced["active"])
+        self.assertEqual(synced["status"], "revoked")
+        self.assertEqual(synced["sync"]["decision"], "revoked")
+
     def test_license_notes_deactivation_revocation_and_restore(self):
         private_note = "Renew after family laptop setup"
         status, issued = self.call(
@@ -439,6 +484,71 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(second["active"])
         self.assertEqual(second["device_usage"]["active"], 1)
+
+    def test_admin_lists_and_removes_one_anonymous_device(self):
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"plan_id": "family-safety", "max_devices": 2},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        key = issued["license_key"]
+        activations = {}
+        for machine_id in ("FIRST-PRIVATE-PC", "SECOND-PRIVATE-PC"):
+            status, activated = self.call(
+                "/api/v1/licenses/activate",
+                method="POST",
+                payload={"license_key": key, "machine_id": machine_id, "machine_name": machine_id},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(activated["active"])
+            activations[machine_id] = activated
+
+        license_id = issued["license"]["license_id"]
+        status, devices = self.call(
+            f"/api/v1/admin/licenses/{license_id}/devices",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(devices["active_count"], 2)
+        serialized = json.dumps(devices)
+        self.assertNotIn("FIRST-PRIVATE-PC", serialized)
+        self.assertNotIn("SECOND-PRIVATE-PC", serialized)
+
+        first_hash = api.anonymous_machine_hash("FIRST-PRIVATE-PC")
+        status, removed = self.call(
+            "/api/v1/licenses/remove-device",
+            method="POST",
+            payload={"license_key": key, "machine_hash": first_hash},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(removed["removed"])
+        self.assertEqual(removed["license"]["active_devices"], 1)
+
+        status, first_sync = self.call(
+            "/api/v1/licenses/sync",
+            method="POST",
+            payload={
+                "license_key": key,
+                "receipt": activations["FIRST-PRIVATE-PC"]["receipt"],
+                "machine_id": "FIRST-PRIVATE-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(first_sync["status"], "removed")
+        status, second_sync = self.call(
+            "/api/v1/licenses/sync",
+            method="POST",
+            payload={
+                "license_key": key,
+                "receipt": activations["SECOND-PRIVATE-PC"]["receipt"],
+                "machine_id": "SECOND-PRIVATE-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(second_sync["active"])
 
     def test_audit_export_strips_private_fields_and_uses_bearer_token(self):
         issued, activated = self.issue_and_activate("personal-plus")

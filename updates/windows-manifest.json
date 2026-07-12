@@ -2,21 +2,19 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.1",
+  "version": "2026.07.12.2",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-12T15:24:37Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.1.zip",
+  "published_at_utc": "2026-07-12T16:05:00Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.2.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "685f575f81a257a312c76927e52950729e0125b743fdc883949b698e23618948",
-  "size_bytes": 119086,
+  "sha256": "30da4f3a62b4a7c776a3486e7d2a083b2f988d9416a9ea14b10d3eda6be80238",
+  "size_bytes": 121304,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Persistent Railway Volume storage for license state and privacy-safe audit reports.",
-    "Anonymous device-seat enforcement for each license maximum.",
-    "Owner dashboard totals for licenses, devices, audits, breach levels, and releases.",
-    "Owner reset control releases lost-PC seats and invalidates old receipts.",
-    "Signed update verification and LocalAppData preservation remain enforced."
+    "Automatic license heartbeat enforces revocation without opening License Center.",
+    "API sync now returns decision IDs, device-seat usage, release status, and bounded refresh timing.",
+    "Owner console auto-refreshes and can inspect or remove one anonymous device seat."
   ],
   "preserves_local_app_data": true,
-  "signature": "lIfGQCIIyn4xhIjW1GZLDt4AwHPBKwfeaK4tYW3F6lL1MKO5csmiJtrkWks2ElB3URxmXux6b5FRzR6pHgkqBw"
+  "signature": "1oELuPBzEzAUsJl160GexWSfTJWSH39Qb2S8saczjKLRbJjcBDTqUUQalEV9xFUpy72E4qDT1UgxCOTmhprsCg"
 }
