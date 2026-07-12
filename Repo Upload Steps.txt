@@ -1,7 +1,7 @@
 USB FILE LOCKER API REPO
 
 Folder:
-C:\Users\jonis\OneDrive\Desktop\USBFileLockerAPI-Repo
+C:\path\to\USBFileLockerAPI-Repo
 
 Suggested GitHub repo name:
 usb-file-locker-api

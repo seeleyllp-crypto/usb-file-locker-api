@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import tempfile
 import threading
@@ -87,6 +88,9 @@ class VaultLinkApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="vaultlink_api_test_")
         api.AUDIT_EXPORT_DIR = Path(self.temp_dir.name)
+        api.LICENSE_STATE_DIR = Path(self.temp_dir.name) / "license_state"
+        api.UPDATE_DIR = Path(self.temp_dir.name) / "updates"
+        api.UPDATE_MANIFEST_PATH = api.UPDATE_DIR / "windows-manifest.json"
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -113,6 +117,40 @@ class VaultLinkApiTests(unittest.TestCase):
             finally:
                 exc.close()
 
+    def call_bytes(self, path, headers=None):
+        req = request.Request(self.base_url + path, headers=dict(headers or {}), method="GET")
+        try:
+            with request.urlopen(req, timeout=10) as response:
+                return response.status, dict(response.headers.items()), response.read()
+        except error.HTTPError as exc:
+            try:
+                return exc.code, dict(exc.headers.items()), exc.read()
+            finally:
+                exc.close()
+
+    def publish_test_update(self):
+        api.UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+        package = api.UPDATE_DIR / "VaultLink-Windows-9999.1.zip"
+        package.write_bytes(b"PK-test-signed-update-package")
+        manifest = {
+            "schema_version": 1,
+            "product": "USB File Locker",
+            "platform": "windows-source",
+            "version": "9999.1",
+            "minimum_supported_version": "2026.07.10",
+            "published_at_utc": "2026-07-11T15:00:00Z",
+            "package_filename": package.name,
+            "download_path": "/api/v1/updates/windows/download",
+            "sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+            "size_bytes": package.stat().st_size,
+            "signing_key_id": api.UPDATE_SIGNING_KEY_ID,
+            "notes": ["Regression update"],
+            "preserves_local_app_data": True,
+            "signature": "A" * 86,
+        }
+        api.UPDATE_MANIFEST_PATH.write_text(json.dumps(manifest), encoding="utf-8")
+        return manifest, package
+
     def issue_and_activate(self, plan_id="personal-plus", machine_id="TEST-MACHINE"):
         status, issued = self.call(
             "/api/v1/licenses/issue",
@@ -134,7 +172,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(activated["active"])
         return issued, activated
 
-    def upload_report(self, issued, activated, machine_id="TEST-MACHINE"):
+    def upload_report(self, issued, activated, machine_id="TEST-MACHINE", report=None):
         return self.call(
             "/api/v1/audit-exports",
             method="POST",
@@ -143,7 +181,7 @@ class VaultLinkApiTests(unittest.TestCase):
                 "receipt": activated["receipt"],
                 "machine_id": machine_id,
                 "app_version": "test",
-                "report": sample_report(),
+                "report": report or sample_report(),
             },
         )
 
@@ -185,11 +223,142 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertFalse(wrong_machine["active"])
         self.assertEqual(wrong_machine["status"], "wrong_machine")
 
+    def test_license_notes_deactivation_revocation_and_restore(self):
+        private_note = "Renew after family laptop setup"
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "family-safety",
+                "customer_label": "Test customer",
+                "license_note": private_note,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        self.assertNotIn("license_note", issued)
+        license_key = issued["license_key"]
+
+        record_files = list((api.LICENSE_STATE_DIR / "licenses").glob("*.json"))
+        self.assertEqual(len(record_files), 1)
+        stored_text = record_files[0].read_text(encoding="utf-8")
+        self.assertNotIn(private_note, stored_text)
+        self.assertNotIn(license_key, stored_text)
+
+        status, denied = self.call("/api/v1/admin/licenses")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+        status, inventory = self.call(
+            "/api/v1/admin/licenses",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(inventory["count"], 1)
+        self.assertEqual(inventory["items"][0]["license_note"], private_note)
+        self.assertEqual(inventory["items"][0]["license_key"], license_key)
+
+        status, activated = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": license_key, "machine_id": "REMOVE-PC"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(activated["active"])
+        status, deactivated = self.call(
+            "/api/v1/licenses/deactivate",
+            method="POST",
+            payload={
+                "license_key": license_key,
+                "receipt": activated["receipt"],
+                "machine_id": "REMOVE-PC",
+                "app_version": "test",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(deactivated["deactivated"])
+        status, verification = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={
+                "license_key": license_key,
+                "receipt": activated["receipt"],
+                "machine_id": "REMOVE-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(verification["status"], "deactivated")
+
+        status, reactivated = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": license_key, "machine_id": "REMOVE-PC"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(reactivated["active"])
+        self.assertNotEqual(reactivated["receipt"], activated["receipt"])
+
+        status, denied = self.call(
+            "/api/v1/licenses/revoke",
+            method="POST",
+            payload={"license_key": license_key},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+        status, revoked = self.call(
+            "/api/v1/licenses/revoke",
+            method="POST",
+            payload={"license_key": license_key, "revocation_note": "Customer requested removal"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(revoked["revoked"])
+        status, verification = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={
+                "license_key": license_key,
+                "receipt": reactivated["receipt"],
+                "machine_id": "REMOVE-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(verification["status"], "revoked")
+
+        status, restored = self.call(
+            "/api/v1/licenses/restore",
+            method="POST",
+            payload={"license_key": license_key},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(restored["restored"])
+        status, verification = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={
+                "license_key": license_key,
+                "receipt": reactivated["receipt"],
+                "machine_id": "REMOVE-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(verification["active"])
+
+        status, noted = self.call(
+            "/api/v1/licenses/note",
+            method="POST",
+            payload={"license_key": license_key, "license_note": "Updated private note"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(noted["license"]["license_note"], "Updated private note")
+
     def test_audit_export_strips_private_fields_and_uses_bearer_token(self):
         issued, activated = self.issue_and_activate("personal-plus")
         status, uploaded = self.upload_report(issued, activated)
         self.assertEqual(status, 201)
         self.assertNotIn("token=", uploaded["download_path"])
+        self.assertEqual(uploaded["breach_summary"]["level"], "clear")
 
         status, denied = self.call(uploaded["download_path"])
         self.assertEqual(status, 403)
@@ -236,6 +405,73 @@ class VaultLinkApiTests(unittest.TestCase):
         status, denied = self.upload_report(issued, activated)
         self.assertEqual(status, 403)
         self.assertIn("does not include", denied["message"])
+
+    def test_admin_can_list_and_download_stored_breach_reports(self):
+        issued, activated = self.issue_and_activate("family-safety")
+        report = sample_report()
+        report["usb_file_locker_audit"]["events"].append(
+            {
+                "sequence": 3,
+                "time_utc": "2026-07-10T22:02:00Z",
+                "event_id": "0123456789abcdef",
+                "action": "owner_usb_removed",
+                "result": "success",
+                "hash": "c" * 64,
+                "previous_hash": "b" * 64,
+            }
+        )
+        status, uploaded = self.upload_report(issued, activated, report=report)
+        self.assertEqual(status, 201)
+        self.assertEqual(uploaded["breach_summary"]["level"], "high")
+
+        status, denied = self.call("/api/v1/admin/audit-exports")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, listing = self.call(
+            "/api/v1/admin/audit-exports",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(listing["count"], 1)
+        item = listing["items"][0]
+        self.assertEqual(item["export_id"], uploaded["export_id"])
+        self.assertEqual(item["breach_summary"]["level"], "high")
+        self.assertEqual(item["event_count"], 3)
+        self.assertNotIn("download_token", json.dumps(listing))
+
+        status, denied = self.call(item["download_path"])
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, downloaded = self.call(
+            item["download_path"],
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded["export_id"], uploaded["export_id"])
+        self.assertEqual(downloaded["breach_summary"]["level"], "high")
+        serialized = json.dumps(downloaded)
+        self.assertNotIn("SECRET_FILE_CONTENT", serialized)
+        self.assertNotIn("C:/Private/secret.txt", serialized)
+
+    def test_signed_update_manifest_and_package_endpoints(self):
+        manifest, package = self.publish_test_update()
+        status, response = self.call("/api/v1/updates/windows")
+        self.assertEqual(status, 200)
+        self.assertEqual(response["update"]["version"], manifest["version"])
+        self.assertEqual(response["update"]["sha256"], manifest["sha256"])
+        self.assertTrue(response["security"]["automatic_install_requires_user_confirmation"])
+
+        status, headers, body = self.call_bytes("/api/v1/updates/windows/download")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "application/zip")
+        self.assertEqual(body, package.read_bytes())
+
+        package.write_bytes(b"tampered")
+        status, response = self.call("/api/v1/updates/windows")
+        self.assertEqual(status, 503)
+        self.assertEqual(response["error"], "update_unavailable")
 
     def test_route_limits_content_type_and_unknown_route(self):
         oversized = b'{' + b'"padding":"' + (b"x" * api.MAX_LICENSE_JSON_BODY_BYTES) + b'"}'
