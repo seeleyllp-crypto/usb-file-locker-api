@@ -185,6 +185,68 @@ class VaultLinkApiTests(unittest.TestCase):
             },
         )
 
+    def test_public_shop_publishes_only_valid_hosted_checkout_links(self):
+        env_names = [*api.SHOP_CHECKOUT_ENV_BY_PLAN.values(), "SHOP_CHECKOUT_ALLOWED_HOSTS"]
+        previous = {name: os.environ.get(name) for name in env_names}
+        try:
+            for name in env_names:
+                os.environ.pop(name, None)
+
+            status, shop = self.call("/api/v1/shop")
+            self.assertEqual(status, 200)
+            self.assertEqual(shop["count"], 7)
+            self.assertEqual(shop["configured_count"], 0)
+            self.assertFalse(shop["ready"])
+            self.assertFalse(shop["card_data_collected_by_vaultlink"])
+            self.assertTrue(all(not item["checkout_available"] for item in shop["items"]))
+
+            status, _headers, page = self.call_bytes("/shop")
+            page_text = page.decode("utf-8")
+            self.assertEqual(status, 200)
+            self.assertIn("VaultLink Shop", page_text)
+            self.assertEqual(page_text.count("NOT ON SALE YET"), 7)
+
+            os.environ["SHOP_CHECKOUT_STARTER_URL"] = "https://buy.stripe.com/test_vaultlink_starter"
+            os.environ["SHOP_CHECKOUT_HOME_URL"] = "http://buy.stripe.com/test_insecure"
+            os.environ["SHOP_CHECKOUT_PERSONAL_PLUS_URL"] = "https://buy.stripe.com.evil.example/test_spoofed"
+            os.environ["SHOP_CHECKOUT_FAMILY_SAFETY_URL"] = "https://buy.stripe.com/test_fragment#secret"
+            os.environ["SHOP_CHECKOUT_SMALL_OFFICE_URL"] = "https://owner@buy.stripe.com/test_userinfo"
+            os.environ["SHOP_CHECKOUT_FAMILY_OFFICE_URL"] = "https://buy.stripe.com:444/test_port"
+            os.environ["SHOP_CHECKOUT_PRO_BASELINE_URL"] = "https://buy.stripe.com/"
+
+            status, shop = self.call("/api/v1/shop")
+            self.assertEqual(status, 200)
+            self.assertEqual(shop["configured_count"], 1)
+            starter = next(item for item in shop["items"] if item["id"] == "starter")
+            self.assertTrue(starter["checkout_available"])
+            self.assertEqual(starter["checkout_url"], os.environ["SHOP_CHECKOUT_STARTER_URL"])
+            self.assertTrue(
+                all(
+                    not item["checkout_available"]
+                    for item in shop["items"]
+                    if item["id"] != "starter"
+                )
+            )
+
+            status, health = self.call("/health")
+            self.assertEqual(status, 200)
+            self.assertEqual(health["shop_checkout_links_configured"], 1)
+            self.assertFalse(health["shop_card_data_collected_by_vaultlink"])
+
+            status, dashboard = self.call(
+                "/api/v1/admin/dashboard",
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(dashboard["shop"]["configured"], 1)
+            self.assertEqual(dashboard["shop"]["total"], 7)
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_license_issue_activate_verify_and_header_only_admin(self):
         status, denied = self.call(
             "/api/v1/licenses/issue",
@@ -267,6 +329,138 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertFalse(synced["active"])
         self.assertEqual(synced["status"], "revoked")
         self.assertEqual(synced["sync"]["decision"], "revoked")
+
+    def test_encrypted_bug_inbox_owner_actions_and_customer_reply(self):
+        issued, activated = self.issue_and_activate("starter", "BUG-REPORT-PC")
+        auth_payload = {
+            "license_key": issued["license_key"],
+            "receipt": activated["receipt"],
+            "machine_id": "BUG-REPORT-PC",
+            "app_version": "2026.07.12.3",
+        }
+        private_message = "The lock button stopped after I selected two sample files."
+        status, created = self.call(
+            "/api/v1/support-tickets",
+            method="POST",
+            payload={
+                **auth_payload,
+                "category": "bug",
+                "subject": "Lock button stopped",
+                "message": private_message,
+                "steps": "Open app\nAdd two files\nClick LOCK COPY",
+            },
+        )
+        self.assertEqual(status, 201)
+        ticket_id = created["ticket"]["ticket_id"]
+        self.assertTrue(ticket_id.startswith("TKT-"))
+        stored_path = api.support_ticket_path(ticket_id)
+        stored_text = stored_path.read_text(encoding="utf-8")
+        self.assertNotIn(private_message, stored_text)
+        self.assertNotIn("Lock button stopped", stored_text)
+        self.assertNotIn("BUG-REPORT-PC", stored_text)
+        self.assertNotIn(issued["license_key"], stored_text)
+
+        status, mine = self.call(
+            "/api/v1/support-tickets/mine",
+            method="POST",
+            payload=auth_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine["count"], 1)
+        self.assertEqual(mine["items"][0]["status"], "open")
+
+        status, denied = self.call("/api/v1/admin/support-tickets")
+        self.assertEqual(status, 403)
+        status, inbox = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(inbox["items"][0]["message"], private_message)
+
+        owner_reply = "Thanks. I reproduced this and am working on the fix."
+        owner_note = "Regression test against multi-file queue"
+        status, updated = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "in_progress",
+                "owner_reply": owner_reply,
+                "owner_note": owner_note,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["ticket"]["status"], "in_progress")
+        self.assertEqual(updated["ticket"]["owner_note"], owner_note)
+        self.assertNotIn(owner_reply, stored_path.read_text(encoding="utf-8"))
+
+        status, mine = self.call(
+            "/api/v1/support-tickets/mine",
+            method="POST",
+            payload=auth_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine["items"][0]["owner_reply"], owner_reply)
+        self.assertNotIn("owner_note", mine["items"][0])
+
+        status, dashboard = self.call(
+            "/api/v1/admin/dashboard",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["support_tickets"]["total"], 1)
+
+        status, deleted = self.call(
+            "/api/v1/admin/support-tickets/delete",
+            method="POST",
+            payload={"ticket_id": ticket_id},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(deleted["deleted"])
+        status, mine = self.call(
+            "/api/v1/support-tickets/mine",
+            method="POST",
+            payload=auth_payload,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine["count"], 0)
+
+    def test_damaged_support_ticket_does_not_break_owner_dashboard(self):
+        issued, activated = self.issue_and_activate("starter", "DAMAGED-TICKET-PC")
+        status, created = self.call(
+            "/api/v1/support-tickets",
+            method="POST",
+            payload={
+                "license_key": issued["license_key"],
+                "receipt": activated["receipt"],
+                "machine_id": "DAMAGED-TICKET-PC",
+                "category": "bug",
+                "subject": "Damaged ticket test",
+                "message": "This ticket will be damaged after it is safely encrypted.",
+            },
+        )
+        self.assertEqual(status, 201)
+        path = api.support_ticket_path(created["ticket"]["ticket_id"])
+        record = json.loads(path.read_text(encoding="utf-8"))
+        record["private_blob"] = record["private_blob"][:-1] + ("A" if record["private_blob"][-1] != "A" else "B")
+        path.write_text(json.dumps(record), encoding="utf-8")
+
+        status, inbox = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(inbox["count"], 0)
+        self.assertEqual(inbox["damaged_count"], 1)
+        status, dashboard = self.call(
+            "/api/v1/admin/dashboard",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["support_tickets"]["total"], 0)
 
     def test_license_notes_deactivation_revocation_and_restore(self):
         private_note = "Renew after family laptop setup"
@@ -651,6 +845,25 @@ class VaultLinkApiTests(unittest.TestCase):
         serialized = json.dumps(downloaded)
         self.assertNotIn("SECRET_FILE_CONTENT", serialized)
         self.assertNotIn("C:/Private/secret.txt", serialized)
+
+        status, denied = self.call(
+            "/api/v1/admin/audit-exports/download-link",
+            method="POST",
+            payload={"export_id": item["export_id"]},
+        )
+        self.assertEqual(status, 403)
+        status, link = self.call(
+            "/api/v1/admin/audit-exports/download-link",
+            method="POST",
+            payload={"export_id": item["export_id"]},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("?token=vla1.", link["download_path"])
+        self.assertNotIn(TEST_ADMIN_TOKEN, link["download_path"])
+        status, downloaded = self.call(link["download_path"])
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded["export_id"], item["export_id"])
 
     def test_signed_update_manifest_and_package_endpoints(self):
         manifest, package = self.publish_test_update()

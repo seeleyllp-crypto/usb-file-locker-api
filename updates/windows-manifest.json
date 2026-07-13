@@ -2,19 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.2",
+  "version": "2026.07.12.3",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-12T16:05:00Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.2.zip",
+  "published_at_utc": "2026-07-12T23:41:18Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.3.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "30da4f3a62b4a7c776a3486e7d2a083b2f988d9416a9ea14b10d3eda6be80238",
-  "size_bytes": 121304,
+  "sha256": "f91f74c0dbb37315b745cf462e1b4a71683f40752bce8d63360641d90539f2d0",
+  "size_bytes": 124258,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Automatic license heartbeat enforces revocation without opening License Center.",
-    "API sync now returns decision IDs, device-seat usage, release status, and bounded refresh timing.",
-    "Owner console auto-refreshes and can inspect or remove one anonymous device seat."
+    "Adds the customer Bug Center with encrypted reports and owner replies.",
+    "Adds owner support actions and browser-safe audit log downloads.",
+    "Adds the public seven-rank shop with validated provider-hosted checkout links.",
+    "Updates preserve USB keys, licenses, settings, vault data, and audit logs in LocalAppData."
   ],
   "preserves_local_app_data": true,
-  "signature": "1oELuPBzEzAUsJl160GexWSfTJWSH39Qb2S8saczjKLRbJjcBDTqUUQalEV9xFUpy72E4qDT1UgxCOTmhprsCg"
+  "signature": "rn77L9wYis-bSGrOP-Efc1UgDHYZoejz3cSx6tIqU7V7p4wTlEmSoF5-IGtVCOTvg7M9RVER6XgUFeA0mL_PBg"
 }
