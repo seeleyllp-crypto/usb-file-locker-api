@@ -2,20 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.3",
+  "version": "2026.07.12.4",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-12T23:41:18Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.3.zip",
+  "published_at_utc": "2026-07-13T00:17:19Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.4.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "f91f74c0dbb37315b745cf462e1b4a71683f40752bce8d63360641d90539f2d0",
-  "size_bytes": 124258,
+  "sha256": "b27bd27da9de539dbfe2dc04055275ed4aacf8c729733c06fb9ec2d67fd24850",
+  "size_bytes": 125438,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Adds the customer Bug Center with encrypted reports and owner replies.",
-    "Adds owner support actions and browser-safe audit log downloads.",
-    "Adds the public seven-rank shop with validated provider-hosted checkout links.",
-    "Updates preserve USB keys, licenses, settings, vault data, and audit logs in LocalAppData."
+    "Adds rank-targeted Owner News inside the desktop app.",
+    "Adds scheduled Owner Announcements with expiration and deletion controls on the owner website.",
+    "Adds a credential-free in-app Shop button.",
+    "Announcements are read-only text and cannot execute commands or access customer files."
   ],
   "preserves_local_app_data": true,
-  "signature": "rn77L9wYis-bSGrOP-Efc1UgDHYZoejz3cSx6tIqU7V7p4wTlEmSoF5-IGtVCOTvg7M9RVER6XgUFeA0mL_PBg"
+  "signature": "eAI5tbqmZtGOTXgySQYxy2lC4R2sr0i2hgJAapSYeIoUv1A09qTdMvtn1DqYmDnsQVgdS_i0LoN0pyrnNVAaDw"
 }

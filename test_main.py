@@ -247,6 +247,126 @@ class VaultLinkApiTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+    def test_rank_targeted_owner_announcements_and_admin_controls(self):
+        status, denied = self.call(
+            "/api/v1/admin/announcements/create",
+            method="POST",
+            payload={"title": "No token", "message": "This must be rejected."},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        issued_starter, activated_starter = self.issue_and_activate("starter", "NEWS-STARTER-PC")
+        issued_plus, activated_plus = self.issue_and_activate("personal-plus", "NEWS-PLUS-PC")
+        starter_auth = {
+            "license_key": issued_starter["license_key"],
+            "receipt": activated_starter["receipt"],
+            "machine_id": "NEWS-STARTER-PC",
+            "app_version": "2026.07.12.4",
+        }
+        plus_auth = {
+            "license_key": issued_plus["license_key"],
+            "receipt": activated_plus["receipt"],
+            "machine_id": "NEWS-PLUS-PC",
+            "app_version": "2026.07.12.4",
+        }
+
+        def publish(**payload):
+            response_status, response = self.call(
+                "/api/v1/admin/announcements/create",
+                method="POST",
+                payload=payload,
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
+            self.assertEqual(response_status, 201)
+            return response["announcement"]
+
+        all_ranks = publish(
+            severity="info",
+            title="Welcome to Owner News",
+            message="This read-only message is available to every active license.",
+            minimum_rank=1,
+        )
+        rank_three = publish(
+            severity="update",
+            title="Personal Plus update",
+            message="This notice is limited to Rank 3 and above.",
+            minimum_rank=3,
+        )
+        scheduled = publish(
+            severity="maintenance",
+            title="Scheduled maintenance",
+            message="This notice should remain hidden until its start time.",
+            minimum_rank=1,
+            starts_at_utc="2099-01-01T00:00:00Z",
+        )
+        self.assertFalse(scheduled["active"])
+
+        status, starter_news = self.call(
+            "/api/v1/announcements/mine",
+            method="POST",
+            payload=starter_auth,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual([item["announcement_id"] for item in starter_news["items"]], [all_ranks["announcement_id"]])
+        self.assertEqual(starter_news["plan_rank"], 1)
+
+        status, plus_news = self.call(
+            "/api/v1/announcements/mine",
+            method="POST",
+            payload=plus_auth,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            {item["announcement_id"] for item in plus_news["items"]},
+            {all_ranks["announcement_id"], rank_three["announcement_id"]},
+        )
+        self.assertEqual(plus_news["plan_rank"], 3)
+
+        status, inventory = self.call(
+            "/api/v1/admin/announcements",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(inventory["count"], 3)
+        self.assertEqual(inventory["active_count"], 2)
+
+        status, dashboard = self.call(
+            "/api/v1/admin/dashboard",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["announcements"]["active"], 2)
+
+        status, deleted = self.call(
+            "/api/v1/admin/announcements/delete",
+            method="POST",
+            payload={"announcement_id": rank_three["announcement_id"]},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(deleted["deleted"])
+
+        status, rejected = self.call(
+            "/api/v1/admin/announcements/create",
+            method="POST",
+            payload={
+                "title": "Expired notice",
+                "message": "This expiration is already in the past.",
+                "expires_at_utc": "2000-01-01T00:00:00Z",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(rejected["error"], "bad_request")
+
+        status, _headers, owner_page = self.call_bytes("/owner")
+        self.assertEqual(status, 200)
+        owner_text = owner_page.decode("utf-8")
+        self.assertIn("Owner Announcements", owner_text)
+        self.assertIn("publishAnnouncement", owner_text)
+        self.assertIn("statAnnouncements", owner_text)
+
     def test_license_issue_activate_verify_and_header_only_admin(self):
         status, denied = self.call(
             "/api/v1/licenses/issue",
@@ -445,7 +565,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         path = api.support_ticket_path(created["ticket"]["ticket_id"])
         record = json.loads(path.read_text(encoding="utf-8"))
-        record["private_blob"] = record["private_blob"][:-1] + ("A" if record["private_blob"][-1] != "A" else "B")
+        damaged_blob = bytearray(api.b64url_decode(record["private_blob"]))
+        damaged_blob[-1] ^= 1
+        record["private_blob"] = api.b64url_encode(bytes(damaged_blob))
         path.write_text(json.dumps(record), encoding="utf-8")
 
         status, inbox = self.call(
