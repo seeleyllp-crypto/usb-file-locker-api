@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.20.0"
+API_VERSION = "0.21.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1642,6 +1642,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/rank-tools", "purpose": "License-gated cumulative rank-exclusive customer tool packs"},
             {"method": "POST", "path": "/api/v1/licenses/customer-checkup", "purpose": "Privacy-safe license, seat, service, update, and rank-tool attention check"},
             {"method": "POST", "path": "/api/v1/licenses/support-guide", "purpose": "Fixed-category privacy-safe customer troubleshooting guide"},
+            {"method": "POST", "path": "/api/v1/licenses/timeline", "purpose": "Read-only license milestones and local renewal-reminder metadata"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -2393,6 +2394,17 @@ def customer_license_center_html():
     .verify-file input { display:none; }
     .verify-status { min-height:22px; margin-top:10px; color:var(--muted); line-height:1.45; overflow-wrap:anywhere; }
     .verify-status.good { color:var(--green); } .verify-status.bad { color:var(--red); } .verify-status.warn { color:var(--yellow); }
+    .timeline { margin-top:18px; }
+    .timeline-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
+    .timeline-head p { margin:0; color:var(--muted); font-size:.85rem; }
+    .timeline-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:11px; }
+    .timeline-actions button { min-height:36px; background:var(--surface2); border:1px solid var(--line); color:var(--text); }
+    .timeline-actions .reminder-action { background:var(--green); border-color:var(--green); color:#061109; }
+    .timeline-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+    .timeline-event { min-width:0; padding:14px; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:8px; background:var(--surface); }
+    .timeline-event.upcoming { border-left-color:var(--yellow); } .timeline-event.current { border-left-color:var(--green); } .timeline-event.past { border-left-color:var(--red); }
+    .timeline-event h3 { margin:5px 0; font-size:.96rem; }
+    .timeline-event p { margin:0; color:var(--muted); line-height:1.45; }
     .dashboard-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
     .dashboard-actions button,.dashboard-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 12px; border-radius:5px; background:var(--surface2); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:.78rem; font-weight:800; }
     .dashboard-actions .primary-action { background:var(--blue); border-color:var(--blue); color:#071119; }
@@ -2443,7 +2455,7 @@ def customer_license_center_html():
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
     @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
-    @media (max-width:760px) { .top,.help-grid { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head,.checkup-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
+    @media (max-width:760px) { .top,.help-grid { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head,.checkup-head,.timeline-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2470,7 +2482,7 @@ def customer_license_center_html():
   <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { payload:null, upgrades:null, rankTools:null, checkup:null, guide:null, favorites:new Set() };
+    const state = { payload:null, upgrades:null, rankTools:null, checkup:null, timeline:null, guide:null, favorites:new Set() };
     const text = (value) => String(value ?? "");
     function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
     function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
@@ -2485,6 +2497,7 @@ def customer_license_center_html():
         service_status:payload.service_status,
         release:payload.release,
         customer_checkup:state.checkup ? {overall:state.checkup.overall,counts:state.checkup.counts,attention_count:state.checkup.attention_count,items:state.checkup.items} : null,
+        customer_timeline:state.timeline ? {status:state.timeline.status,plan:state.timeline.plan,days_remaining:state.timeline.days_remaining,items:state.timeline.items,renewal_reminder:state.timeline.renewal_reminder} : null,
         privacy_notice:"This customer-created summary excludes the license key, license id, identity, notes, device identities, receipts, paths, PINs, USB secrets, and file contents."
       };
     }
@@ -2627,7 +2640,30 @@ def customer_license_center_html():
       } catch (_) { output.textContent="The browser could not verify this file."; output.classList.add("bad"); }
       finally { const input=$("updateFileInput"); if (input) input.value=""; }
     }
-    function render(payload,upgrades,rankTools,checkup) {
+    function safeTimeline() {
+      if (!state.timeline) return null;
+      return {exported_at_utc:new Date().toISOString(),status:state.timeline.status,plan:state.timeline.plan,days_remaining:state.timeline.days_remaining,items:state.timeline.items,renewal_reminder:state.timeline.renewal_reminder,privacy_notice:state.timeline.privacy_notice};
+    }
+    async function copyTimeline() {
+      if (!state.timeline) return;
+      const lines=["VaultLink Customer Timeline",`Plan: ${state.timeline.plan.name}`,`Status: ${state.timeline.status}`,...state.timeline.items.map((item)=>`${item.at_utc} | ${item.title} | ${item.detail}`)];
+      try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe timeline copied.","good"); }
+      catch (_) { setStatus("Browser clipboard access was blocked.","bad"); }
+    }
+    function exportTimeline() {
+      const safe=safeTimeline(); if (!safe) return;
+      const blob=new Blob([JSON.stringify(safe,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const link=document.createElement("a");
+      link.href=url; link.download="vaultlink-customer-timeline.json"; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); setStatus("Privacy-safe timeline exported.","good");
+    }
+    function downloadRenewalReminder() {
+      const reminder=state.timeline?.renewal_reminder;
+      if (!reminder?.available || !reminder.expires_at_utc) return setStatus(reminder?.message || "No renewal reminder is available.","warn");
+      const stamp=(value)=>new Date(value).toISOString().replaceAll("-","").replaceAll(":","").replace(".000","");
+      const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//VaultLink//Customer Renewal Reminder//EN","CALSCALE:GREGORIAN","BEGIN:VEVENT",`UID:vaultlink-renewal-${Date.now()}@local`,`DTSTAMP:${stamp(new Date().toISOString())}`,`DTSTART:${stamp(reminder.expires_at_utc)}`,"SUMMARY:VaultLink license expiration",`DESCRIPTION:${state.timeline.plan.name} renewal reminder. This file contains no license key or customer identity.`,"BEGIN:VALARM","TRIGGER:-P30D","ACTION:DISPLAY","DESCRIPTION:VaultLink license renewal reminder","END:VALARM","END:VEVENT","END:VCALENDAR",""];
+      const blob=new Blob([lines.join("\\r\\n")],{type:"text/calendar"}); const url=URL.createObjectURL(blob); const link=document.createElement("a");
+      link.href=url; link.download="vaultlink-renewal-reminder.ics"; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); setStatus("Local renewal calendar file created.","good");
+    }
+    function render(payload,upgrades,rankTools,checkup,timeline) {
       const root=$("result"); root.replaceChildren();
       const summary=document.createElement("div"); summary.className="summary";
       const fields=[
@@ -2669,6 +2705,19 @@ def customer_license_center_html():
       const checkupGrid=document.createElement("div"); checkupGrid.className="checkup-grid";
       checkup.items.forEach((item)=>{ const card=document.createElement("article"); card.className=`checkup-item ${item.severity}`; const severity=document.createElement("div"); severity.className="eyebrow"; severity.textContent=item.severity.toUpperCase(); const title=document.createElement("h3"); title.textContent=item.title; const detail=document.createElement("p"); detail.textContent=item.detail; card.append(severity,title,detail); checkupGrid.append(card); });
       checkupSection.append(checkupGrid);
+      const timelineSection=document.createElement("section"); timelineSection.className="timeline";
+      const timelineHead=document.createElement("div"); timelineHead.className="timeline-head";
+      const timelineTitle=document.createElement("h2"); timelineTitle.textContent="License Timeline";
+      const timelineSummary=document.createElement("p"); timelineSummary.textContent=timeline.days_remaining===null?`${timeline.event_count} privacy-safe milestones. No expiration date.`:`${timeline.event_count} privacy-safe milestones. ${timeline.days_remaining} day(s) remaining.`;
+      timelineHead.append(timelineTitle,timelineSummary);
+      const timelineActions=document.createElement("div"); timelineActions.className="timeline-actions";
+      const copyTimelineButton=document.createElement("button"); copyTimelineButton.type="button"; copyTimelineButton.textContent="COPY TIMELINE"; copyTimelineButton.addEventListener("click",copyTimeline);
+      const exportTimelineButton=document.createElement("button"); exportTimelineButton.type="button"; exportTimelineButton.textContent="EXPORT TIMELINE"; exportTimelineButton.addEventListener("click",exportTimeline);
+      timelineActions.append(copyTimelineButton,exportTimelineButton);
+      if (timeline.renewal_reminder.available) { const reminderButton=document.createElement("button"); reminderButton.type="button"; reminderButton.className="reminder-action"; reminderButton.textContent="ADD RENEWAL REMINDER"; reminderButton.addEventListener("click",downloadRenewalReminder); timelineActions.append(reminderButton); }
+      const timelineGrid=document.createElement("div"); timelineGrid.className="timeline-grid";
+      timeline.items.forEach((item)=>{ const card=document.createElement("article"); card.className=`timeline-event ${item.state}`; const stateLabel=document.createElement("div"); stateLabel.className="eyebrow"; stateLabel.textContent=`${item.state.toUpperCase()} | ${new Date(item.at_utc).toLocaleString()}`; const title=document.createElement("h3"); title.textContent=item.title; const detail=document.createElement("p"); detail.textContent=item.detail; card.append(stateLabel,title,detail); timelineGrid.append(card); });
+      timelineSection.append(timelineHead,timelineActions,timelineGrid);
       const helpCenter=document.createElement("section"); helpCenter.className="help-center";
       const helpGrid=document.createElement("div"); helpGrid.className="help-grid";
       const guidePanel=document.createElement("div"); guidePanel.className="help-panel";
@@ -2706,7 +2755,7 @@ def customer_license_center_html():
       const actionsTitle=document.createElement("h2"); actionsTitle.textContent="Next actions";
       const actionsList=document.createElement("ul"); payload.customer_actions.forEach((item) => { const li=document.createElement("li"); li.textContent=item; actionsList.append(li); });
       actions.append(actionsTitle,actionsList); details.append(included,service,actions);
-      root.append(summary,progress,message,toolbar,checkupSection,helpCenter,details);
+      root.append(summary,progress,message,toolbar,checkupSection,timelineSection,helpCenter,details);
       const rankSection=document.createElement("section"); rankSection.className="rank-tools";
       const rankHead=document.createElement("div"); rankHead.className="rank-tools-head";
       const rankTitle=document.createElement("h2"); rankTitle.textContent="Rank-exclusive tools";
@@ -2783,12 +2832,15 @@ def customer_license_center_html():
         const checkupResponse=await fetch("/api/v1/licenses/customer-checkup",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey,app_version:appVersion}),cache:"no-store",redirect:"error"});
         const checkup=await checkupResponse.json();
         if (!checkupResponse.ok) throw new Error(checkup.message || "Customer checkup failed.");
-        state.payload=payload; state.upgrades=upgrades; state.rankTools=rankTools; state.checkup=checkup; state.favorites=new Set(); render(payload,upgrades,rankTools,checkup); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
+        const timelineResponse=await fetch("/api/v1/licenses/timeline",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
+        const timeline=await timelineResponse.json();
+        if (!timelineResponse.ok) throw new Error(timeline.message || "License timeline failed.");
+        state.payload=payload; state.upgrades=upgrades; state.rankTools=rankTools; state.checkup=checkup; state.timeline=timeline; state.favorites=new Set(); render(payload,upgrades,rankTools,checkup,timeline); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
       } catch (error) { setStatus(error.message || "License check failed.","bad"); }
       finally { $("check").disabled=false; }
     }
     $("check").addEventListener("click",checkLicense);
-    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; state.checkup=null; state.guide=null; state.favorites=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key and session data cleared from page memory."); });
+    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; state.checkup=null; state.timeline=null; state.guide=null; state.favorites=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key and session data cleared from page memory."); });
     $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
     $("appVersion").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
   </script>
@@ -4002,6 +4054,7 @@ def preview_license(payload):
         "sha256": "",
         "size_bytes": 0,
         "package_filename": "",
+        "published_at_utc": "",
     }
     try:
         manifest, _package_path = load_windows_update_release()
@@ -4013,6 +4066,7 @@ def preview_license(payload):
             "sha256": manifest.get("sha256", ""),
             "size_bytes": int(manifest.get("size_bytes", 0) or 0),
             "package_filename": manifest.get("package_filename", ""),
+            "published_at_utc": manifest.get("published_at_utc", ""),
         }
     except (FileNotFoundError, OSError, ValueError):
         pass
@@ -4336,6 +4390,116 @@ def customer_support_guide(payload):
         "privacy_notice": (
             "Support guides accept only a fixed category and exclude free-form text, license keys, license ids, "
             "customer identity, notes, machine identifiers, receipts, payment data, paths, PINs, USB secrets, and file contents."
+        ),
+    }
+
+
+def customer_timeline(payload):
+    """Build a privacy-safe license timeline without activating a device seat."""
+    preview = preview_license(payload)
+    now = datetime.now(timezone.utc)
+    events = []
+
+    def add(identifier, title, at_utc, state, detail):
+        if at_utc:
+            events.append(
+                {
+                    "id": identifier,
+                    "title": title,
+                    "at_utc": at_utc,
+                    "state": state,
+                    "detail": detail,
+                }
+            )
+
+    issued_at = str(preview["license"].get("issued_at_utc", ""))
+    add(
+        "issued",
+        "License issued",
+        issued_at,
+        "complete",
+        f"{preview['plan']['name']} rank {preview['plan']['rank']} license created.",
+    )
+
+    release = preview["release"]
+    if release.get("published") and release.get("published_at_utc"):
+        add(
+            "release",
+            "Signed update published",
+            str(release["published_at_utc"]),
+            "complete",
+            f"Windows release {release.get('latest_version', '')} became available.",
+        )
+
+    limited_until = str(preview.get("limited_until_utc", ""))
+    if limited_until:
+        add(
+            "limited-until",
+            "Premium limit ends",
+            limited_until,
+            "upcoming",
+            "Local unlock and recovery remain available during the premium limit.",
+        )
+
+    expires_at_text = str(preview["license"].get("expires_at_utc", ""))
+    expires_at = parse_utc(expires_at_text)
+    days_remaining = None
+    reminder = {
+        "available": False,
+        "expires_at_utc": expires_at_text,
+        "suggested_reminder_utc": "",
+        "advance_days": 30,
+        "message": "This license has no expiration date, so no renewal reminder is needed.",
+    }
+    if expires_at is not None:
+        expired = expires_at <= now
+        days_remaining = max(0, (expires_at.date() - now.date()).days)
+        add(
+            "expiration",
+            "License expiration",
+            expires_at_text,
+            "past" if expired else "upcoming",
+            "The license has expired." if expired else f"{days_remaining} day(s) remain at the time of this check.",
+        )
+        suggested = max(now, expires_at - timedelta(days=30))
+        reminder = {
+            "available": not expired,
+            "expires_at_utc": expires_at_text,
+            "suggested_reminder_utc": format_utc(suggested),
+            "advance_days": 30,
+            "message": (
+                "Download a local calendar event with a 30-day reminder. No calendar data is uploaded."
+                if not expired
+                else "The expiration date has passed, so a future calendar reminder is unavailable."
+            ),
+        }
+
+    checked_at = format_utc(now)
+    add(
+        "checked",
+        "Status checked",
+        checked_at,
+        "current",
+        f"License status is {preview['status']}; this check did not activate a device seat.",
+    )
+    events.sort(key=lambda item: item["at_utc"])
+    return {
+        "ok": True,
+        "status": preview["status"],
+        "plan": {
+            "id": preview["plan"]["id"],
+            "name": preview["plan"]["name"],
+            "rank": preview["plan"]["rank"],
+        },
+        "event_count": len(events),
+        "items": events,
+        "days_remaining": days_remaining,
+        "renewal_reminder": reminder,
+        "does_not_activate": True,
+        "server_time_utc": checked_at,
+        "privacy_notice": (
+            "Timeline responses exclude the license key, license id, customer identity, notes, machine identifiers, "
+            "receipts, payment data, paths, PINs, USB secrets, file contents, and calendar-account data."
         ),
     }
 
@@ -6730,6 +6894,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Rank-exclusive premium tools require an active signed license; limited, revoked, and expired licenses retain local unlock and recovery only.",
                         "Customer checkups are informational and cannot inspect, execute, lock, unlock, or modify a customer PC.",
                         "Support Guide accepts no free-form report text, and browser update verification does not upload the selected file.",
+                        "Customer timelines are read-only, and renewal calendar files are created locally without calendar-account access.",
                     ],
                 }
             )
@@ -7022,6 +7187,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/rank-tools": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/customer-checkup": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/support-guide": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/timeline": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -7081,6 +7247,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/support-guide":
                 self.send_json(customer_support_guide(payload))
+                return
+            if path == "/api/v1/licenses/timeline":
+                self.send_json(customer_timeline(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))

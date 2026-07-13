@@ -25,6 +25,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A public seven-rank shop at `/shop` using allowlisted provider-hosted checkout links
 - An anonymous Plan Advisor and two-to-three-rank comparison workflow in the shop
 - A read-only Customer License Center at `/customer` that checks signed-license status without activating a device seat
+- A privacy-safe customer license timeline with local JSON, clipboard, and calendar-reminder exports
 - A homepage at `/`
 - A route index at `/docs`
 - A health endpoint at `/health`
@@ -108,8 +109,10 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 - `POST /api/v1/licenses/rank-tools` returns five concrete checklist tools per unlocked rank, for 35 cumulative rank-exclusive tools across all seven ranks, with categories and time estimates.
 - `POST /api/v1/licenses/customer-checkup` returns six privacy-safe attention checks for license state, anonymous seats, service status, expiration, signed updates, and rank-tool access.
 - `POST /api/v1/licenses/support-guide` returns a five-step guide for one fixed category: licensing, update, recovery, security, privacy, or other. It accepts no free-form report text and returns no private license fields.
+- `POST /api/v1/licenses/timeline` returns issue, update, limit, expiration, and current-check milestones plus local renewal-reminder metadata without activating a device seat.
 - The browser dashboard can copy or export a privacy-safe customer summary and link to the published SHA-256-pinned Windows update package.
 - The Signed Update Verifier compares a selected update ZIP with the published package size and SHA-256 entirely inside the browser. The selected file and its contents are never uploaded.
+- The License Timeline can be copied or exported as privacy-safe JSON. Expiring licenses can download a local `.ics` calendar event with a 30-day reminder; VaultLink never connects to or modifies a calendar account.
 - Active customers can search and filter tools, track checklist progress in page memory, copy their current-rank tools, or export every unlocked checklist and session result as a privacy-safe rank pack. Limited, revoked, and expired licenses keep local unlock and recovery but do not receive premium rank-tool contents.
 - The session workspace adds current-rank, incomplete, and favorites filters; next-incomplete focus; and local JSON rank-pack import. Favorites and progress are not uploaded or saved in browser storage.
 - Customer Checkup is informational only. It is not an antivirus scan, security certification, compliance determination, or permission to remotely inspect or modify a customer PC.

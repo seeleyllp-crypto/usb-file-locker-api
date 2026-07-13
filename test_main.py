@@ -319,6 +319,7 @@ class VaultLinkApiTests(unittest.TestCase):
             self.assertEqual(sum(item["rank"] == rank for item in api.RANK_EXCLUSIVE_TOOLS), 5)
         self.assertTrue(all(len(item["checklist"]) == 4 for item in api.RANK_EXCLUSIVE_TOOLS))
 
+        expires_at = api.format_utc(datetime.now(timezone.utc) + timedelta(days=45))
         status, issued = self.call(
             "/api/v1/licenses/issue",
             method="POST",
@@ -328,6 +329,7 @@ class VaultLinkApiTests(unittest.TestCase):
                 "customer_email": "private-4581@example.test",
                 "license_note": "PRIVATE-NOTE-4581",
                 "max_devices": 4,
+                "expires_at_utc": expires_at,
             },
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
         )
@@ -444,6 +446,27 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-NOTE-4581", serialized_guide)
         self.assertNotIn(key, serialized_guide)
 
+        status, timeline = self.call(
+            "/api/v1/licenses/timeline",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(timeline["does_not_activate"])
+        self.assertEqual(timeline["plan"]["id"], "family-safety")
+        self.assertGreaterEqual(timeline["event_count"], 4)
+        self.assertTrue(timeline["renewal_reminder"]["available"])
+        self.assertEqual(timeline["renewal_reminder"]["advance_days"], 30)
+        self.assertEqual(timeline["renewal_reminder"]["expires_at_utc"], expires_at)
+        self.assertGreaterEqual(timeline["days_remaining"], 44)
+        self.assertTrue(any(item["id"] == "expiration" for item in timeline["items"]))
+        self.assertEqual(api.active_device_count(license_id), 0)
+        serialized_timeline = json.dumps(timeline)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_timeline)
+        self.assertNotIn("private-4581@example.test", serialized_timeline)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized_timeline)
+        self.assertNotIn(key, serialized_timeline)
+
         status, bad_guide = self.call(
             "/api/v1/licenses/support-guide",
             method="POST",
@@ -538,6 +561,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("/api/v1/licenses/rank-tools", page_text)
         self.assertIn("/api/v1/licenses/customer-checkup", page_text)
         self.assertIn("/api/v1/licenses/support-guide", page_text)
+        self.assertIn("/api/v1/licenses/timeline", page_text)
         self.assertIn("COPY SUMMARY", page_text)
         self.assertIn("EXPORT JSON", page_text)
         self.assertIn("COPY RANK TOOLS", page_text)
@@ -558,6 +582,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("CHOOSE UPDATE ZIP", page_text)
         self.assertIn("COPY GUIDE", page_text)
         self.assertIn("EXPORT GUIDE", page_text)
+        self.assertIn("License Timeline", page_text)
+        self.assertIn("COPY TIMELINE", page_text)
+        self.assertIn("EXPORT TIMELINE", page_text)
+        self.assertIn("ADD RENEWAL REMINDER", page_text)
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 
