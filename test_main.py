@@ -1582,6 +1582,66 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(response["security"]["manual_install_requires_confirmation"])
         self.assertTrue(response["security"]["automatic_install_requires_local_opt_in"])
 
+        status, required = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": "2026.07.09"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(required["status"], "required")
+        self.assertFalse(required["supported"])
+        self.assertTrue(required["update_required"])
+        self.assertTrue(required["update_available"])
+        self.assertFalse(required["stored"])
+        self.assertEqual(required["release"]["sha256"], manifest["sha256"])
+
+        status, available = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": manifest["minimum_supported_version"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(available["status"], "available")
+        self.assertTrue(available["supported"])
+        self.assertTrue(available["download_recommended"])
+
+        status, current = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": manifest["version"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(current["status"], "current")
+        self.assertFalse(current["update_available"])
+        self.assertFalse(current["download_recommended"])
+
+        status, ahead = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": "10000.0"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(ahead["status"], "ahead")
+
+        status, invalid = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": "version one"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(invalid["error"], "bad_request")
+
+        status, update_headers, update_page = self.call_bytes("/update")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", update_headers["Content-Type"])
+        update_text = update_page.decode("utf-8")
+        self.assertIn("VaultLink Update Center", update_text)
+        self.assertIn("/api/v1/updates/windows/check", update_text)
+        self.assertIn("CHECK UPDATE", update_text)
+        self.assertIn("COPY REPORT", update_text)
+        self.assertIn("Local ZIP Verifier", update_text)
+        self.assertIn("CHOOSE UPDATE ZIP", update_text)
+
         status, headers, status_page = self.call_bytes("/status")
         self.assertEqual(status, 200)
         self.assertIn("text/html", headers["Content-Type"])
@@ -1612,6 +1672,14 @@ class VaultLinkApiTests(unittest.TestCase):
         status, response = self.call("/api/v1/updates/windows")
         self.assertEqual(status, 503)
         self.assertEqual(response["error"], "update_unavailable")
+        status, unavailable = self.call(
+            "/api/v1/updates/windows/check",
+            method="POST",
+            payload={"installed_version": "2026.07.10"},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(unavailable["published"])
+        self.assertEqual(unavailable["status"], "unavailable")
 
     def test_route_limits_content_type_and_unknown_route(self):
         oversized = b'{' + b'"padding":"' + (b"x" * api.MAX_LICENSE_JSON_BODY_BYTES) + b'"}'

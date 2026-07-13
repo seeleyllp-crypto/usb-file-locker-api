@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.21.0"
+API_VERSION = "0.22.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1676,6 +1676,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/admin/audit-exports/download-link", "purpose": "Admin-only two-minute report-scoped browser download link"},
             {"method": "GET", "path": "/api/v1/updates/windows", "purpose": "Signed Windows desktop update manifest and compatibility data"},
             {"method": "GET", "path": "/api/v1/updates/windows/download", "purpose": "SHA-256-pinned Windows desktop update package"},
+            {"method": "POST", "path": "/api/v1/updates/windows/check", "purpose": "Anonymous installed-version compatibility and update decision"},
         ],
         "required_env": [
             {"name": "PORT", "required": False, "purpose": "HTTP bind port on Railway or local runs"},
@@ -1789,6 +1790,84 @@ def windows_update_payload():
             "automatic_install_requires_local_opt_in": True,
         },
         "server_time_utc": utc_now(),
+    }
+
+
+def update_version_parts(value):
+    text = str(value or "").strip()
+    if not text or len(text) > 40 or any(part == "" or not part.isdigit() for part in text.split(".")):
+        raise ValueError("installed_version must contain only dot-separated numbers and be 40 characters or fewer.")
+    return text, tuple(int(part) for part in text.split("."))
+
+
+def compare_update_versions(left, right):
+    width = max(len(left), len(right))
+    padded_left = left + (0,) * (width - len(left))
+    padded_right = right + (0,) * (width - len(right))
+    return (padded_left > padded_right) - (padded_left < padded_right)
+
+
+def check_windows_update(payload):
+    installed_version, installed_parts = update_version_parts(payload.get("installed_version"))
+    try:
+        manifest, _package_path = load_windows_update_release()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        return {
+            "ok": True,
+            "published": False,
+            "status": "unavailable",
+            "installed_version": installed_version,
+            "message": str(exc),
+            "server_time_utc": utc_now(),
+            "stored": False,
+            "privacy_notice": "The entered version is evaluated for this response and is not stored.",
+        }
+
+    latest_version, latest_parts = update_version_parts(manifest["version"])
+    minimum_version, minimum_parts = update_version_parts(manifest["minimum_supported_version"])
+    latest_comparison = compare_update_versions(installed_parts, latest_parts)
+    minimum_comparison = compare_update_versions(installed_parts, minimum_parts)
+    if minimum_comparison < 0:
+        status = "required"
+        message = f"Installed version {installed_version} is below the supported minimum {minimum_version}."
+    elif latest_comparison < 0:
+        status = "available"
+        message = f"Signed update {latest_version} is available for installed version {installed_version}."
+    elif latest_comparison == 0:
+        status = "current"
+        message = f"Installed version {installed_version} matches the latest signed release."
+    else:
+        status = "ahead"
+        message = f"Installed version {installed_version} is newer than published release {latest_version}."
+    return {
+        "ok": True,
+        "published": True,
+        "status": status,
+        "message": message,
+        "installed_version": installed_version,
+        "latest_version": latest_version,
+        "minimum_supported_version": minimum_version,
+        "supported": minimum_comparison >= 0,
+        "update_available": latest_comparison < 0,
+        "update_required": minimum_comparison < 0,
+        "download_recommended": latest_comparison < 0,
+        "release": {
+            "published_at_utc": manifest["published_at_utc"],
+            "package_filename": manifest["package_filename"],
+            "download_path": manifest["download_path"],
+            "sha256": manifest["sha256"],
+            "size_bytes": manifest["size_bytes"],
+            "notes": list(manifest["notes"]),
+            "manifest_signature": "Ed25519",
+            "package_integrity": "SHA-256",
+            "preserves_local_app_data": True,
+        },
+        "server_time_utc": utc_now(),
+        "stored": False,
+        "privacy_notice": (
+            "The entered version is evaluated for this response and is not stored. No license key, identity, "
+            "device identifier, path, file, PIN, USB secret, or file content is requested."
+        ),
     }
 
 
@@ -1988,6 +2067,7 @@ def homepage_html():
       <div class="cta">
         <a class="primary" href="/shop">Open Shop</a>
         <a href="/customer">Customer License Center</a>
+        <a href="/update">Update Center</a>
         <a href="/status">Customer Status</a>
         <a href="/terms">Draft Terms</a>
         <a href="/privacy">Privacy Notice</a>
@@ -2067,7 +2147,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -2081,6 +2161,131 @@ def customer_status_html():
   </main>
 </body>
 </html>"""
+
+
+def update_center_html():
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Update Center</title>
+  <style>
+    :root { --bg:#0f1216; --surface:#171c22; --surface2:#202731; --line:#34404c; --text:#f4f7f8; --muted:#aeb9c4; --green:#69df8a; --blue:#69bce8; --yellow:#ffd166; --red:#ff8278; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#14181d; }
+    header > div, main, footer > div { width:min(980px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-weight:800; }
+    nav { display:flex; gap:8px; flex-wrap:wrap; }
+    nav a { color:var(--text); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:8px 11px; }
+    main { padding:34px 0 52px; }
+    .top { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr); gap:18px; align-items:start; }
+    h1 { margin:0; font-size:clamp(2rem,5vw,3.5rem); line-height:1.04; letter-spacing:0; }
+    .lead { color:var(--muted); line-height:1.55; max-width:650px; }
+    .privacy { margin-top:16px; padding:13px 14px; border-left:4px solid var(--blue); background:#171e25; color:var(--muted); line-height:1.45; }
+    .panel { padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+    label { display:block; margin-bottom:7px; color:var(--muted); font-size:.75rem; font-weight:800; text-transform:uppercase; }
+    input { width:100%; min-width:0; height:44px; padding:0 12px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .actions { display:grid; grid-template-columns:1fr auto; gap:9px; margin-top:10px; }
+    button { min-height:42px; border:0; border-radius:5px; padding:0 14px; font-weight:800; cursor:pointer; }
+    #check { background:var(--green); color:#061109; }
+    #clear { background:var(--surface2); color:var(--text); border:1px solid var(--line); }
+    #status { min-height:23px; margin-top:12px; color:var(--muted); line-height:1.4; }
+    #status.good { color:var(--green); } #status.warn { color:var(--yellow); } #status.bad { color:var(--red); }
+    #result { margin-top:20px; }
+    .empty { padding:30px 18px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); text-align:center; }
+    .summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .summary > div { min-width:0; padding:17px; background:var(--surface); border-right:1px solid var(--line); }
+    .summary > div:last-child { border-right:0; }
+    .eyebrow { color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; }
+    .value { margin-top:6px; font-size:1.05rem; font-weight:800; overflow-wrap:anywhere; }
+    .value.current { color:var(--green); } .value.available { color:var(--yellow); } .value.required { color:var(--red); } .value.ahead { color:var(--blue); }
+    .message { margin-top:12px; padding:14px; background:#181f26; border-left:4px solid var(--blue); color:var(--muted); line-height:1.5; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .toolbar button,.toolbar a { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 12px; border-radius:5px; background:var(--surface2); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:.78rem; font-weight:800; }
+    .toolbar .primary { background:var(--blue); border-color:var(--blue); color:#071119; }
+    .release-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr); gap:14px; margin-top:16px; }
+    .release-grid > section { min-width:0; padding:18px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    h2 { margin:0 0 11px; font-size:1rem; }
+    ul { margin:0; padding-left:19px; color:var(--muted); line-height:1.6; }
+    .verify-copy { margin:0 0 12px; color:var(--muted); line-height:1.5; }
+    .verify-file { display:flex; align-items:center; justify-content:center; min-height:40px; padding:0 11px; border:1px solid var(--line); border-radius:5px; background:var(--surface2); color:var(--text); font-size:.78rem; font-weight:800; cursor:pointer; }
+    .verify-file input { display:none; }
+    .verify-status { min-height:22px; margin-top:10px; color:var(--muted); line-height:1.45; overflow-wrap:anywhere; }
+    .verify-status.good { color:var(--green); } .verify-status.bad { color:var(--red); } .verify-status.warn { color:var(--yellow); }
+    footer { border-top:1px solid var(--line); background:#14181d; }
+    footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
+    @media(max-width:760px) { .top,.release-grid { grid-template-columns:1fr; } .summary { grid-template-columns:1fr 1fr; } .summary > div:nth-child(2) { border-right:0; } .summary > div:nth-child(-n+2) { border-bottom:1px solid var(--line); } }
+    @media(max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <main>
+    <div class="top">
+      <section>
+        <h1>Update Center</h1>
+        <p class="lead">Check whether your Windows app version is current, supported, or needs the latest signed release.</p>
+        <div class="privacy">The version is checked once and is not stored. Selected ZIP files are hashed locally in this browser and are never uploaded.</div>
+      </section>
+      <section class="panel">
+        <label for="installedVersion">Installed app version</label>
+        <input id="installedVersion" autocomplete="off" spellcheck="false" maxlength="40" placeholder="Example: 2026.07.12.9">
+        <div class="actions"><button id="check" type="button">CHECK UPDATE</button><button id="clear" type="button">CLEAR</button></div>
+        <div id="status" role="status" aria-live="polite">Not checked.</div>
+      </section>
+    </div>
+    <div id="result"><div class="empty">Update compatibility information will appear here.</div></div>
+  </main>
+  <footer><div>Update Center cannot install software, inspect your PC, read files, or change local settings. API version __API_VERSION__.</div></footer>
+  <script>
+    const $=(id)=>document.getElementById(id);
+    const state={payload:null};
+    function setStatus(message,tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
+    function safeReport() { if (!state.payload) return null; const value=state.payload; return {exported_at_utc:new Date().toISOString(),status:value.status,message:value.message,installed_version:value.installed_version,latest_version:value.latest_version,minimum_supported_version:value.minimum_supported_version,supported:value.supported,update_available:value.update_available,update_required:value.update_required,release:value.release,privacy_notice:value.privacy_notice}; }
+    async function copyReport() { const report=safeReport(); if (!report) return; const lines=["VaultLink Update Check",`Status: ${report.status}`,`Installed: ${report.installed_version}`,`Latest: ${report.latest_version || "Not published"}`,`Minimum supported: ${report.minimum_supported_version || "Not published"}`,report.message]; try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe update report copied.","good"); } catch (_) { setStatus("Browser clipboard access was blocked.","bad"); } }
+    function exportReport() { const report=safeReport(); if (!report) return; const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const link=document.createElement("a"); link.href=url; link.download="vaultlink-update-check.json"; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); setStatus("Privacy-safe update report exported.","good"); }
+    async function verifyUpdateFile(file) {
+      const output=$("verifyStatus"); if (!file || !state.payload?.release) return;
+      const release=state.payload.release; output.className="verify-status";
+      if (file.size>1024*1024*1024) { output.textContent="Choose an update package no larger than 1 GB."; output.classList.add("bad"); return; }
+      if (release.size_bytes && file.size!==release.size_bytes) { output.textContent=`SIZE MISMATCH: selected ${file.size} bytes; expected ${release.size_bytes} bytes.`; output.classList.add("bad"); return; }
+      output.textContent="Hashing selected file locally...";
+      try { const digest=await crypto.subtle.digest("SHA-256",await file.arrayBuffer()); const actual=[...new Uint8Array(digest)].map((value)=>value.toString(16).padStart(2,"0")).join(""); if (actual.toLowerCase()===String(release.sha256).toLowerCase()) { output.textContent=`MATCH: SHA-256 verified for ${file.name}.`; output.classList.add("good"); } else { output.textContent=`MISMATCH: do not install ${file.name}.`; output.classList.add("bad"); } }
+      catch (_) { output.textContent="The browser could not verify this file."; output.classList.add("bad"); }
+      finally { const input=$("updateFile"); if (input) input.value=""; }
+    }
+    function render(payload) {
+      const root=$("result"); root.replaceChildren();
+      if (!payload.published) { const empty=document.createElement("div"); empty.className="empty"; empty.textContent=payload.message || "No signed update is published."; root.append(empty); return; }
+      const summary=document.createElement("div"); summary.className="summary";
+      [["Status",payload.status],["Installed",payload.installed_version],["Latest",payload.latest_version],["Minimum supported",payload.minimum_supported_version]].forEach(([label,value],index)=>{ const cell=document.createElement("div"); const key=document.createElement("div"); key.className="eyebrow"; key.textContent=label; const data=document.createElement("div"); data.className=`value${index===0?` ${payload.status}`:""}`; data.textContent=value; cell.append(key,data); summary.append(cell); });
+      const message=document.createElement("div"); message.className="message"; message.textContent=payload.message;
+      const toolbar=document.createElement("div"); toolbar.className="toolbar";
+      const copy=document.createElement("button"); copy.type="button"; copy.textContent="COPY REPORT"; copy.addEventListener("click",copyReport);
+      const exportButton=document.createElement("button"); exportButton.type="button"; exportButton.textContent="EXPORT JSON"; exportButton.addEventListener("click",exportReport);
+      toolbar.append(copy,exportButton);
+      if (payload.download_recommended) { const download=document.createElement("a"); download.className="primary"; download.href=payload.release.download_path; download.textContent="DOWNLOAD SIGNED UPDATE"; toolbar.append(download); }
+      const grid=document.createElement("div"); grid.className="release-grid";
+      const notes=document.createElement("section"); const notesTitle=document.createElement("h2"); notesTitle.textContent="Signed Release Notes"; const list=document.createElement("ul"); payload.release.notes.forEach((note)=>{ const item=document.createElement("li"); item.textContent=note; list.append(item); }); notes.append(notesTitle,list);
+      const verify=document.createElement("section"); const verifyTitle=document.createElement("h2"); verifyTitle.textContent="Local ZIP Verifier"; const verifyCopy=document.createElement("p"); verifyCopy.className="verify-copy"; verifyCopy.textContent=`Expected ${payload.release.package_filename}. This file stays on your device.`; const fileLabel=document.createElement("label"); fileLabel.className="verify-file"; fileLabel.textContent="CHOOSE UPDATE ZIP"; const fileInput=document.createElement("input"); fileInput.id="updateFile"; fileInput.type="file"; fileInput.accept="application/zip,.zip"; fileInput.addEventListener("change",()=>verifyUpdateFile(fileInput.files?.[0])); fileLabel.append(fileInput); const verifyStatus=document.createElement("div"); verifyStatus.id="verifyStatus"; verifyStatus.className="verify-status"; verifyStatus.textContent=`Expected SHA-256: ${payload.release.sha256}`; verify.append(verifyTitle,verifyCopy,fileLabel,verifyStatus); grid.append(notes,verify);
+      root.append(summary,message,toolbar,grid);
+    }
+    async function checkUpdate() {
+      const installedVersion=$("installedVersion").value.trim(); if (!installedVersion) return setStatus("Enter the installed app version.","warn");
+      $("check").disabled=true; setStatus("Checking signed release...");
+      try { const response=await fetch("/api/v1/updates/windows/check",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({installed_version:installedVersion}),cache:"no-store",redirect:"error"}); const payload=await response.json(); if (!response.ok) throw new Error(payload.message || "Update check failed."); state.payload=payload; render(payload); setStatus(payload.message,payload.status==="current"?"good":payload.status==="required"?"bad":"warn"); }
+      catch (error) { state.payload=null; $("result").innerHTML='<div class="empty">Update compatibility information will appear here.</div>'; setStatus(error.message || "Update check failed.","bad"); }
+      finally { $("check").disabled=false; }
+    }
+    $("check").addEventListener("click",checkUpdate);
+    $("clear").addEventListener("click",()=>{ state.payload=null; $("installedVersion").value=""; $("result").innerHTML='<div class="empty">Update compatibility information will appear here.</div>'; setStatus("Version and update result cleared from page memory."); });
+    $("installedVersion").addEventListener("keydown",(event)=>{ if (event.key==="Enter") checkUpdate(); });
+  </script>
+</body>
+</html>""".replace("__API_VERSION__", html_escape(API_VERSION))
 
 
 def legal_payload():
@@ -2460,7 +2665,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/update">UPDATE</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -6728,6 +6933,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/customer":
             self.send_html(customer_license_center_html())
             return
+        if path == "/update":
+            self.send_html(update_center_html())
+            return
         if path == "/status":
             self.send_html(customer_status_html())
             return
@@ -6785,6 +6993,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_checkout_links_configured": shop_payload()["configured_count"],
                     "shop_card_data_collected_by_vaultlink": False,
                     "windows_update_published": UPDATE_MANIFEST_PATH.exists(),
+                    "windows_update_center_enabled": True,
                 }
             )
             return
@@ -6838,6 +7047,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "license-gated rank-exclusive customer checklists and tool packs",
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "fixed-category customer support guides and local signed-update verification metadata",
+                        "anonymous Windows version compatibility checks and local update package verification",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -6895,6 +7105,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Customer checkups are informational and cannot inspect, execute, lock, unlock, or modify a customer PC.",
                         "Support Guide accepts no free-form report text, and browser update verification does not upload the selected file.",
                         "Customer timelines are read-only, and renewal calendar files are created locally without calendar-account access.",
+                        "Update Center does not store entered versions, and selected ZIP files are hashed only in the browser.",
                     ],
                 }
             )
@@ -7210,6 +7421,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/audit-exports": MAX_AUDIT_JSON_BODY_BYTES,
             "/api/v1/shop/recommend": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/shop/compare": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/updates/windows/check": MAX_LICENSE_JSON_BODY_BYTES,
         }
         if path not in route_limits:
             self.send_json(
@@ -7226,6 +7438,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/licenses/issue":
                 self.require_admin_token()
                 self.send_json(issue_license(payload), status=HTTPStatus.CREATED)
+                return
+            if path == "/api/v1/updates/windows/check":
+                self.send_json(check_windows_update(payload))
                 return
             if path == "/api/v1/licenses/activate":
                 self.send_json(activate_license(payload))

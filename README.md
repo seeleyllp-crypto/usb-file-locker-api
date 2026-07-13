@@ -26,6 +26,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - An anonymous Plan Advisor and two-to-three-rank comparison workflow in the shop
 - A read-only Customer License Center at `/customer` that checks signed-license status without activating a device seat
 - A privacy-safe customer license timeline with local JSON, clipboard, and calendar-reminder exports
+- A public Update Center at `/update` with version compatibility decisions, signed release notes, and local ZIP verification
 - A homepage at `/`
 - A route index at `/docs`
 - A health endpoint at `/health`
@@ -86,6 +87,7 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
+- `http://127.0.0.1:8000/update`
 - `http://127.0.0.1:8000/owner`
 - `http://127.0.0.1:8000/owner/insights`
 
@@ -212,5 +214,8 @@ Without `AUDIT_EXPORT_DIR`, Railway stores exports on the service's local epheme
   - Returns the current Ed25519-signed Windows release manifest, compatibility floor, notes, size, and SHA-256 hash.
 - `GET /api/v1/updates/windows/download`
   - Returns the exact ZIP package named by the signed manifest.
+- `POST /api/v1/updates/windows/check`
+  - Accepts only a dot-separated numeric `installed_version` and returns `required`, `available`, `current`, `ahead`, or `unavailable` with verified release metadata.
+  - The entered version is not stored. Update Center hashes selected ZIP files locally in the browser and never uploads them.
 
 The desktop app embeds the release public key and will not trust a replacement key from the API. It verifies the manifest signature and package hash before staging an update, asks the user before installation, backs up replaced app files, and leaves LocalAppData untouched. The private release-signing key is DPAPI-protected outside both GitHub repositories.
