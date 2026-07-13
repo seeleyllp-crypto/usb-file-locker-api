@@ -2,20 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.9",
-  "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-13T03:53:07Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.9.zip",
+  "version": "2026.07.13.1",
+  "minimum_supported_version": "2026.07.12.9",
+  "published_at_utc": "2026-07-13T20:15:32Z",
+  "package_filename": "VaultLink-Windows-2026.07.13.1.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "b96da795dad40ad081d8364ba1eeb03a3b029e4080147daa5cfd45e098bdc2c7",
-  "size_bytes": 132730,
+  "sha256": "42eeab09636f8eda87e51f95ffb70a866d05c788b7a9dfe747aad2e983ed55e8",
+  "size_bytes": 133119,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Standalone Customer Hub is included for every rank.",
-    "Draft Terms and Privacy pages require adult business-owner and recommended qualified legal review.",
-    "Owner BLOCK and temporary LIMITED controls never remotely disable unlock or recovery.",
-    "Initial customer account and announcement sync now starts about one second after launch."
+    "Desktop Update Center now opens the online compatibility checker.",
+    "Recovery Readiness is available directly from the main app and desktop Update Center.",
+    "The crowded main toolbar is split into two fully visible rows.",
+    "Keys, licenses, settings, vault data, audit logs, and locked files remain untouched."
   ],
   "preserves_local_app_data": true,
-  "signature": "eDfAJAt-pVbCJhyERofWgGJzS-c0H4dp5bkqKzR5SolKkBegaqPCyia7qkAWT19xdxNHxrV2uXPP2nL_S-bWBg"
+  "signature": "WAb4iKBGVl0XZ_p9gjuwtCqICidknVaQyKw5Lb8X6zIyBmahGoR-rvxfxDiKIELel82V6fL70rg6IFADJueGAw"
 }
