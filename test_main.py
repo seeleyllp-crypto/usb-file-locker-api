@@ -4,6 +4,7 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib import error, request
@@ -367,6 +368,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Owner Announcements", owner_text)
         self.assertIn("publishAnnouncement", owner_text)
         self.assertIn("statAnnouncements", owner_text)
+        self.assertIn("Giveaway License", owner_text)
+        self.assertIn("issueGiveaway", owner_text)
+        self.assertIn("Client Release Adoption", owner_text)
 
     def test_service_status_activity_integrity_and_scoped_download(self):
         status, public_status = self.call("/api/v1/service-status")
@@ -822,11 +826,17 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         key = issued["license_key"]
+        current_release = "2026.07.12.7"
 
         status, first = self.call(
             "/api/v1/licenses/activate",
             method="POST",
-            payload={"license_key": key, "machine_id": "FIRST-PC", "machine_name": "Private PC name"},
+            payload={
+                "license_key": key,
+                "machine_id": "FIRST-PC",
+                "machine_name": "Private PC name",
+                "app_version": current_release,
+            },
         )
         self.assertEqual(status, 200)
         self.assertTrue(first["active"])
@@ -855,14 +865,26 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(inventory["items"][0]["active_devices"], 1)
 
-        status, dashboard = self.call(
-            "/api/v1/admin/dashboard",
-            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
-        )
+        with mock.patch.object(
+            api,
+            "load_windows_update_release",
+            return_value=({"version": current_release}, None),
+        ):
+            status, dashboard = self.call(
+                "/api/v1/admin/dashboard",
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
         self.assertEqual(status, 200)
         self.assertEqual(dashboard["licenses"]["active"], 1)
         self.assertEqual(dashboard["devices"], {"active": 1, "capacity": 1})
         self.assertEqual(dashboard["audit_exports"]["total"], 0)
+        self.assertEqual(dashboard["client_health"]["active_devices"], 1)
+        self.assertEqual(dashboard["client_health"]["current_release_devices"], 1)
+        self.assertEqual(dashboard["client_health"]["unknown_version_devices"], 0)
+        self.assertEqual(
+            dashboard["client_health"]["version_counts"],
+            [{"version": current_release, "devices": 1, "current_release": True}],
+        )
 
         status, denied = self.call(
             "/api/v1/licenses/reset-devices",
@@ -1092,7 +1114,16 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(response["update"]["version"], manifest["version"])
         self.assertEqual(response["update"]["sha256"], manifest["sha256"])
-        self.assertTrue(response["security"]["automatic_install_requires_user_confirmation"])
+        self.assertTrue(response["security"]["manual_install_requires_confirmation"])
+        self.assertTrue(response["security"]["automatic_install_requires_local_opt_in"])
+
+        status, headers, status_page = self.call_bytes("/status")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        status_text = status_page.decode("utf-8")
+        self.assertIn("Customer Status", status_text)
+        self.assertIn(manifest["version"], status_text)
+        self.assertNotIn(TEST_ADMIN_TOKEN, status_text)
 
         status, headers, body = self.call_bytes("/api/v1/updates/windows/download")
         self.assertEqual(status, 200)

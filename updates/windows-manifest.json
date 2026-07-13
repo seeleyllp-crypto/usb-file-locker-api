@@ -2,19 +2,19 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.6",
+  "version": "2026.07.12.7",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-13T02:52:41Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.6.zip",
+  "published_at_utc": "2026-07-13T03:29:47Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.7.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "0691b2bc7da0218f4f7748cdff2332b2d912a15e2d6dc5c4bf326c99e128510e",
-  "size_bytes": 127088,
+  "sha256": "c58fffd0c9335290da968e01e0355f1f4365a9b3e7252815bac9b770c8fbfcc7",
+  "size_bytes": 127808,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Automatic on-screen owner announcements appear once per PC.",
-    "Owner service status is informational and cannot control customer PCs.",
-    "Tamper-evident API activity records exclude secrets, notes, messages, file data, and full paths."
+    "Opt-in automatic installation uses the existing Ed25519 and SHA-256 verification path.",
+    "Customers can open a public service and signed-release status page.",
+    "Owners can review anonymous release adoption and issue time-limited promotional giveaway licenses."
   ],
   "preserves_local_app_data": true,
-  "signature": "YHZu-YOitED2XPBdo1kAHouk9hKBopsI93fC2rNXHekiwWNX3YVvrP0yCDPiO9SAydF7jEJD4Ldg8ZZiNCztCw"
+  "signature": "yAxFH2e_onMdn2kIrh6SoYMPMdJ-okUpnntuEzXrMs4vu_JBriWdI1i92k69KRvYkru32zURaVlOxBmONeaGCQ"
 }
