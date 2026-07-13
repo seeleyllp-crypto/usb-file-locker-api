@@ -370,6 +370,53 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-NOTE-4581", serialized_upgrades)
         self.assertNotIn(key, serialized_upgrades)
 
+        status, rank_tools = self.call(
+            "/api/v1/licenses/rank-tools",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(rank_tools["active"])
+        self.assertEqual(rank_tools["current_rank"], 4)
+        self.assertEqual(rank_tools["unlocked_count"], 12)
+        self.assertEqual(rank_tools["current_rank_exclusive_count"], 3)
+        self.assertEqual(rank_tools["locked_count"], 9)
+        self.assertEqual(len(rank_tools["items"]), 12)
+        self.assertEqual(len(rank_tools["current_rank_items"]), 3)
+        self.assertTrue(all(item["rank"] <= 4 for item in rank_tools["items"]))
+        self.assertTrue(all(item["rank"] == 4 for item in rank_tools["current_rank_items"]))
+        self.assertTrue(all(item.get("checklist") for item in rank_tools["items"]))
+        self.assertTrue(all("checklist" not in item for item in rank_tools["locked_previews"]))
+        serialized_rank_tools = json.dumps(rank_tools)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_rank_tools)
+        self.assertNotIn("private-4581@example.test", serialized_rank_tools)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized_rank_tools)
+        self.assertNotIn(key, serialized_rank_tools)
+
+        status, _limited = self.call(
+            "/api/v1/licenses/limit",
+            method="POST",
+            payload={"license_key": key, "hours": 1, "reason": "Rank tool regression test."},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        status, limited_tools = self.call(
+            "/api/v1/licenses/rank-tools",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(limited_tools["active"])
+        self.assertEqual(limited_tools["license_status"], "limited")
+        self.assertEqual(limited_tools["items"], [])
+        status, _unlimited = self.call(
+            "/api/v1/licenses/unlimit",
+            method="POST",
+            payload={"license_key": key},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+
         status, _revoked = self.call(
             "/api/v1/licenses/revoke",
             method="POST",
@@ -385,6 +432,35 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(preview["status"], "revoked")
         self.assertFalse(preview["active"])
+        status, blocked_tools = self.call(
+            "/api/v1/licenses/rank-tools",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(blocked_tools["active"])
+        self.assertEqual(blocked_tools["unlocked_count"], 0)
+        self.assertEqual(blocked_tools["items"], [])
+        self.assertEqual(blocked_tools["locked_count"], 21)
+        self.assertTrue(blocked_tools["recovery_always_available"])
+
+        status, pro_issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"plan_id": "pro-baseline"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        status, pro_tools = self.call(
+            "/api/v1/licenses/rank-tools",
+            method="POST",
+            payload={"license_key": pro_issued["license_key"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(pro_tools["current_rank"], 7)
+        self.assertEqual(pro_tools["unlocked_count"], 21)
+        self.assertEqual(pro_tools["current_rank_exclusive_count"], 3)
+        self.assertEqual(pro_tools["locked_count"], 0)
 
         status, _headers, page = self.call_bytes("/customer")
         page_text = page.decode("utf-8")
@@ -392,8 +468,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Customer License Center", page_text)
         self.assertIn("/api/v1/licenses/preview", page_text)
         self.assertIn("/api/v1/licenses/upgrade-options", page_text)
+        self.assertIn("/api/v1/licenses/rank-tools", page_text)
         self.assertIn("COPY SUMMARY", page_text)
         self.assertIn("EXPORT JSON", page_text)
+        self.assertIn("COPY RANK TOOLS", page_text)
+        self.assertIn("EXPORT RANK PACK", page_text)
+        self.assertIn("Rank-exclusive tools", page_text)
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 

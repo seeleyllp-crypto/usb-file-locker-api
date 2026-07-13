@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.16.0"
+API_VERSION = "0.17.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -444,6 +444,157 @@ PLAN_TIERS = [
             "signature-bundle",
             "pro-baseline-pack",
         ],
+    },
+]
+
+
+RANK_EXCLUSIVE_TOOLS = [
+    {
+        "id": "lock-readiness-check",
+        "rank": 1,
+        "name": "Lock Readiness Check",
+        "summary": "A short pre-lock check for backups, keys, and Defender status.",
+        "checklist": ["Confirm a current backup exists", "Confirm the USB key opens", "Run a Microsoft Defender scan", "Test one non-critical file first"],
+    },
+    {
+        "id": "usb-custody-card",
+        "rank": 1,
+        "name": "USB Custody Card",
+        "summary": "A printable, identity-free key storage checklist.",
+        "checklist": ["Keep the master USB separate from the PC", "Keep a recovery copy in a second safe place", "Do not store a PIN beside the USB", "Record the last recovery test date"],
+    },
+    {
+        "id": "recovery-practice-sheet",
+        "rank": 1,
+        "name": "Recovery Practice Sheet",
+        "summary": "A safe drill using a disposable test file.",
+        "checklist": ["Create a disposable test file", "Lock only the test file", "Unlock it with the normal key", "Open and verify the recovered test file"],
+    },
+    {
+        "id": "home-backup-rotation",
+        "rank": 2,
+        "name": "Home Backup Rotation",
+        "summary": "A weekly local backup rotation checklist.",
+        "checklist": ["Choose two backup locations", "Alternate the active backup each week", "Verify one restored test file", "Record success without file names or paths"],
+    },
+    {
+        "id": "home-device-setup",
+        "rank": 2,
+        "name": "Home Device Setup",
+        "summary": "A repeatable setup checklist for a household PC.",
+        "checklist": ["Install Windows updates", "Confirm Defender is active", "Create the recovery material", "Run a lock and unlock test"],
+    },
+    {
+        "id": "home-recovery-drill",
+        "rank": 2,
+        "name": "Home Recovery Drill",
+        "summary": "A monthly recovery practice plan for the key holder.",
+        "checklist": ["Use a non-private test file", "Practice normal unlock", "Practice backup-key recovery", "Confirm the original test data matches"],
+    },
+    {
+        "id": "vault-inventory-builder",
+        "rank": 3,
+        "name": "Vault Inventory Builder",
+        "summary": "A category-only inventory that avoids file names and paths.",
+        "checklist": ["Count document categories", "Count recovery records", "Record only totals", "Export without names, paths, or contents"],
+    },
+    {
+        "id": "privacy-summary-builder",
+        "rank": 3,
+        "name": "Privacy Summary Builder",
+        "summary": "A privacy-safe record of license and safety status.",
+        "checklist": ["Include rank and status", "Include anonymous device totals", "Include service and release status", "Exclude keys, identities, notes, and paths"],
+    },
+    {
+        "id": "incident-notes-template",
+        "rank": 3,
+        "name": "Incident Notes Template",
+        "summary": "A timestamped incident outline without sensitive contents.",
+        "checklist": ["Record the UTC time", "Describe the visible symptom", "Record the safe action taken", "Do not include passwords, keys, names, or file contents"],
+    },
+    {
+        "id": "family-safety-board",
+        "rank": 4,
+        "name": "Family Safety Board",
+        "summary": "An anonymous household readiness board.",
+        "checklist": ["Count protected devices", "Mark backup readiness", "Mark recovery-test readiness", "Use device labels instead of personal names"],
+    },
+    {
+        "id": "family-device-rollup",
+        "rank": 4,
+        "name": "Family Device Rollup",
+        "summary": "An aggregate family device status report.",
+        "checklist": ["Count active devices", "Count devices needing updates", "Count completed recovery tests", "Exclude machine identifiers and user names"],
+    },
+    {
+        "id": "shared-recovery-drill",
+        "rank": 4,
+        "name": "Shared Recovery Drill",
+        "summary": "An adult-led recovery practice checklist.",
+        "checklist": ["Choose a disposable test file", "Confirm the adult key holder is present", "Practice recovery without sharing the key", "Record only completion and date"],
+    },
+    {
+        "id": "office-onboarding-queue",
+        "rank": 5,
+        "name": "Office Onboarding Queue",
+        "summary": "A role-free checklist for preparing office devices.",
+        "checklist": ["Confirm approved Windows version", "Confirm Defender status", "Confirm key custody assignment", "Complete a test lock and recovery"],
+    },
+    {
+        "id": "evidence-manifest-builder",
+        "rank": 5,
+        "name": "Evidence Manifest Builder",
+        "summary": "A SHA-256 evidence checklist without file contents.",
+        "checklist": ["Create a SHA-256 digest", "Record tool and version", "Record UTC collection time", "Store the manifest separately from the evidence"],
+    },
+    {
+        "id": "policy-review-tracker",
+        "rank": 5,
+        "name": "Policy Review Tracker",
+        "summary": "A schedule for reviewing office safety procedures.",
+        "checklist": ["Set a review date", "Assign an adult reviewer", "Record approved changes", "Keep legal and compliance review separate"],
+    },
+    {
+        "id": "multi-pc-rollout-planner",
+        "rank": 6,
+        "name": "Multi-PC Rollout Planner",
+        "summary": "A staged deployment plan for multiple PCs.",
+        "checklist": ["Start with one test PC", "Verify backup and recovery", "Deploy in small groups", "Pause rollout after any failed recovery test"],
+    },
+    {
+        "id": "custody-delegation-matrix",
+        "rank": 6,
+        "name": "Custody Delegation Matrix",
+        "summary": "A role-based key custody template without names.",
+        "checklist": ["Define primary key-holder role", "Define backup key-holder role", "Separate PIN and USB custody", "Review access after role changes"],
+    },
+    {
+        "id": "evidence-bundle-index",
+        "rank": 6,
+        "name": "Evidence Bundle Index",
+        "summary": "A privacy-safe index for multiple evidence reports.",
+        "checklist": ["Use anonymous bundle IDs", "Record report type and UTC time", "Record SHA-256 digest", "Exclude client names, paths, and contents"],
+    },
+    {
+        "id": "release-attestation-center",
+        "rank": 7,
+        "name": "Release Attestation Center",
+        "summary": "A formal release verification checklist.",
+        "checklist": ["Verify the release SHA-256", "Record the signing key ID", "Record Defender scan status", "Require adult owner approval before distribution"],
+    },
+    {
+        "id": "control-review-workspace",
+        "rank": 7,
+        "name": "Control Review Workspace",
+        "summary": "A structured control-review preparation pack.",
+        "checklist": ["List implemented controls", "Attach privacy-safe evidence references", "Record known limitations", "Send materials to qualified reviewers"],
+    },
+    {
+        "id": "professional-review-handoff",
+        "rank": 7,
+        "name": "Professional Review Handoff",
+        "summary": "A handoff checklist for legal and security reviewers.",
+        "checklist": ["State that the product is not certified", "Include threat model and limitations", "Include signed release evidence", "Track reviewer findings and remediation"],
     },
 ]
 
@@ -1372,6 +1523,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
             {"method": "POST", "path": "/api/v1/licenses/preview", "purpose": "Read-only signed-license status without device activation"},
             {"method": "POST", "path": "/api/v1/licenses/upgrade-options", "purpose": "Privacy-safe higher-rank and added-entitlement comparison"},
+            {"method": "POST", "path": "/api/v1/licenses/rank-tools", "purpose": "License-gated cumulative rank-exclusive customer tool packs"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -2108,6 +2260,16 @@ def customer_license_center_html():
     ul { margin:0; padding-left:19px; color:var(--muted); line-height:1.6; }
     .rank-progress { height:8px; margin:13px 0 0; overflow:hidden; border-radius:4px; background:#0d1116; }
     .rank-progress span { display:block; height:100%; background:var(--green); }
+    .rank-tools { margin-top:18px; }
+    .rank-tools-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
+    .rank-tools-head p { margin:0; max-width:620px; color:var(--muted); font-size:.85rem; text-align:right; }
+    .rank-tool-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:12px; }
+    .rank-tool { min-width:0; padding:16px; border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:8px; background:var(--surface); }
+    .rank-tool.current { border-top-color:var(--green); background:#17221c; }
+    .rank-tool h3 { margin:6px 0; font-size:1rem; }
+    .rank-tool p { margin:0 0 10px; color:var(--muted); line-height:1.45; }
+    .rank-tool ul { font-size:.86rem; }
+    .locked-summary { margin-top:10px; color:var(--muted); font-size:.82rem; }
     .upgrades { margin-top:18px; }
     .upgrades-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
     .upgrades-head p { margin:0; color:var(--muted); font-size:.85rem; }
@@ -2121,7 +2283,7 @@ def customer_license_center_html():
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
     @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
-    @media (max-width:760px) { .top { grid-template-columns:1fr; } }
+    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2146,7 +2308,7 @@ def customer_license_center_html():
   <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { payload:null, upgrades:null };
+    const state = { payload:null, upgrades:null, rankTools:null };
     const text = (value) => String(value ?? "");
     function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
     function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
@@ -2177,7 +2339,29 @@ def customer_license_center_html():
       link.href=url; link.download="vaultlink-customer-summary.json"; document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url),1000); setStatus("Privacy-safe summary exported.","good");
     }
-    function render(payload,upgrades) {
+    function safeRankPack() {
+      return {
+        exported_at_utc:new Date().toISOString(),
+        rank:{current:state.rankTools.current_rank,name:state.rankTools.current_rank_name},
+        unlocked_count:state.rankTools.unlocked_count,
+        tools:state.rankTools.items,
+        privacy_notice:"This rank pack excludes the license key, license id, customer identity, notes, device data, receipts, payment data, paths, PINs, USB secrets, and file contents."
+      };
+    }
+    async function copyRankTools() {
+      if (!state.rankTools?.active) return;
+      const lines=[`VaultLink Rank ${state.rankTools.current_rank} Exclusive Tools`,...state.rankTools.current_rank_items.flatMap((tool) => ["",tool.name,...tool.checklist.map((item) => `- ${item}`)])];
+      try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Current-rank exclusive tools copied.","good"); }
+      catch (_) { setStatus("Browser clipboard access was blocked.","bad"); }
+    }
+    function exportRankPack() {
+      if (!state.rankTools?.active) return;
+      const blob=new Blob([JSON.stringify(safeRankPack(),null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob); const link=document.createElement("a");
+      link.href=url; link.download=`vaultlink-rank-${state.rankTools.current_rank}-tool-pack.json`; document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url),1000); setStatus("Privacy-safe rank tool pack exported.","good");
+    }
+    function render(payload,upgrades,rankTools) {
       const root=$("result"); root.replaceChildren();
       const summary=document.createElement("div"); summary.className="summary";
       const fields=[
@@ -2203,6 +2387,11 @@ def customer_license_center_html():
       const download=document.createElement("button"); download.type="button"; download.textContent="EXPORT JSON"; download.addEventListener("click",exportSummary);
       const shop=document.createElement("a"); shop.href="/shop"; shop.textContent="OPEN SHOP";
       toolbar.append(copy,download,shop);
+      if (rankTools.active) {
+        const copyTools=document.createElement("button"); copyTools.type="button"; copyTools.textContent="COPY RANK TOOLS"; copyTools.addEventListener("click",copyRankTools);
+        const exportTools=document.createElement("button"); exportTools.type="button"; exportTools.textContent="EXPORT RANK PACK"; exportTools.addEventListener("click",exportRankPack);
+        toolbar.append(copyTools,exportTools);
+      }
       if (payload.release.published && payload.release.download_path) {
         const update=document.createElement("a"); update.className="primary-action"; update.href=payload.release.download_path; update.textContent="DOWNLOAD SIGNED UPDATE"; toolbar.append(update);
       }
@@ -2226,6 +2415,25 @@ def customer_license_center_html():
       const actionsList=document.createElement("ul"); payload.customer_actions.forEach((item) => { const li=document.createElement("li"); li.textContent=item; actionsList.append(li); });
       actions.append(actionsTitle,actionsList); details.append(included,service,actions);
       root.append(summary,progress,message,toolbar,details);
+      const rankSection=document.createElement("section"); rankSection.className="rank-tools";
+      const rankHead=document.createElement("div"); rankHead.className="rank-tools-head";
+      const rankTitle=document.createElement("h2"); rankTitle.textContent="Rank-exclusive tools";
+      const rankMessage=document.createElement("p"); rankMessage.textContent=rankTools.message;
+      rankHead.append(rankTitle,rankMessage); rankSection.append(rankHead);
+      if (rankTools.items.length) {
+        const rankGrid=document.createElement("div"); rankGrid.className="rank-tool-grid";
+        rankTools.items.forEach((tool) => {
+          const card=document.createElement("article"); card.className=`rank-tool${tool.rank===rankTools.current_rank?" current":""}`;
+          const rank=document.createElement("div"); rank.className="eyebrow"; rank.textContent=`RANK ${tool.rank}${tool.rank===rankTools.current_rank?" - CURRENT RANK":""}`;
+          const title=document.createElement("h3"); title.textContent=tool.name;
+          const detail=document.createElement("p"); detail.textContent=tool.summary;
+          const list=document.createElement("ul"); tool.checklist.forEach((item) => { const li=document.createElement("li"); li.textContent=item; list.append(li); });
+          card.append(rank,title,detail,list); rankGrid.append(card);
+        });
+        rankSection.append(rankGrid);
+      }
+      const locked=document.createElement("div"); locked.className="locked-summary"; locked.textContent=rankTools.locked_count ? `${rankTools.locked_count} additional tool${rankTools.locked_count===1?"":"s"} remain locked or unavailable.` : "All rank-exclusive tools are unlocked.";
+      rankSection.append(locked); root.append(rankSection);
       const upgradeSection=document.createElement("section"); upgradeSection.className="upgrades";
       const upgradeHead=document.createElement("div"); upgradeHead.className="upgrades-head";
       const upgradeTitle=document.createElement("h2"); upgradeTitle.textContent="Higher ranks";
@@ -2258,12 +2466,15 @@ def customer_license_center_html():
         const upgradeResponse=await fetch("/api/v1/licenses/upgrade-options",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
         const upgrades=await upgradeResponse.json();
         if (!upgradeResponse.ok) throw new Error(upgrades.message || "Upgrade options failed.");
-        state.payload=payload; state.upgrades=upgrades; render(payload,upgrades); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
+        const rankResponse=await fetch("/api/v1/licenses/rank-tools",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
+        const rankTools=await rankResponse.json();
+        if (!rankResponse.ok) throw new Error(rankTools.message || "Rank tools failed.");
+        state.payload=payload; state.upgrades=upgrades; state.rankTools=rankTools; render(payload,upgrades,rankTools); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
       } catch (error) { setStatus(error.message || "License check failed.","bad"); }
       finally { $("check").disabled=false; }
     }
     $("check").addEventListener("click",checkLicense);
-    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
+    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
     $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
   </script>
 </body>
@@ -3569,6 +3780,64 @@ def license_upgrade_options(payload):
         "checkout_collects_card_data_on_vaultlink": False,
         "privacy_notice": (
             "Upgrade options exclude the license key, customer identity, owner notes, machine identifiers, "
+            "activation receipts, payment data, paths, PINs, USB secrets, and file contents."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def customer_rank_tools(payload):
+    preview = preview_license(payload)
+    current_rank = int(preview["plan"]["rank"])
+    premium_available = preview["status"] == "active"
+
+    def public_tool(tool, include_checklist):
+        result = {
+            "id": tool["id"],
+            "rank": tool["rank"],
+            "rank_name": PLAN_TIERS[tool["rank"] - 1]["name"],
+            "name": tool["name"],
+            "summary": tool["summary"],
+        }
+        if include_checklist:
+            result["checklist"] = list(tool["checklist"])
+        return result
+
+    unlocked = [
+        public_tool(tool, include_checklist=True)
+        for tool in RANK_EXCLUSIVE_TOOLS
+        if premium_available and tool["rank"] <= current_rank
+    ]
+    current_exclusive = [item for item in unlocked if item["rank"] == current_rank]
+    locked = [
+        public_tool(tool, include_checklist=False)
+        for tool in RANK_EXCLUSIVE_TOOLS
+        if not premium_available or tool["rank"] > current_rank
+    ]
+    message = (
+        f"Ranks 1 through {current_rank} unlocked {len(unlocked)} exclusive customer tools."
+        if premium_available
+        else (
+            f"Rank-exclusive premium tools are unavailable while license status is {preview['status']}. "
+            "Local unlock and recovery remain available in the Windows app."
+        )
+    )
+    return {
+        "ok": True,
+        "active": premium_available,
+        "license_status": preview["status"],
+        "current_rank": current_rank,
+        "current_rank_name": preview["plan"]["name"],
+        "unlocked_count": len(unlocked),
+        "current_rank_exclusive_count": len(current_exclusive),
+        "locked_count": len(locked),
+        "items": unlocked,
+        "current_rank_items": current_exclusive,
+        "locked_previews": locked,
+        "message": message,
+        "recovery_always_available": True,
+        "privacy_notice": (
+            "Rank tool packs exclude license keys, license ids, customer identity, owner notes, machine identifiers, "
             "activation receipts, payment data, paths, PINs, USB secrets, and file contents."
         ),
         "server_time_utc": utc_now(),
@@ -5906,6 +6175,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "anonymous plan recommendations and rank comparisons",
                         "read-only customer license preview without device activation",
                         "privacy-safe customer upgrade options and added-entitlement comparisons",
+                        "license-gated rank-exclusive customer checklists and tool packs",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -5959,6 +6229,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "The license key is sent only in a JSON request body and is never placed in a URL.",
                         "Preview responses exclude customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, and file contents.",
                         "Preview is read-only and does not activate or consume a device seat.",
+                        "Rank-exclusive premium tools require an active signed license; limited, revoked, and expired licenses retain local unlock and recovery only.",
                     ],
                 }
             )
@@ -6248,6 +6519,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/verify": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/preview": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/upgrade-options": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/rank-tools": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -6298,6 +6570,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/upgrade-options":
                 self.send_json(license_upgrade_options(payload))
+                return
+            if path == "/api/v1/licenses/rank-tools":
+                self.send_json(customer_rank_tools(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
