@@ -33,6 +33,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A health endpoint at `/health`
 - Ordered rank JSON at `/api/v1/ranks`
 - Signed Windows update manifest and package delivery
+- Server-side Ed25519, SHA-256, package-size, and app-data-preservation release verification
 
 ## What it is not
 
@@ -151,6 +152,8 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
   - Admin-only anonymous seat inventory. Returns only a one-way machine hash, status, dates, last successful heartbeat, and app version, never a PC name or raw hardware identity. Last-seen writes are throttled to protect the storage volume.
 - `GET /api/v1/admin/dashboard`
   - Admin-only license, device-capacity, audit-export, breach-level, shop-readiness, storage, and release totals.
+- `GET /api/v1/admin/updates/windows/status`
+  - Admin-only read-only test of the currently published Windows manifest signature, package size, SHA-256 hash, and app-data-preservation declaration.
 - `GET /api/v1/admin/insights`
   - Admin-only report with exactly 50 aggregate licensing, device, renewal, rank, release, support, messaging, security, and operations insights.
   - Excludes keys, customer labels, email addresses, private notes, machine identifiers, paths, PINs, USB secrets, and file contents.
@@ -220,7 +223,9 @@ Without `AUDIT_EXPORT_DIR`, Railway stores exports on the service's local epheme
   - Accepts only a dot-separated numeric `installed_version` and returns `required`, `available`, `current`, `ahead`, or `unavailable` with verified release metadata.
   - The entered version is not stored. Update Center hashes selected ZIP files locally in the browser and never uploads them.
 
-The desktop app embeds the release public key and will not trust a replacement key from the API. It verifies the manifest signature and package hash before staging an update, asks the user before installation, backs up replaced app files, and leaves LocalAppData untouched. The private release-signing key is DPAPI-protected outside both GitHub repositories.
+API `0.24.0` verifies the Ed25519 signature itself before serving release metadata or a package, then verifies package size and SHA-256. The owner console's `Signed Release Test` calls the authenticated read-only status endpoint. It cannot upload or publish a release.
+
+The desktop app embeds the same release public key and will not trust a replacement key from the API. It independently verifies the manifest signature and package hash before staging an update, asks the user before installation, backs up replaced app files, and leaves LocalAppData untouched. The private release-signing key is DPAPI-protected outside both GitHub repositories. Publishing remains a local owner action through pinned GitHub repositories; the public API has no release-upload or publish endpoint.
 
 ## Recovery Readiness
 

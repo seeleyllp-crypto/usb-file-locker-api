@@ -1,3 +1,4 @@
+import base64
 import json
 import hashlib
 import os
@@ -9,11 +10,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib import error, request
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 import main as api
 
 
 TEST_SIGNING_SECRET = "vaultlink-regression-test-signing-secret"
 TEST_ADMIN_TOKEN = "vaultlink-regression-test-admin-token"
+TEST_UPDATE_PRIVATE_KEY = Ed25519PrivateKey.from_private_bytes(hashlib.sha256(b"vaultlink-regression-update-key").digest())
+TEST_UPDATE_PUBLIC_KEY_RAW = TEST_UPDATE_PRIVATE_KEY.public_key().public_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PublicFormat.Raw,
+)
+TEST_UPDATE_PUBLIC_KEY_B64 = base64.urlsafe_b64encode(TEST_UPDATE_PUBLIC_KEY_RAW).decode("ascii").rstrip("=")
+TEST_UPDATE_SIGNING_KEY_ID = "vaultlink-test-key"
 
 
 def sample_report():
@@ -89,12 +100,18 @@ class VaultLinkApiTests(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="vaultlink_api_test_")
+        self.old_update_public_key = api.UPDATE_SIGNING_PUBLIC_KEY_B64
+        self.old_update_key_id = api.UPDATE_SIGNING_KEY_ID
+        api.UPDATE_SIGNING_PUBLIC_KEY_B64 = TEST_UPDATE_PUBLIC_KEY_B64
+        api.UPDATE_SIGNING_KEY_ID = TEST_UPDATE_SIGNING_KEY_ID
         api.AUDIT_EXPORT_DIR = Path(self.temp_dir.name)
         api.LICENSE_STATE_DIR = Path(self.temp_dir.name) / "license_state"
         api.UPDATE_DIR = Path(self.temp_dir.name) / "updates"
         api.UPDATE_MANIFEST_PATH = api.UPDATE_DIR / "windows-manifest.json"
 
     def tearDown(self):
+        api.UPDATE_SIGNING_PUBLIC_KEY_B64 = self.old_update_public_key
+        api.UPDATE_SIGNING_KEY_ID = self.old_update_key_id
         self.temp_dir.cleanup()
 
     def call(self, path, method="GET", payload=None, raw_body=None, headers=None):
@@ -148,8 +165,9 @@ class VaultLinkApiTests(unittest.TestCase):
             "signing_key_id": api.UPDATE_SIGNING_KEY_ID,
             "notes": ["Regression update"],
             "preserves_local_app_data": True,
-            "signature": "A" * 86,
         }
+        signature = TEST_UPDATE_PRIVATE_KEY.sign(api.canonical_update_manifest_bytes(manifest))
+        manifest["signature"] = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
         api.UPDATE_MANIFEST_PATH.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest, package
 
@@ -758,6 +776,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Customer Pages", owner_text)
         self.assertIn("50-Point Owner Command Center", owner_text)
         self.assertIn("/owner/insights", owner_text)
+        self.assertIn("Signed Release Test", owner_text)
+        self.assertIn("testRelease", owner_text)
         self.assertIn(api.LEGAL_DOCUMENT_VERSION, owner_text)
 
     def test_service_status_activity_integrity_and_scoped_download(self):
@@ -1255,8 +1275,12 @@ class VaultLinkApiTests(unittest.TestCase):
 
         with mock.patch.object(
             api,
-            "load_windows_update_release",
-            return_value=({"version": current_release}, None),
+            "windows_update_release_status",
+            return_value={
+                "ready": True,
+                "version": current_release,
+                "checks": {"ed25519_signature": "passed", "package_sha256": "passed"},
+            },
         ):
             status, dashboard = self.call(
                 "/api/v1/admin/dashboard",
@@ -1673,6 +1697,19 @@ class VaultLinkApiTests(unittest.TestCase):
 
     def test_signed_update_manifest_and_package_endpoints(self):
         manifest, package = self.publish_test_update()
+
+        status, denied = self.call("/api/v1/admin/updates/windows/status")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+        status, release_status = self.call(
+            "/api/v1/admin/updates/windows/status",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(release_status["ready"])
+        self.assertEqual(release_status["checks"]["ed25519_signature"], "passed")
+        self.assertEqual(release_status["checks"]["package_sha256"], "passed")
+
         status, response = self.call("/api/v1/updates/windows")
         self.assertEqual(status, 200)
         self.assertEqual(response["update"]["version"], manifest["version"])
@@ -1765,6 +1802,21 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "application/zip")
         self.assertEqual(body, package.read_bytes())
+
+        tampered_manifest = dict(manifest)
+        tampered_manifest["signature"] = ("A" if manifest["signature"][0] != "A" else "B") + manifest["signature"][1:]
+        api.UPDATE_MANIFEST_PATH.write_text(json.dumps(tampered_manifest), encoding="utf-8")
+        status, failed_release = self.call(
+            "/api/v1/admin/updates/windows/status",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(failed_release["ready"])
+        self.assertEqual(failed_release["checks"]["ed25519_signature"], "failed")
+        status, invalid_signature = self.call("/api/v1/updates/windows")
+        self.assertEqual(status, 503)
+        self.assertEqual(invalid_signature["error"], "update_unavailable")
+        api.UPDATE_MANIFEST_PATH.write_text(json.dumps(manifest), encoding="utf-8")
 
         package.write_bytes(b"tampered")
         status, response = self.call("/api/v1/updates/windows")

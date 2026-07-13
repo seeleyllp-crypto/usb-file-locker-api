@@ -12,12 +12,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from cryptography.exceptions import InvalidTag
+from cryptography.exceptions import InvalidSignature, InvalidTag
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.23.0"
+API_VERSION = "0.24.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -28,6 +29,7 @@ DEFAULT_SIGNING_SECRET = "vaultlink-dev-signing-secret-change-me"
 UPDATE_DIR = ROOT_DIR / "updates"
 UPDATE_MANIFEST_PATH = UPDATE_DIR / "windows-manifest.json"
 UPDATE_SIGNING_KEY_ID = "4f8fb9b8dbffd4c0"
+UPDATE_SIGNING_PUBLIC_KEY_B64 = "UhQt7KyhSd6na6ZL5zmvOTKMgQqdY3FUEdoKRX-iGKU"
 MAX_UPDATE_MANIFEST_BYTES = 64 * 1024
 MAX_UPDATE_PACKAGE_BYTES = 50 * 1024 * 1024
 MAX_LICENSE_JSON_BODY_BYTES = 64 * 1024
@@ -1664,6 +1666,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/licenses", "purpose": "Admin-only encrypted key and note inventory"},
             {"method": "GET", "path": "/api/v1/admin/licenses/{license_id}/devices", "purpose": "Admin-only anonymous device-seat inventory"},
             {"method": "GET", "path": "/api/v1/admin/dashboard", "purpose": "Admin-only license, device, audit, breach, and release totals"},
+            {"method": "GET", "path": "/api/v1/admin/updates/windows/status", "purpose": "Admin-only live Ed25519, SHA-256, package-size, and app-data release test"},
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
@@ -1716,6 +1719,34 @@ def update_file_sha256(path):
                 break
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def decode_update_base64url(value):
+    text = str(value or "").strip()
+    if not text or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for character in text):
+        raise ValueError("The update signature encoding is invalid.")
+    try:
+        return base64.urlsafe_b64decode(text + "=" * ((4 - len(text) % 4) % 4))
+    except Exception as exc:
+        raise ValueError("The update signature encoding is invalid.") from exc
+
+
+def canonical_update_manifest_bytes(manifest):
+    payload = dict(manifest)
+    payload.pop("signature", None)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def verify_windows_update_manifest_signature(manifest):
+    if manifest.get("signing_key_id") != UPDATE_SIGNING_KEY_ID:
+        raise ValueError("The update manifest signing key is not recognized.")
+    try:
+        Ed25519PublicKey.from_public_bytes(decode_update_base64url(UPDATE_SIGNING_PUBLIC_KEY_B64)).verify(
+            decode_update_base64url(manifest.get("signature")),
+            canonical_update_manifest_bytes(manifest),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("The update manifest signature did not verify.") from exc
 
 
 def load_windows_update_release():
@@ -1780,11 +1811,48 @@ def load_windows_update_release():
     if not manifest.get("preserves_local_app_data"):
         raise ValueError("The update package does not declare app-data preservation.")
     signature = str(manifest.get("signature", ""))
-    if manifest.get("signing_key_id") != UPDATE_SIGNING_KEY_ID:
-        raise ValueError("The update manifest signing key is not recognized.")
-    if not 40 <= len(signature) <= 160 or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for character in signature):
+    if not 40 <= len(signature) <= 160:
         raise ValueError("The update manifest signature format is invalid.")
+    verify_windows_update_manifest_signature(manifest)
     return manifest, package_path
+
+
+def windows_update_release_status():
+    try:
+        manifest, package_path = load_windows_update_release()
+        return {
+            "ok": True,
+            "ready": True,
+            "version": manifest["version"],
+            "minimum_supported_version": manifest["minimum_supported_version"],
+            "published_at_utc": manifest["published_at_utc"],
+            "package_filename": manifest["package_filename"],
+            "size_bytes": package_path.stat().st_size,
+            "sha256": manifest["sha256"],
+            "signing_key_id": manifest["signing_key_id"],
+            "checks": {
+                "manifest_schema": "passed",
+                "ed25519_signature": "passed",
+                "package_size": "passed",
+                "package_sha256": "passed",
+                "app_data_preservation": "passed",
+            },
+            "tested_at_utc": utc_now(),
+        }
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        return {
+            "ok": True,
+            "ready": False,
+            "message": str(exc),
+            "checks": {
+                "manifest_schema": "failed",
+                "ed25519_signature": "failed",
+                "package_size": "failed",
+                "package_sha256": "failed",
+                "app_data_preservation": "failed",
+            },
+            "tested_at_utc": utc_now(),
+        }
 
 
 def windows_update_payload():
@@ -3353,6 +3421,12 @@ def owner_portal_html():
     </section>
 
     <section>
+      <div class="record-head"><h2>Signed Release Test</h2><div id="releaseTestSummary" class="meta">Connect to verify the published Windows update.</div><button id="testRelease" class="blue" disabled>TEST SIGNED RELEASE</button></div>
+      <div id="releaseTestChecks"><div class="empty">No signed release test has run.</div></div>
+      <div class="status">This test is read-only. Publishing stays in the local Owner Update Lab and requires the registered removable owner USB.</div>
+    </section>
+
+    <section>
       <h2>50-Point Owner Command Center</h2>
       <div class="latest">
         <div class="status">Open a focused view with exactly 50 live, privacy-safe business and service insights plus search, filters, copy, and JSON/CSV exports.</div>
@@ -3448,7 +3522,7 @@ def owner_portal_html():
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { token: "", connected: false, busy: false, loading: false, items: [], supportItems: [], auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null };
+    const state = { token: "", connected: false, busy: false, loading: false, items: [], supportItems: [], auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
     const AUTO_REFRESH_MS = 30000;
 
     function setStatus(message, kind="") {
@@ -3470,6 +3544,7 @@ def owner_portal_html():
       $("saveServiceStatus").disabled = !value || state.busy;
       $("refreshActivity").disabled = !value || state.busy;
       $("downloadActivity").disabled = !value || state.busy;
+      $("testRelease").disabled = !value || state.busy;
     }
 
     async function api(path, options={}) {
@@ -3510,14 +3585,15 @@ def owner_portal_html():
       if (state.loading) return;
       state.loading = true;
       try {
-      const [payload, dashboard, support, audits, announcements, serviceStatus, activity] = await Promise.all([
+      const [payload, dashboard, support, audits, announcements, serviceStatus, activity, releaseStatus] = await Promise.all([
         api("/api/v1/admin/licenses"),
         api("/api/v1/admin/dashboard"),
         api("/api/v1/admin/support-tickets"),
         api("/api/v1/admin/audit-exports"),
         api("/api/v1/admin/announcements"),
         api("/api/v1/service-status"),
-        api("/api/v1/admin/activity")
+        api("/api/v1/admin/activity"),
+        api("/api/v1/admin/updates/windows/status")
       ]);
       state.items = payload.items || [];
       state.supportItems = support.items || [];
@@ -3527,6 +3603,7 @@ def owner_portal_html():
       state.activityItems = activity.items || [];
       state.activityIntegrity = activity.integrity || null;
       state.dashboard = dashboard;
+      state.releaseStatus = releaseStatus;
       $("storage").textContent = payload.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE";
       $("supportStorage").textContent = support.storage === "persistent_configured" ? "ENCRYPTED PERSISTENT STORAGE" : "TEMPORARY STORAGE";
       $("auditStorage").textContent = `${audits.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE"} | ${audits.retention_hours || 0}H RETENTION`;
@@ -3538,6 +3615,7 @@ def owner_portal_html():
       renderAnnouncements();
       renderServiceStatus();
       renderActivity();
+      renderReleaseStatus(releaseStatus);
       setConnected(true);
       if (!silent) setStatus(`Loaded ${payload.count || 0} license(s), ${support.count || 0} bug report(s), ${audits.count || 0} audit log(s), ${announcements.count || 0} announcement(s), and ${activity.count || 0} activity event(s).`, "good");
       } finally {
@@ -3572,6 +3650,63 @@ def owner_portal_html():
       $("statCurrentClients").textContent = dashboard ? `${String(clients.current_release_devices || 0)}/${String(clients.active_devices || 0)}` : "-";
       $("statStaleClients").textContent = dashboard ? String(clients.stale_24h || 0) : "-";
       renderClientHealth(dashboard ? clients : null);
+    }
+
+    function renderReleaseStatus(payload) {
+      const host = $("releaseTestChecks");
+      const summary = $("releaseTestSummary");
+      host.replaceChildren();
+      if (!payload) {
+        summary.textContent = "Connect to verify the published Windows update.";
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No signed release test has run.";
+        host.append(empty);
+        return;
+      }
+      summary.textContent = `${payload.version || "unknown"} | ${payload.package_filename || "no package"} | tested ${payload.tested_at_utc || "now"}`;
+      const checks = payload.checks || {};
+      for (const [name, result] of Object.entries(checks)) {
+        const passed = result === true || result === "passed";
+        const row = document.createElement("article");
+        row.className = "record activity-row";
+        const label = document.createElement("strong");
+        label.textContent = String(name).replaceAll("_", " ").toUpperCase();
+        const detail = document.createElement("div");
+        detail.className = "meta";
+        detail.textContent = passed ? "Verified by the API" : "Verification failed";
+        const badge = document.createElement("span");
+        badge.className = `badge ${passed ? "resolved" : "revoked"}`;
+        badge.textContent = passed ? "PASS" : "FAIL";
+        row.append(label, detail, badge);
+        host.append(row);
+      }
+      if (!Object.keys(checks).length) {
+        const message = document.createElement("div");
+        message.className = "record ticket-copy";
+        message.textContent = payload.message || "The release could not be verified.";
+        host.append(message);
+      }
+    }
+
+    async function testRelease() {
+      if (!state.connected || state.busy) return;
+      state.busy = true;
+      setConnected(true);
+      setStatus("Testing the signed Windows release...");
+      try {
+        const payload = await api("/api/v1/admin/updates/windows/status");
+        state.releaseStatus = payload;
+        renderReleaseStatus(payload);
+        setStatus(payload.ready ? "Signed release passed every API verification check." : (payload.message || "Signed release verification failed."), payload.ready ? "good" : "bad");
+      } catch (error) {
+        state.releaseStatus = null;
+        renderReleaseStatus(null);
+        setStatus(error.message, "bad");
+      } finally {
+        state.busy = false;
+        setConnected(state.connected);
+      }
     }
 
     function renderClientHealth(clients) {
@@ -4157,7 +4292,7 @@ def owner_portal_html():
     }
 
     $("connect").addEventListener("click", connect);
-    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; setConnected(false); renderDashboard(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
+    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
     $("issue").addEventListener("click", issueLicense);
     $("issueGiveaway").addEventListener("click", issueGiveaway);
     $("refresh").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
@@ -4168,6 +4303,7 @@ def owner_portal_html():
     $("saveServiceStatus").addEventListener("click", saveServiceStatus);
     $("refreshActivity").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("downloadActivity").addEventListener("click", downloadActivity);
+    $("testRelease").addEventListener("click", testRelease);
     $("copyLatest").addEventListener("click", () => copyText($("latestKey").value));
     $("token").addEventListener("keydown", (event) => { if (event.key === "Enter") connect(); });
     window.setInterval(autoRefresh, AUTO_REFRESH_MS);
@@ -6736,11 +6872,8 @@ def admin_dashboard_summary():
         status = str(item.get("status", "open"))
         if status in support_statuses:
             support_statuses[status] += 1
-    try:
-        update_manifest, _package = load_windows_update_release()
-        desktop_release = str(update_manifest.get("version", ""))
-    except (FileNotFoundError, OSError, ValueError):
-        desktop_release = ""
+    release_status = windows_update_release_status()
+    desktop_release = str(release_status.get("version", "")) if release_status.get("ready") else ""
     version_counts = {}
     stale_24h = 0
     unknown_version_devices = 0
@@ -6826,6 +6959,9 @@ def admin_dashboard_summary():
             "api_version": API_VERSION,
             "desktop_version": desktop_release,
             "license_sync_seconds": LICENSE_SYNC_INTERVAL_SECONDS,
+            "signed_release_ready": bool(release_status.get("ready")),
+            "signature_check": str((release_status.get("checks") or {}).get("ed25519_signature", "failed")),
+            "package_hash_check": str((release_status.get("checks") or {}).get("package_sha256", "failed")),
         },
         "server_time_utc": utc_now(),
     }
@@ -7448,6 +7584,21 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 self.require_admin_token()
                 self.send_json(list_admin_api_activity())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/admin/updates/windows/status":
+            try:
+                self.require_admin_token()
+                self.send_json(windows_update_release_status())
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "forbidden", "message": str(exc)},
