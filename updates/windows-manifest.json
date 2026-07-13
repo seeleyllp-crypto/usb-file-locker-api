@@ -2,19 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.7",
+  "version": "2026.07.12.9",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-13T03:29:47Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.7.zip",
+  "published_at_utc": "2026-07-13T03:53:07Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.9.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "c58fffd0c9335290da968e01e0355f1f4365a9b3e7252815bac9b770c8fbfcc7",
-  "size_bytes": 127808,
+  "sha256": "b96da795dad40ad081d8364ba1eeb03a3b029e4080147daa5cfd45e098bdc2c7",
+  "size_bytes": 132730,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Opt-in automatic installation uses the existing Ed25519 and SHA-256 verification path.",
-    "Customers can open a public service and signed-release status page.",
-    "Owners can review anonymous release adoption and issue time-limited promotional giveaway licenses."
+    "Standalone Customer Hub is included for every rank.",
+    "Draft Terms and Privacy pages require adult business-owner and recommended qualified legal review.",
+    "Owner BLOCK and temporary LIMITED controls never remotely disable unlock or recovery.",
+    "Initial customer account and announcement sync now starts about one second after launch."
   ],
   "preserves_local_app_data": true,
-  "signature": "yAxFH2e_onMdn2kIrh6SoYMPMdJ-okUpnntuEzXrMs4vu_JBriWdI1i92k69KRvYkru32zURaVlOxBmONeaGCQ"
+  "signature": "eDfAJAt-pVbCJhyERofWgGJzS-c0H4dp5bkqKzR5SolKkBegaqPCyia7qkAWT19xdxNHxrV2uXPP2nL_S-bWBg"
 }

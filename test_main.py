@@ -371,6 +371,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Giveaway License", owner_text)
         self.assertIn("issueGiveaway", owner_text)
         self.assertIn("Client Release Adoption", owner_text)
+        self.assertIn("Customer Pages", owner_text)
+        self.assertIn(api.LEGAL_DOCUMENT_VERSION, owner_text)
 
     def test_service_status_activity_integrity_and_scoped_download(self):
         status, public_status = self.call("/api/v1/service-status")
@@ -922,6 +924,83 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(second["active"])
         self.assertEqual(second["device_usage"]["active"], 1)
 
+    def test_owner_can_temporarily_limit_and_restore_customer_access(self):
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"plan_id": "personal-plus", "max_devices": 1},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        key = issued["license_key"]
+        status, activated = self.call(
+            "/api/v1/licenses/activate",
+            method="POST",
+            payload={"license_key": key, "machine_id": "LIMIT-PC", "app_version": "2026.07.12.8"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(activated["active"])
+
+        status, denied = self.call(
+            "/api/v1/licenses/limit",
+            method="POST",
+            payload={"license_key": key, "hours": 24, "reason": "Temporary account review."},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, limited = self.call(
+            "/api/v1/licenses/limit",
+            method="POST",
+            payload={"license_key": key, "hours": 24, "reason": "Temporary account review."},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(limited["limited"])
+        self.assertIn("Unlock and recovery", limited["message"])
+
+        status, verification = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={
+                "license_key": key,
+                "receipt": activated["receipt"],
+                "machine_id": "LIMIT-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(verification["active"])
+        self.assertEqual(verification["status"], "limited")
+        self.assertIn("Temporary account review", verification["message"])
+
+        status, inventory = self.call(
+            "/api/v1/admin/licenses",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        record = next(item for item in inventory["items"] if item["license_id"] == issued["license"]["license_id"])
+        self.assertTrue(record["limited"])
+
+        status, restored = self.call(
+            "/api/v1/licenses/unlimit",
+            method="POST",
+            payload={"license_key": key},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(restored["limited"])
+        status, verification = self.call(
+            "/api/v1/licenses/verify",
+            method="POST",
+            payload={
+                "license_key": key,
+                "receipt": activated["receipt"],
+                "machine_id": "LIMIT-PC",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(verification["active"])
+
     def test_admin_lists_and_removes_one_anonymous_device(self):
         status, issued = self.call(
             "/api/v1/licenses/issue",
@@ -1124,6 +1203,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Customer Status", status_text)
         self.assertIn(manifest["version"], status_text)
         self.assertNotIn(TEST_ADMIN_TOKEN, status_text)
+
+        status, terms_headers, terms_page = self.call_bytes("/terms")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", terms_headers["Content-Type"])
+        self.assertIn("DRAFT FOR ADULT AND LEGAL REVIEW", terms_page.decode("utf-8"))
+        status, _privacy_headers, privacy_page = self.call_bytes("/privacy")
+        self.assertEqual(status, 200)
+        self.assertIn("Privacy Notice", privacy_page.decode("utf-8"))
+        status, legal = self.call("/api/v1/legal")
+        self.assertEqual(status, 200)
+        self.assertTrue(legal["draft"])
+        self.assertTrue(legal["adult_business_owner_review_required"])
+        self.assertEqual(legal["document_version"], api.LEGAL_DOCUMENT_VERSION)
 
         status, headers, body = self.call_bytes("/api/v1/updates/windows/download")
         self.assertEqual(status, 200)
