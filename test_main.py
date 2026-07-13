@@ -339,12 +339,36 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(preview["status"], "active")
         self.assertTrue(preview["does_not_activate"])
         self.assertEqual(preview["plan"]["id"], "family-safety")
+        self.assertEqual(preview["rank_progress"], {"current": 4, "maximum": 7, "percent": 57})
+        self.assertEqual(preview["device_usage"]["active"], 0)
+        self.assertEqual(preview["device_usage"]["maximum"], 4)
+        self.assertEqual(preview["device_usage"]["available"], 4)
+        self.assertTrue(preview["device_usage"]["identities_excluded"])
+        self.assertEqual(preview["next_rank"]["id"], "small-office")
+        self.assertGreaterEqual(len(preview["customer_actions"]), 3)
         self.assertEqual(api.active_device_count(license_id), 0)
         serialized = json.dumps(preview)
         self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized)
         self.assertNotIn("private-4581@example.test", serialized)
         self.assertNotIn("PRIVATE-NOTE-4581", serialized)
         self.assertNotIn(key, serialized)
+
+        status, upgrades = self.call(
+            "/api/v1/licenses/upgrade-options",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(upgrades["current_plan"]["id"], "family-safety")
+        self.assertEqual(upgrades["count"], 3)
+        self.assertFalse(upgrades["highest_rank_reached"])
+        self.assertEqual(upgrades["items"][0]["plan"]["id"], "small-office")
+        self.assertGreater(upgrades["items"][0]["added_entitlement_count"], 0)
+        serialized_upgrades = json.dumps(upgrades)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_upgrades)
+        self.assertNotIn("private-4581@example.test", serialized_upgrades)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized_upgrades)
+        self.assertNotIn(key, serialized_upgrades)
 
         status, _revoked = self.call(
             "/api/v1/licenses/revoke",
@@ -367,6 +391,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Customer License Center", page_text)
         self.assertIn("/api/v1/licenses/preview", page_text)
+        self.assertIn("/api/v1/licenses/upgrade-options", page_text)
+        self.assertIn("COPY SUMMARY", page_text)
+        self.assertIn("EXPORT JSON", page_text)
+        self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):

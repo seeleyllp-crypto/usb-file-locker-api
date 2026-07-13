@@ -103,7 +103,9 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 ## Customer License Center
 
 - `GET /customer` opens the read-only browser app.
-- `POST /api/v1/licenses/preview` validates a signed license and reports its rank, expiration, limited/revoked state, public service status, and published release.
+- `POST /api/v1/licenses/preview` validates a signed license and reports its rank, expiration, limited/revoked state, anonymous seat totals, public service status, published release, and status-specific next actions.
+- `POST /api/v1/licenses/upgrade-options` returns higher ranks, added entitlements, and validated hosted-checkout availability without returning the key or private license fields.
+- The browser dashboard can copy or export a privacy-safe customer summary and link to the published SHA-256-pinned Windows update package.
 - Preview never activates a device, consumes a seat, saves the key in browser storage, or returns customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, USB secrets, or file contents.
 
 ## License endpoints

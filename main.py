@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.15.0"
+API_VERSION = "0.16.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1371,6 +1371,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
             {"method": "POST", "path": "/api/v1/licenses/preview", "purpose": "Read-only signed-license status without device activation"},
+            {"method": "POST", "path": "/api/v1/licenses/upgrade-options", "purpose": "Privacy-safe higher-rank and added-entitlement comparison"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -2090,7 +2091,7 @@ def customer_license_center_html():
     #status.good { color:var(--green); } #status.bad { color:var(--red); } #status.warn { color:var(--yellow); }
     #result { margin-top:20px; }
     .empty { padding:30px 18px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); text-align:center; }
-    .summary { display:grid; grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(130px,.55fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .summary { display:grid; grid-template-columns:minmax(0,1.3fr) repeat(5,minmax(112px,.55fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
     .summary > div { min-width:0; padding:17px; background:var(--surface); border-right:1px solid var(--line); }
     .summary > div:last-child { border-right:0; }
     .eyebrow { color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; }
@@ -2098,13 +2099,29 @@ def customer_license_center_html():
     .badge { display:inline-flex; align-items:center; min-height:28px; padding:0 9px; border-radius:4px; background:#203329; color:var(--green); }
     .badge.warn { background:#3a321c; color:var(--yellow); } .badge.bad { background:#3b2324; color:var(--red); }
     .message { margin-top:12px; padding:14px; background:#181f26; border-left:4px solid var(--blue); color:var(--muted); line-height:1.5; }
-    .details { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+    .dashboard-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .dashboard-actions button,.dashboard-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 12px; border-radius:5px; background:var(--surface2); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:.78rem; font-weight:800; }
+    .dashboard-actions .primary-action { background:var(--blue); border-color:var(--blue); color:#071119; }
+    .details { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-top:14px; }
     .details section { min-width:0; padding:18px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
     h2 { margin:0 0 13px; font-size:1rem; }
     ul { margin:0; padding-left:19px; color:var(--muted); line-height:1.6; }
+    .rank-progress { height:8px; margin:13px 0 0; overflow:hidden; border-radius:4px; background:#0d1116; }
+    .rank-progress span { display:block; height:100%; background:var(--green); }
+    .upgrades { margin-top:18px; }
+    .upgrades-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
+    .upgrades-head p { margin:0; color:var(--muted); font-size:.85rem; }
+    .upgrade-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:12px; }
+    .upgrade { min-width:0; padding:16px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .upgrade h3 { margin:6px 0; font-size:1rem; }
+    .upgrade p { margin:0; color:var(--muted); line-height:1.45; }
+    .upgrade a,.upgrade .not-live { display:flex; align-items:center; justify-content:center; min-height:38px; margin-top:12px; padding:0 10px; border-radius:5px; font-size:.75rem; font-weight:800; text-align:center; }
+    .upgrade a { background:var(--green); color:#061109; text-decoration:none; }
+    .upgrade .not-live { border:1px solid var(--line); color:var(--muted); }
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
-    @media (max-width:760px) { .top,.details { grid-template-columns:1fr; } .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(2) { border-right:0; } .summary > div:nth-child(3),.summary > div:nth-child(4) { border-bottom:0; } }
+    @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
+    @media (max-width:760px) { .top { grid-template-columns:1fr; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2129,16 +2146,45 @@ def customer_license_center_html():
   <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { payload:null };
+    const state = { payload:null, upgrades:null };
     const text = (value) => String(value ?? "");
     function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
     function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
-    function render(payload) {
+    function safeExport(payload) {
+      return {
+        exported_at_utc:new Date().toISOString(),
+        status:payload.status,
+        plan:{id:payload.plan.id,name:payload.plan.name,rank:payload.plan.rank},
+        issued_at_utc:payload.license.issued_at_utc,
+        expires_at_utc:payload.license.expires_at_utc,
+        device_usage:payload.device_usage,
+        service_status:payload.service_status,
+        release:payload.release,
+        privacy_notice:"This customer-created summary excludes the license key, license id, identity, notes, device identities, receipts, paths, PINs, USB secrets, and file contents."
+      };
+    }
+    async function copySummary() {
+      if (!state.payload) return;
+      const data=safeExport(state.payload);
+      const lines=["VaultLink Customer Summary",`Status: ${data.status}`,`Plan: ${data.plan.name}`,`Rank: ${data.plan.rank} of 7`,`Devices: ${data.device_usage.active} of ${data.device_usage.maximum}`,`Expires: ${data.expires_at_utc || "No expiration"}`,`Service: ${data.service_status.mode}`,`Release: ${data.release.latest_version || "Not published"}`];
+      try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe summary copied.","good"); }
+      catch (_) { setStatus("Browser clipboard access was blocked.","bad"); }
+    }
+    function exportSummary() {
+      if (!state.payload) return;
+      const blob=new Blob([JSON.stringify(safeExport(state.payload),null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob); const link=document.createElement("a");
+      link.href=url; link.download="vaultlink-customer-summary.json"; document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url),1000); setStatus("Privacy-safe summary exported.","good");
+    }
+    function render(payload,upgrades) {
       const root=$("result"); root.replaceChildren();
       const summary=document.createElement("div"); summary.className="summary";
       const fields=[
         ["Plan", payload.license.plan_name],
         ["Status", payload.status],
+        ["Rank", `${payload.rank_progress.current} of ${payload.rank_progress.maximum}`],
+        ["Devices", `${payload.device_usage.active} of ${payload.device_usage.maximum}`],
         ["Expires", payload.license.expires_at_utc || "No expiration"],
         ["Latest release", payload.release.latest_version || "Not published"]
       ];
@@ -2149,7 +2195,17 @@ def customer_license_center_html():
         if (index===1) { val.className=`value badge ${badgeTone(payload.status)}`; }
         cell.append(key,val); summary.append(cell);
       });
+      const progress=document.createElement("div"); progress.className="rank-progress"; progress.setAttribute("aria-label",`Rank progress ${payload.rank_progress.percent} percent`);
+      const progressValue=document.createElement("span"); progressValue.style.width=`${payload.rank_progress.percent}%`; progress.append(progressValue);
       const message=document.createElement("div"); message.className="message"; message.textContent=payload.message;
+      const toolbar=document.createElement("div"); toolbar.className="dashboard-actions";
+      const copy=document.createElement("button"); copy.type="button"; copy.textContent="COPY SUMMARY"; copy.addEventListener("click",copySummary);
+      const download=document.createElement("button"); download.type="button"; download.textContent="EXPORT JSON"; download.addEventListener("click",exportSummary);
+      const shop=document.createElement("a"); shop.href="/shop"; shop.textContent="OPEN SHOP";
+      toolbar.append(copy,download,shop);
+      if (payload.release.published && payload.release.download_path) {
+        const update=document.createElement("a"); update.className="primary-action"; update.href=payload.release.download_path; update.textContent="DOWNLOAD SIGNED UPDATE"; toolbar.append(update);
+      }
       const details=document.createElement("div"); details.className="details";
       const included=document.createElement("section");
       const includedTitle=document.createElement("h2"); includedTitle.textContent=`Rank ${payload.plan.rank} included tools`;
@@ -2164,8 +2220,32 @@ def customer_license_center_html():
         "No device seat was activated by this check.",
         "Customer names, email addresses, notes, and machine identifiers are excluded."
       ].forEach((item) => { const li=document.createElement("li"); li.textContent=item; serviceList.append(li); });
-      service.append(serviceTitle,serviceList); details.append(included,service);
-      root.append(summary,message,details);
+      service.append(serviceTitle,serviceList);
+      const actions=document.createElement("section");
+      const actionsTitle=document.createElement("h2"); actionsTitle.textContent="Next actions";
+      const actionsList=document.createElement("ul"); payload.customer_actions.forEach((item) => { const li=document.createElement("li"); li.textContent=item; actionsList.append(li); });
+      actions.append(actionsTitle,actionsList); details.append(included,service,actions);
+      root.append(summary,progress,message,toolbar,details);
+      const upgradeSection=document.createElement("section"); upgradeSection.className="upgrades";
+      const upgradeHead=document.createElement("div"); upgradeHead.className="upgrades-head";
+      const upgradeTitle=document.createElement("h2"); upgradeTitle.textContent="Higher ranks";
+      const upgradeCount=document.createElement("p"); upgradeCount.textContent=upgrades.items.length ? `${upgrades.items.length} upgrade option${upgrades.items.length===1?"":"s"}` : "Highest rank reached";
+      upgradeHead.append(upgradeTitle,upgradeCount); upgradeSection.append(upgradeHead);
+      if (upgrades.items.length) {
+        const grid=document.createElement("div"); grid.className="upgrade-grid";
+        upgrades.items.forEach((option) => {
+          const card=document.createElement("article"); card.className="upgrade";
+          const rank=document.createElement("div"); rank.className="eyebrow"; rank.textContent=`RANK ${option.plan.rank} - +${option.added_entitlement_count} ENTITLEMENTS`;
+          const title=document.createElement("h3"); title.textContent=option.plan.name;
+          const detail=document.createElement("p"); detail.textContent=option.plan.best_for;
+          card.append(rank,title,detail);
+          if (option.plan.checkout_available) { const buy=document.createElement("a"); buy.href=option.plan.checkout_url; buy.target="_blank"; buy.rel="noopener noreferrer"; buy.textContent="SECURE HOSTED CHECKOUT"; card.append(buy); }
+          else { const unavailable=document.createElement("div"); unavailable.className="not-live"; unavailable.textContent="NOT ON SALE YET"; card.append(unavailable); }
+          grid.append(card);
+        });
+        upgradeSection.append(grid);
+      }
+      root.append(upgradeSection);
     }
     async function checkLicense() {
       const licenseKey=$("licenseKey").value.trim();
@@ -2175,12 +2255,15 @@ def customer_license_center_html():
         const response=await fetch("/api/v1/licenses/preview",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
         const payload=await response.json();
         if (!response.ok) throw new Error(payload.message || "License check failed.");
-        state.payload=payload; render(payload); setStatus("License check complete.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
+        const upgradeResponse=await fetch("/api/v1/licenses/upgrade-options",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
+        const upgrades=await upgradeResponse.json();
+        if (!upgradeResponse.ok) throw new Error(upgrades.message || "Upgrade options failed.");
+        state.payload=payload; state.upgrades=upgrades; render(payload,upgrades); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
       } catch (error) { setStatus(error.message || "License check failed.","bad"); }
       finally { $("check").disabled=false; }
     }
     $("check").addEventListener("click",checkLicense);
-    $("clear").addEventListener("click",() => { state.payload=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
+    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
     $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
   </script>
 </body>
@@ -3396,21 +3479,53 @@ def preview_license(payload):
             "latest_version": manifest.get("version", ""),
             "minimum_supported_version": manifest.get("minimum_supported_version", ""),
             "published": True,
+            "download_path": manifest.get("download_path", ""),
+            "sha256": manifest.get("sha256", ""),
         }
     except (FileNotFoundError, OSError, ValueError):
         pass
+    license_id = str(license_payload.get("license_id", ""))
+    maximum_devices = max(1, int(license_payload.get("max_devices", 1) or 1))
+    used_devices = active_device_count(license_id)
+    ordered_plans = sorted(PLAN_TIERS, key=lambda item: item["rank"])
+    next_plan = next((item for item in ordered_plans if item["rank"] > plan["rank"]), None)
+    actions = [
+        "Keep the master USB key and recovery material in separate safe locations.",
+        "Use the Windows app for activation, local unlock, recovery, and licensed support messaging.",
+        "Verify downloaded update hashes before replacing an installed app folder.",
+    ]
+    if status == "limited":
+        actions.insert(0, "Local unlock and recovery remain available while premium controls are limited.")
+    elif status == "revoked":
+        actions.insert(0, "Use local unlock or recovery if needed, then contact the license owner about access.")
+    elif status == "expired":
+        actions.insert(0, "Use local unlock or recovery if needed, then contact the license owner about renewal.")
     return {
         "ok": True,
         "status": status,
         "active": status == "active",
         "message": message,
         "license": {
-            "license_id": license_payload.get("license_id", ""),
+            "license_id": license_id,
             "plan_id": plan["id"],
             "plan_name": plan["name"],
+            "issued_at_utc": license_payload.get("issued_at_utc", ""),
             "expires_at_utc": license_payload.get("expires_at_utc", ""),
         },
         "plan": public_plan_payload(plan),
+        "rank_progress": {
+            "current": plan["rank"],
+            "maximum": len(PLAN_TIERS),
+            "percent": round((plan["rank"] / len(PLAN_TIERS)) * 100),
+        },
+        "device_usage": {
+            "active": used_devices,
+            "maximum": maximum_devices,
+            "available": max(0, maximum_devices - used_devices),
+            "identities_excluded": True,
+        },
+        "next_rank": shop_plan_payload(next_plan) if next_plan else None,
+        "customer_actions": actions,
         "limited_until_utc": limited_until,
         "service_status": service_status_payload(),
         "release": release,
@@ -3418,6 +3533,43 @@ def preview_license(payload):
         "privacy_notice": (
             "This response excludes customer labels, email addresses, owner notes, machine identifiers, "
             "activation receipts, USB secrets, PINs, paths, and file contents."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def license_upgrade_options(payload):
+    preview = preview_license(payload)
+    current_rank = int(preview["plan"]["rank"])
+    current_entitlements = set(preview["plan"]["entitlements"])
+    options = []
+    for plan in sorted(PLAN_TIERS, key=lambda item: item["rank"]):
+        if plan["rank"] <= current_rank:
+            continue
+        item = shop_plan_payload(plan)
+        added_entitlements = [
+            feature_id
+            for feature_id in item["entitlements"]
+            if feature_id not in current_entitlements
+        ]
+        options.append(
+            {
+                "plan": item,
+                "ranks_up": plan["rank"] - current_rank,
+                "added_entitlements": added_entitlements,
+                "added_entitlement_count": len(added_entitlements),
+            }
+        )
+    return {
+        "ok": True,
+        "current_plan": preview["plan"],
+        "count": len(options),
+        "items": options,
+        "highest_rank_reached": not options,
+        "checkout_collects_card_data_on_vaultlink": False,
+        "privacy_notice": (
+            "Upgrade options exclude the license key, customer identity, owner notes, machine identifiers, "
+            "activation receipts, payment data, paths, PINs, USB secrets, and file contents."
         ),
         "server_time_utc": utc_now(),
     }
@@ -5753,6 +5905,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "public shop catalog and validated provider-hosted checkout links",
                         "anonymous plan recommendations and rank comparisons",
                         "read-only customer license preview without device activation",
+                        "privacy-safe customer upgrade options and added-entitlement comparisons",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -6094,6 +6247,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/activate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/verify": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/preview": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/upgrade-options": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -6141,6 +6295,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/preview":
                 self.send_json(preview_license(payload))
+                return
+            if path == "/api/v1/licenses/upgrade-options":
+                self.send_json(license_upgrade_options(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
