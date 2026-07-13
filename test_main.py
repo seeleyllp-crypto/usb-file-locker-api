@@ -249,6 +249,50 @@ class VaultLinkApiTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+    def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
+        status, denied = self.call("/api/v1/admin/insights")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "personal-plus",
+                "customer_label": "UNIQUE-CUSTOMER-LABEL-7392",
+                "customer_email": "unique-7392@example.test",
+                "license_note": "UNIQUE-OWNER-NOTE-7392",
+                "max_devices": 2,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        self.assertIn("license_key", issued)
+
+        status, report = self.call(
+            "/api/v1/admin/insights",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(report["count"], 50)
+        self.assertEqual(len(report["items"]), 50)
+        self.assertEqual(len({item["id"] for item in report["items"]}), 50)
+        self.assertIn("Licensing", report["categories"])
+        self.assertIn("Operations", report["categories"])
+        serialized = json.dumps(report)
+        self.assertNotIn("UNIQUE-CUSTOMER-LABEL-7392", serialized)
+        self.assertNotIn("unique-7392@example.test", serialized)
+        self.assertNotIn("UNIQUE-OWNER-NOTE-7392", serialized)
+        self.assertNotIn(issued["license_key"], serialized)
+
+        status, _headers, page = self.call_bytes("/owner/insights")
+        self.assertEqual(status, 200)
+        page_text = page.decode("utf-8")
+        self.assertIn("Owner Command Center", page_text)
+        self.assertIn("Showing 0 of 50", page_text)
+        self.assertIn("EXPORT JSON", page_text)
+        self.assertIn("EXPORT CSV", page_text)
+
     def test_rank_targeted_owner_announcements_and_admin_controls(self):
         status, denied = self.call(
             "/api/v1/admin/announcements/create",
@@ -372,6 +416,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("issueGiveaway", owner_text)
         self.assertIn("Client Release Adoption", owner_text)
         self.assertIn("Customer Pages", owner_text)
+        self.assertIn("50-Point Owner Command Center", owner_text)
+        self.assertIn("/owner/insights", owner_text)
         self.assertIn(api.LEGAL_DOCUMENT_VERSION, owner_text)
 
     def test_service_status_activity_integrity_and_scoped_download(self):

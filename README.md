@@ -9,6 +9,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Persistent anonymous device-seat enforcement using each license's `max_devices` value
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
+- A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - An encrypted customer Bug Inbox with owner status actions, private notes, replies, and deletion
 - Rank-targeted, scheduled, read-only Owner Announcements with desktop delivery
 - Public informational service status with automatic licensed-desktop notices
@@ -82,6 +83,7 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/owner`
+- `http://127.0.0.1:8000/owner/insights`
 
 ## Shop
 
@@ -122,8 +124,11 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
   - Admin-only anonymous seat inventory. Returns only a one-way machine hash, status, dates, last successful heartbeat, and app version, never a PC name or raw hardware identity. Last-seen writes are throttled to protect the storage volume.
 - `GET /api/v1/admin/dashboard`
   - Admin-only license, device-capacity, audit-export, breach-level, shop-readiness, storage, and release totals.
+- `GET /api/v1/admin/insights`
+  - Admin-only report with exactly 50 aggregate licensing, device, renewal, rank, release, support, messaging, security, and operations insights.
+  - Excludes keys, customer labels, email addresses, private notes, machine identifiers, paths, PINs, USB secrets, and file contents.
 
-Open `/owner` to view the API dashboard, issue keys, publish Owner Announcements, enforce device limits, inspect and remove one anonymous device, reset all lost-device seats, copy keys, save private notes, revoke licenses, manage the Bug Inbox, and download privacy-safe audit logs. Once connected, the page refreshes owner data every 30 seconds unless an input is being edited. The admin token stays in page memory, is sent only in the `X-License-Admin-Token` header, and is not placed in a URL.
+Open `/owner` to view the API dashboard, issue keys, publish Owner Announcements, enforce device limits, inspect and remove one anonymous device, reset all lost-device seats, copy keys, save private notes, revoke licenses, manage the Bug Inbox, and download privacy-safe audit logs. Open `/owner/insights` for the searchable 50-point report, filtered copy summary, and JSON/CSV exports. Once connected, the main owner page refreshes owner data every 30 seconds unless an input is being edited. The admin token stays in page memory, is sent only in the `X-License-Admin-Token` header, and is not placed in a URL or export.
 
 Without `LICENSE_STATE_DIR`, Railway uses local ephemeral storage and a restart can forget revocations, owner records, and bug reports. Mount a Railway Volume and use paths such as `/data/license_state` and `/data/audit_exports`. Keep `LICENSE_RECORDS_SECRET` stable; changing or losing it makes previously encrypted keys, private notes, and support-ticket text unreadable.
 

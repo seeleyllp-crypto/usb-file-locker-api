@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.13.0"
+API_VERSION = "0.14.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1213,6 +1213,7 @@ def docs_payload():
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
             {"method": "GET", "path": "/privacy", "purpose": "Public privacy notice and data-handling summary"},
             {"method": "GET", "path": "/owner", "purpose": "Owner-only key and note web console"},
+            {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1240,6 +1241,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/licenses", "purpose": "Admin-only encrypted key and note inventory"},
             {"method": "GET", "path": "/api/v1/admin/licenses/{license_id}/devices", "purpose": "Admin-only anonymous device-seat inventory"},
             {"method": "GET", "path": "/api/v1/admin/dashboard", "purpose": "Admin-only license, device, audit, breach, and release totals"},
+            {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -1918,6 +1920,14 @@ def owner_portal_html():
         <div class="stat"><label>Activity integrity</label><strong id="statActivity">-</strong></div>
         <div class="stat"><label>Current release clients</label><strong id="statCurrentClients">-</strong></div>
         <div class="stat"><label>Stale clients, 24h</label><strong id="statStaleClients">-</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>50-Point Owner Command Center</h2>
+      <div class="latest">
+        <div class="status">Open a focused view with exactly 50 live, privacy-safe business and service insights plus search, filters, copy, and JSON/CSV exports.</div>
+        <a href="/owner/insights" style="display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:4px;background:var(--blue);color:#061017;text-decoration:none;font-weight:800;">OPEN COMMAND CENTER</a>
       </div>
     </section>
 
@@ -2733,6 +2743,256 @@ def owner_portal_html():
     $("token").addEventListener("keydown", (event) => { if (event.key === "Enter") connect(); });
     window.setInterval(autoRefresh, AUTO_REFRESH_MS);
     loadRanks().catch((error) => setStatus(error.message,"bad"));
+  </script>
+</body>
+</html>"""
+
+
+def owner_insights_html():
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Owner Command Center</title>
+  <style>
+    :root { color-scheme:dark; --bg:#0c0e11; --band:#12161b; --surface:#181d24; --field:#090b0e; --line:#343d48; --text:#f5f7fa; --muted:#9da9b6; --green:#4ce47a; --blue:#55bce9; --yellow:#f1c94d; --red:#ff6a74; --pink:#ed8ab6; }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.45 "Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#111419; }
+    header > div, main, footer > div { width:min(1240px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:72px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { display:flex; align-items:baseline; gap:12px; min-width:0; }
+    h1 { margin:0; font-size:21px; }
+    .version { color:var(--muted); font-size:12px; font-weight:700; }
+    nav { display:flex; gap:9px; flex-wrap:wrap; }
+    nav a { color:var(--text); text-decoration:none; padding:8px 11px; border:1px solid var(--line); border-radius:6px; font-weight:700; }
+    main { padding:24px 0 48px; }
+    section { padding:20px 0 24px; border-bottom:1px solid var(--line); }
+    h2 { margin:0 0 8px; font-size:17px; }
+    p { color:var(--muted); margin:0; }
+    .auth { display:grid; grid-template-columns:minmax(220px,1fr) auto auto; gap:10px; align-items:end; margin-top:16px; }
+    label { display:block; color:var(--muted); margin-bottom:5px; font-size:11px; font-weight:800; text-transform:uppercase; }
+    input,select { width:100%; min-height:40px; border:1px solid var(--line); border-radius:4px; background:var(--field); color:var(--text); padding:9px 11px; font:inherit; }
+    button { min-height:40px; border:0; border-radius:4px; padding:0 14px; background:#29313b; color:var(--text); font:800 12px "Segoe UI",Arial,sans-serif; cursor:pointer; }
+    button:hover { filter:brightness(1.12); }
+    button:disabled { cursor:not-allowed; opacity:.45; }
+    .primary { background:var(--green); color:#07130a; }
+    .blue { background:var(--blue); color:#071119; }
+    .status { min-height:22px; margin-top:10px; color:var(--muted); }
+    .status.good { color:var(--green); } .status.bad { color:var(--red); }
+    .toolbar { display:grid; grid-template-columns:minmax(180px,1.2fr) minmax(150px,.7fr) minmax(130px,.55fr) repeat(4,auto); gap:9px; align-items:end; }
+    .summary { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-top:14px; padding:12px 0; color:var(--muted); }
+    .count { color:var(--text); font-weight:800; }
+    .category { padding:18px 0 8px; }
+    .category-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .category-head h3 { margin:0; font-size:14px; }
+    .category-head span { color:var(--muted); font-size:12px; }
+    .insights { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .insight { min-width:0; min-height:132px; padding:14px; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:8px; background:var(--surface); }
+    .insight.good { border-left-color:var(--green); } .insight.warn { border-left-color:var(--yellow); } .insight.bad { border-left-color:var(--red); } .insight.info { border-left-color:var(--blue); }
+    .insight-title { color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; overflow-wrap:anywhere; }
+    .insight-value { margin-top:7px; color:var(--text); font-size:25px; font-weight:800; overflow-wrap:anywhere; }
+    .insight-unit { color:var(--muted); font-size:12px; font-weight:700; }
+    .insight-detail { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+    .empty { padding:36px 0; color:var(--muted); }
+    footer { background:var(--band); border-top:1px solid var(--line); }
+    footer > div { padding:22px 0 30px; color:var(--muted); font-size:12px; line-height:1.55; }
+    @media (max-width:1060px) { .insights { grid-template-columns:repeat(3,minmax(0,1fr)); } .toolbar { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width:760px) { header > div { align-items:flex-start; flex-direction:column; padding:15px 0; } .auth,.toolbar { grid-template-columns:1fr; } .insights { grid-template-columns:repeat(2,minmax(0,1fr)); } button { width:100%; } }
+    @media (max-width:470px) { .insights { grid-template-columns:1fr; } .brand { align-items:flex-start; flex-direction:column; gap:2px; } }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand"><h1>Owner Command Center</h1><span class="version">50 live insights</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/status">CUSTOMER STATUS</a></nav></div></header>
+  <main>
+    <section>
+      <h2>Owner Access</h2>
+      <p>This page uses aggregate operational data. Your admin token remains in page memory and is never put in a URL or export.</p>
+      <div class="auth">
+        <div><label for="token">License admin token</label><input id="token" type="password" autocomplete="off" spellcheck="false"></div>
+        <button id="connect" class="primary">CONNECT</button>
+        <button id="clear">CLEAR</button>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite">Disconnected.</div>
+    </section>
+    <section>
+      <h2>Find And Export</h2>
+      <div class="toolbar">
+        <div><label for="search">Search insights</label><input id="search" type="search" placeholder="licenses, stale, support..."></div>
+        <div><label for="category">Category</label><select id="category"><option value="">ALL CATEGORIES</option></select></div>
+        <div><label for="stateFilter">State</label><select id="stateFilter"><option value="">ALL STATES</option><option value="good">GOOD</option><option value="warn">CHECK</option><option value="bad">URGENT</option><option value="info">INFO</option></select></div>
+        <button id="refresh" class="blue" disabled>REFRESH</button>
+        <button id="copy" disabled>COPY SUMMARY</button>
+        <button id="json" disabled>EXPORT JSON</button>
+        <button id="csv" disabled>EXPORT CSV</button>
+      </div>
+      <div class="summary"><span id="showing" class="count">Showing 0 of 50</span><span id="updated">Not loaded</span></div>
+    </section>
+    <div id="content"><div class="empty">Connect with the owner admin token to load the 50-point report.</div></div>
+  </main>
+  <footer><div id="privacy">Exports contain aggregate counts only. They do not contain license keys, customer information, notes, device identifiers, paths, PINs, USB secrets, or file contents.</div></footer>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { token:"", payload:null, visible:[] };
+
+    function setStatus(message, kind="") {
+      $("status").textContent = message;
+      $("status").className = `status ${kind}`;
+    }
+
+    function setConnected(connected) {
+      for (const id of ["refresh","copy","json","csv"]) $(id).disabled = !connected;
+    }
+
+    async function api(path) {
+      const response = await fetch(path, { headers:{ "X-License-Admin-Token":state.token, "Accept":"application/json" }, cache:"no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || `API request failed (${response.status}).`);
+      return payload;
+    }
+
+    async function connect() {
+      const token = $("token").value.trim();
+      if (!token) return setStatus("Enter the admin token.", "bad");
+      state.token = token;
+      await load();
+    }
+
+    async function load() {
+      setStatus("Loading the 50-point report...");
+      try {
+        const payload = await api("/api/v1/admin/insights");
+        if (payload.count !== 50 || !Array.isArray(payload.items)) throw new Error("The API did not return the complete 50-point report.");
+        state.payload = payload;
+        buildCategories(payload.categories || []);
+        $("privacy").textContent = payload.privacy_notice || $("privacy").textContent;
+        $("updated").textContent = `Updated ${new Date(payload.updated_at_utc).toLocaleString()}`;
+        setConnected(true);
+        render();
+        setStatus("Connected. All 50 live insights loaded.", "good");
+      } catch (error) {
+        state.payload = null;
+        state.visible = [];
+        setConnected(false);
+        $("content").innerHTML = '<div class="empty">The report is not available.</div>';
+        $("showing").textContent = "Showing 0 of 50";
+        setStatus(error.message, "bad");
+      }
+    }
+
+    function buildCategories(categories) {
+      const select = $("category");
+      const current = select.value;
+      select.replaceChildren(new Option("ALL CATEGORIES", ""));
+      for (const name of categories) select.append(new Option(name.toUpperCase(), name));
+      if ([...select.options].some((option) => option.value === current)) select.value = current;
+    }
+
+    function filteredItems() {
+      if (!state.payload) return [];
+      const search = $("search").value.trim().toLowerCase();
+      const category = $("category").value;
+      const stateValue = $("stateFilter").value;
+      return state.payload.items.filter((item) => {
+        const text = `${item.title} ${item.detail} ${item.category} ${item.value} ${item.unit || ""}`.toLowerCase();
+        return (!search || text.includes(search)) && (!category || item.category === category) && (!stateValue || item.state === stateValue);
+      });
+    }
+
+    function render() {
+      state.visible = filteredItems();
+      $("showing").textContent = `Showing ${state.visible.length} of 50`;
+      const host = $("content");
+      host.replaceChildren();
+      if (!state.visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No insights match those filters.";
+        host.append(empty);
+        return;
+      }
+      const grouped = new Map();
+      for (const item of state.visible) {
+        if (!grouped.has(item.category)) grouped.set(item.category, []);
+        grouped.get(item.category).push(item);
+      }
+      for (const [category, items] of grouped.entries()) {
+        const band = document.createElement("section");
+        band.className = "category";
+        const head = document.createElement("div");
+        head.className = "category-head";
+        const title = document.createElement("h3");
+        title.textContent = category;
+        const count = document.createElement("span");
+        count.textContent = `${items.length} insight${items.length === 1 ? "" : "s"}`;
+        head.append(title, count);
+        const grid = document.createElement("div");
+        grid.className = "insights";
+        for (const item of items) {
+          const card = document.createElement("article");
+          card.className = `insight ${item.state || "info"}`;
+          const cardTitle = document.createElement("div");
+          cardTitle.className = "insight-title";
+          cardTitle.textContent = item.title;
+          const value = document.createElement("div");
+          value.className = "insight-value";
+          value.textContent = String(item.value);
+          if (item.unit) {
+            const unit = document.createElement("span");
+            unit.className = "insight-unit";
+            unit.textContent = ` ${item.unit}`;
+            value.append(unit);
+          }
+          const detail = document.createElement("div");
+          detail.className = "insight-detail";
+          detail.textContent = item.detail;
+          card.append(cardTitle, value, detail);
+          grid.append(card);
+        }
+        band.append(head, grid);
+        host.append(band);
+      }
+    }
+
+    function reportForExport() {
+      return { product:"VaultLink", report:"50-point owner command center", updated_at_utc:state.payload.updated_at_utc, count:state.visible.length, privacy_notice:state.payload.privacy_notice, items:state.visible };
+    }
+
+    function download(name, body, type) {
+      const url = URL.createObjectURL(new Blob([body], { type }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function csvCell(value) { return `"${String(value ?? "").replaceAll('"','""')}"`; }
+    function exportJson() { download("vaultlink-owner-insights.json", JSON.stringify(reportForExport(), null, 2), "application/json"); setStatus("Privacy-safe JSON exported.", "good"); }
+    function exportCsv() {
+      const rows = [["id","category","title","value","unit","state","detail"], ...state.visible.map((item) => [item.id,item.category,item.title,item.value,item.unit || "",item.state,item.detail])];
+      download("vaultlink-owner-insights.csv", rows.map((row) => row.map(csvCell).join(",")).join("\\r\\n"), "text/csv");
+      setStatus("Privacy-safe CSV exported.", "good");
+    }
+    async function copySummary() {
+      const lines = [`VaultLink Owner Command Center`, `Updated: ${state.payload.updated_at_utc}`, `Showing: ${state.visible.length} of 50`, "", ...state.visible.map((item) => `${item.title}: ${item.value}${item.unit ? ` ${item.unit}` : ""}`)];
+      try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe summary copied.", "good"); }
+      catch (_) { setStatus("Browser clipboard access was blocked.", "bad"); }
+    }
+
+    $("connect").addEventListener("click", connect);
+    $("clear").addEventListener("click", () => { state.token=""; state.payload=null; state.visible=[]; $("token").value=""; $("content").innerHTML='<div class="empty">Connect with the owner admin token to load the 50-point report.</div>'; $("showing").textContent="Showing 0 of 50"; $("updated").textContent="Not loaded"; setConnected(false); setStatus("Admin token cleared from page memory."); });
+    $("refresh").addEventListener("click", load);
+    $("copy").addEventListener("click", copySummary);
+    $("json").addEventListener("click", exportJson);
+    $("csv").addEventListener("click", exportCsv);
+    $("search").addEventListener("input", render);
+    $("category").addEventListener("change", render);
+    $("stateFilter").addEventListener("change", render);
+    $("token").addEventListener("keydown", (event) => { if (event.key === "Enter") connect(); });
   </script>
 </body>
 </html>"""
@@ -4662,6 +4922,160 @@ def admin_dashboard_summary():
     }
 
 
+def admin_owner_insights():
+    """Build a fixed 50-point, aggregate-only owner operations report."""
+    dashboard = admin_dashboard_summary()
+    inventory = list_admin_license_records()
+    records = list(inventory.get("items", []))
+    now = datetime.now(timezone.utc)
+    active_records = []
+    limited_count = 0
+    expiring_7d = 0
+    expiring_30d = 0
+    non_expiring = 0
+    at_capacity = 0
+    without_devices = 0
+    plan_counts = {plan["id"]: 0 for plan in PLAN_TIERS}
+
+    for record in records:
+        plan_id = canonical_plan_id(record.get("plan_id", ""))
+        if plan_id in plan_counts:
+            plan_counts[plan_id] += 1
+        expires_at = parse_utc(record.get("expires_at_utc"))
+        is_active = record.get("status") != "revoked" and not (expires_at and expires_at < now)
+        if not is_active:
+            continue
+        active_records.append(record)
+        if record.get("limited"):
+            limited_count += 1
+        active_devices = int(record.get("active_devices", 0) or 0)
+        max_devices = max(1, int(record.get("max_devices", 1) or 1))
+        if active_devices >= max_devices:
+            at_capacity += 1
+        if active_devices == 0:
+            without_devices += 1
+        if expires_at is None:
+            non_expiring += 1
+        else:
+            seconds_left = (expires_at - now).total_seconds()
+            if 0 <= seconds_left <= 7 * 86400:
+                expiring_7d += 1
+            if 0 <= seconds_left <= 30 * 86400:
+                expiring_30d += 1
+
+    licenses = dashboard["licenses"]
+    devices = dashboard["devices"]
+    clients = dashboard["client_health"]
+    support = dashboard["support_tickets"]
+    announcements = dashboard["announcements"]
+    audits = dashboard["audit_exports"]
+    activity = dashboard["api_activity"]
+    release = dashboard["release"]
+    storage = dashboard["storage"]
+    shop = dashboard["shop"]
+    support_statuses = support.get("statuses", {})
+    breach_levels = audits.get("breach_levels", {})
+
+    def percent(part, total):
+        return round((float(part) / float(total)) * 100) if total else 0
+
+    active_devices = int(devices.get("active", 0) or 0)
+    device_capacity = int(devices.get("capacity", 0) or 0)
+    active_clients = int(clients.get("active_devices", 0) or 0)
+    current_clients = int(clients.get("current_release_devices", 0) or 0)
+    support_total = int(support.get("total", 0) or 0)
+    support_finished = int(support_statuses.get("resolved", 0) or 0) + int(
+        support_statuses.get("closed", 0) or 0
+    )
+    persistent_stores = sum(value == "persistent_configured" for value in storage.values())
+    insights = []
+
+    def add(identifier, category, title, value, state, detail, unit=""):
+        insights.append(
+            {
+                "id": identifier,
+                "category": category,
+                "title": title,
+                "value": value,
+                "unit": unit,
+                "state": state,
+                "detail": detail,
+            }
+        )
+
+    add("licenses-total", "Licensing", "Total licenses", licenses.get("total", 0), "info", "Every stored license record.")
+    add("licenses-active", "Licensing", "Active licenses", licenses.get("active", 0), "good", "Usable licenses that are not expired or blocked.")
+    add("licenses-limited", "Licensing", "Limited licenses", limited_count, "warn" if limited_count else "good", "Temporary premium-access limits; unlock and recovery stay available.")
+    add("licenses-revoked", "Licensing", "Blocked licenses", licenses.get("revoked", 0), "warn" if licenses.get("revoked") else "info", "Licenses blocked from licensed premium features.")
+    add("licenses-expired", "Licensing", "Expired licenses", licenses.get("expired", 0), "warn" if licenses.get("expired") else "good", "Licenses past their configured expiration time.")
+    add("licenses-notes", "Licensing", "Licenses with notes", licenses.get("notes_saved", 0), "info", "Private owner notes saved in encrypted records.")
+    add("licenses-note-coverage", "Licensing", "Note coverage", percent(licenses.get("notes_saved", 0), licenses.get("total", 0)), "info", "Share of license records with an owner note.", "%")
+    add("devices-active", "Devices", "Active device seats", active_devices, "info", "Anonymous active machine-bound seats.")
+    add("devices-capacity", "Devices", "Device capacity", device_capacity, "info", "Total seats available across active licenses.")
+    add("devices-available", "Devices", "Seats available", max(0, device_capacity - active_devices), "good", "Unused seats across active licenses.")
+    add("devices-utilization", "Devices", "Seat utilization", percent(active_devices, device_capacity), "warn" if device_capacity and active_devices >= device_capacity else "good", "Percent of available device seats currently active.", "%")
+    add("licenses-at-capacity", "Devices", "Licenses at capacity", at_capacity, "warn" if at_capacity else "good", "Active licenses with every device seat in use.")
+    add("licenses-without-devices", "Devices", "Licenses without devices", without_devices, "info", "Active licenses that have not activated a device.")
+    add("licenses-expiring-7d", "Renewals", "Expiring in 7 days", expiring_7d, "warn" if expiring_7d else "good", "Active licenses expiring within seven days.")
+    add("licenses-expiring-30d", "Renewals", "Expiring in 30 days", expiring_30d, "warn" if expiring_30d else "good", "Active licenses expiring within thirty days.")
+    add("licenses-no-expiry", "Renewals", "No expiration set", non_expiring, "info", "Active licenses without an expiration date.")
+
+    for plan in sorted(PLAN_TIERS, key=lambda item: item["rank"]):
+        add(
+            f"rank-{plan['rank']}-licenses",
+            "Ranks",
+            f"Rank {plan['rank']} licenses",
+            plan_counts.get(plan["id"], 0),
+            "info",
+            f"Stored licenses assigned to {plan['name']}.",
+        )
+
+    add("clients-active", "Releases", "Reporting clients", active_clients, "info", "Anonymous active devices included in release health.")
+    add("clients-current", "Releases", "Current-release clients", current_clients, "good", "Devices reporting the published desktop release.")
+    add("clients-adoption", "Releases", "Release adoption", percent(current_clients, active_clients), "good" if not active_clients or current_clients == active_clients else "warn", "Share of reporting devices on the current release.", "%")
+    add("clients-other", "Releases", "Other-version clients", clients.get("other_version_devices", 0), "warn" if clients.get("other_version_devices") else "good", "Devices reporting a different known app version.")
+    add("clients-unknown", "Releases", "Unknown-version clients", clients.get("unknown_version_devices", 0), "warn" if clients.get("unknown_version_devices") else "good", "Devices that did not report an app version.")
+    add("clients-stale", "Releases", "Stale clients, 24h", clients.get("stale_24h", 0), "warn" if clients.get("stale_24h") else "good", "Active devices not seen during the last 24 hours.")
+    add("clients-version-count", "Releases", "Version variants", len(clients.get("version_counts", [])), "info", "Number of distinct app versions reported.")
+    add("release-desktop", "Releases", "Desktop release", release.get("desktop_version") or "none", "good" if release.get("desktop_version") else "warn", "Published signed Windows package version.")
+    add("release-api", "Releases", "API version", release.get("api_version") or API_VERSION, "info", "Currently running API release.")
+    add("release-sync", "Releases", "Client sync interval", release.get("license_sync_seconds", LICENSE_SYNC_INTERVAL_SECONDS), "info", "Recommended licensed client heartbeat interval.", "seconds")
+    add("support-total", "Support", "Support tickets", support_total, "info", "Encrypted customer bug reports visible to the owner.")
+    add("support-open", "Support", "Open tickets", support_statuses.get("open", 0), "warn" if support_statuses.get("open") else "good", "New reports waiting for review.")
+    add("support-acknowledged", "Support", "Acknowledged tickets", support_statuses.get("acknowledged", 0), "info", "Reports confirmed by the owner.")
+    add("support-resolved", "Support", "Resolved tickets", support_statuses.get("resolved", 0), "good", "Reports marked resolved.")
+    add("support-closed", "Support", "Closed tickets", support_statuses.get("closed", 0), "good", "Reports marked closed.")
+    add("support-needs-action", "Support", "Tickets needing action", support.get("needs_action", 0), "warn" if support.get("needs_action") else "good", "Open or acknowledged reports requiring owner attention.")
+    add("support-completion", "Support", "Support completion", percent(support_finished, support_total), "good" if not support_total or support_finished == support_total else "info", "Share of tickets resolved or closed.", "%")
+    add("announcements-total", "Messaging", "Published messages", announcements.get("total", 0), "info", "All stored owner announcements.")
+    add("announcements-active", "Messaging", "Active messages", announcements.get("active", 0), "info", "Messages currently visible to eligible licensed customers.")
+    add("announcements-damaged", "Messaging", "Damaged messages", announcements.get("damaged", 0), "bad" if announcements.get("damaged") else "good", "Announcement records that failed validation.")
+    add("audits-total", "Security", "Audit exports", audits.get("total", 0), "info", "Privacy-safe customer audit reports stored by the API.")
+    high_critical = int(breach_levels.get("high", 0) or 0) + int(breach_levels.get("critical", 0) or 0)
+    add("audits-high-critical", "Security", "High and critical audits", high_critical, "bad" if high_critical else "good", "Reports whose server summary needs urgent review.")
+    add("activity-total", "Security", "API activity events", activity.get("total", 0), "info", "Aggregate count of tamper-evident owner API events.")
+    add("activity-integrity", "Security", "Activity chain", "valid" if activity.get("integrity_valid") else "check", "good" if activity.get("integrity_valid") else "bad", activity.get("integrity_message") or "Hash-chain verification status.")
+    service_mode = str((dashboard.get("service_status") or {}).get("mode", "unknown"))
+    add("service-mode", "Operations", "Service mode", service_mode, "good" if service_mode == "normal" else "warn", "Public customer-facing service status.")
+    add("shop-configured", "Operations", "Shop checkouts configured", shop.get("configured", 0), "good" if shop.get("ready") else "warn", f"Validated provider-hosted checkout links out of {shop.get('total', 0)}.")
+    add("storage-persistent", "Operations", "Persistent stores", persistent_stores, "good" if persistent_stores == len(storage) else "warn", f"Restart-safe stores out of {len(storage)} configured data areas.")
+
+    if len(insights) != 50:
+        raise RuntimeError(f"Owner insight contract expected 50 items, built {len(insights)}.")
+    categories = sorted({item["category"] for item in insights})
+    return {
+        "ok": True,
+        "count": len(insights),
+        "items": insights,
+        "categories": categories,
+        "updated_at_utc": utc_now(),
+        "privacy_notice": (
+            "This report contains aggregate operational counts only. It excludes license keys, customer labels, "
+            "emails, private notes, machine identifiers, file paths, PINs, USB secrets, and file contents."
+        ),
+    }
+
+
 def load_admin_audit_export_download(export_id):
     cleanup_expired_audit_exports()
     _stored, body = read_stored_audit_export(export_id)
@@ -4823,6 +5237,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/owner":
             self.send_html(owner_portal_html())
+            return
+        if path == "/owner/insights":
+            self.send_html(owner_insights_html())
             return
         if path == "/health":
             self.send_json(
@@ -5104,6 +5521,21 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 self.require_admin_token()
                 self.send_json(admin_dashboard_summary())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/admin/insights":
+            try:
+                self.require_admin_token()
+                self.send_json(admin_owner_insights())
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "forbidden", "message": str(exc)},
