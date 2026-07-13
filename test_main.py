@@ -425,6 +425,33 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-NOTE-4581", serialized_checkup)
         self.assertNotIn(key, serialized_checkup)
 
+        status, support_guide = self.call(
+            "/api/v1/licenses/support-guide",
+            method="POST",
+            payload={"license_key": key, "category": "update"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(support_guide["guide_id"], "GUIDE-UPDATE")
+        self.assertEqual(support_guide["category"], "update")
+        self.assertEqual(len(support_guide["steps"]), 5)
+        self.assertTrue(support_guide["signed_update"]["published"])
+        self.assertEqual(support_guide["signed_update"]["version"], "9999.1")
+        self.assertEqual(len(support_guide["signed_update"]["sha256"]), 64)
+        self.assertIn("does not upload", support_guide["local_file_verification"])
+        serialized_guide = json.dumps(support_guide)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_guide)
+        self.assertNotIn("private-4581@example.test", serialized_guide)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized_guide)
+        self.assertNotIn(key, serialized_guide)
+
+        status, bad_guide = self.call(
+            "/api/v1/licenses/support-guide",
+            method="POST",
+            payload={"license_key": key, "category": "send-all-files"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(bad_guide["error"], "bad_request")
+
         status, bad_checkup = self.call(
             "/api/v1/licenses/customer-checkup",
             method="POST",
@@ -510,6 +537,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("/api/v1/licenses/upgrade-options", page_text)
         self.assertIn("/api/v1/licenses/rank-tools", page_text)
         self.assertIn("/api/v1/licenses/customer-checkup", page_text)
+        self.assertIn("/api/v1/licenses/support-guide", page_text)
         self.assertIn("COPY SUMMARY", page_text)
         self.assertIn("EXPORT JSON", page_text)
         self.assertIn("COPY RANK TOOLS", page_text)
@@ -525,6 +553,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("FAVORITES ONLY", page_text)
         self.assertIn("NEXT INCOMPLETE", page_text)
         self.assertIn("IMPORT RANK PACK", page_text)
+        self.assertIn("Support Guide", page_text)
+        self.assertIn("Signed Update Verifier", page_text)
+        self.assertIn("CHOOSE UPDATE ZIP", page_text)
+        self.assertIn("COPY GUIDE", page_text)
+        self.assertIn("EXPORT GUIDE", page_text)
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 

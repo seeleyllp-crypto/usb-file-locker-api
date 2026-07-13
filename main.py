@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.19.0"
+API_VERSION = "0.20.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1641,6 +1641,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/upgrade-options", "purpose": "Privacy-safe higher-rank and added-entitlement comparison"},
             {"method": "POST", "path": "/api/v1/licenses/rank-tools", "purpose": "License-gated cumulative rank-exclusive customer tool packs"},
             {"method": "POST", "path": "/api/v1/licenses/customer-checkup", "purpose": "Privacy-safe license, seat, service, update, and rank-tool attention check"},
+            {"method": "POST", "path": "/api/v1/licenses/support-guide", "purpose": "Fixed-category privacy-safe customer troubleshooting guide"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -2377,6 +2378,21 @@ def customer_license_center_html():
     .checkup-item.good { border-top-color:var(--green); } .checkup-item.check { border-top-color:var(--yellow); } .checkup-item.action { border-top-color:var(--red); }
     .checkup-item h3 { margin:5px 0; font-size:.96rem; }
     .checkup-item p { margin:0; color:var(--muted); line-height:1.45; }
+    .help-center { margin-top:18px; }
+    .help-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .help-panel { min-width:0; padding:17px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .help-panel h2 { margin-bottom:8px; }
+    .help-panel p { margin:0 0 12px; color:var(--muted); line-height:1.45; }
+    .help-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
+    .help-controls select { width:100%; min-width:0; height:40px; padding:0 10px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .guide-result { margin-top:12px; }
+    .guide-result ol { margin:0; padding-left:20px; color:var(--muted); line-height:1.55; }
+    .guide-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .guide-actions button { min-height:36px; }
+    .verify-file { display:flex; align-items:center; justify-content:center; min-height:40px; padding:0 11px; border:1px solid var(--line); border-radius:5px; background:var(--surface2); color:var(--text); font-size:.78rem; font-weight:800; cursor:pointer; }
+    .verify-file input { display:none; }
+    .verify-status { min-height:22px; margin-top:10px; color:var(--muted); line-height:1.45; overflow-wrap:anywhere; }
+    .verify-status.good { color:var(--green); } .verify-status.bad { color:var(--red); } .verify-status.warn { color:var(--yellow); }
     .dashboard-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
     .dashboard-actions button,.dashboard-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 12px; border-radius:5px; background:var(--surface2); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:.78rem; font-weight:800; }
     .dashboard-actions .primary-action { background:var(--blue); border-color:var(--blue); color:#071119; }
@@ -2427,7 +2443,7 @@ def customer_license_center_html():
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
     @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
-    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head,.checkup-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
+    @media (max-width:760px) { .top,.help-grid { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head,.checkup-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2454,7 +2470,7 @@ def customer_license_center_html():
   <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { payload:null, upgrades:null, rankTools:null, checkup:null, favorites:new Set() };
+    const state = { payload:null, upgrades:null, rankTools:null, checkup:null, guide:null, favorites:new Set() };
     const text = (value) => String(value ?? "");
     function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
     function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
@@ -2567,6 +2583,50 @@ def customer_license_center_html():
       document.querySelectorAll(".rank-step input").forEach((input) => { input.checked=false; });
       updateRankProgress(); setStatus("Session checklist progress reset.");
     }
+    function renderSupportGuide(guide) {
+      const root=$("supportGuideResult"); if (!root) return; root.replaceChildren();
+      const list=document.createElement("ol"); guide.steps.forEach((step)=>{ const item=document.createElement("li"); item.textContent=step; list.append(item); });
+      const actions=document.createElement("div"); actions.className="guide-actions";
+      const copy=document.createElement("button"); copy.type="button"; copy.textContent="COPY GUIDE"; copy.addEventListener("click",copySupportGuide);
+      const exportButton=document.createElement("button"); exportButton.type="button"; exportButton.textContent="EXPORT GUIDE"; exportButton.addEventListener("click",exportSupportGuide);
+      actions.append(copy,exportButton); root.append(list,actions);
+    }
+    async function loadSupportGuide() {
+      const licenseKey=$("licenseKey").value.trim(); const category=$("supportCategory").value;
+      const output=$("supportGuideStatus"); output.textContent="Loading guide...";
+      try {
+        const response=await fetch("/api/v1/licenses/support-guide",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey,category}),cache:"no-store",redirect:"error"});
+        const guide=await response.json(); if (!response.ok) throw new Error(guide.message || "Support guide failed.");
+        state.guide=guide; renderSupportGuide(guide); output.textContent=`${guide.steps.length} privacy-safe steps loaded.`; output.className="verify-status good";
+      } catch (error) { output.textContent=error.message || "Support guide failed."; output.className="verify-status bad"; }
+    }
+    async function copySupportGuide() {
+      if (!state.guide) return;
+      const lines=[`VaultLink ${state.guide.category} Support Guide`,...state.guide.steps.map((step,index)=>`${index+1}. ${step}`)];
+      try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe support guide copied.","good"); }
+      catch (_) { setStatus("Browser clipboard access was blocked.","bad"); }
+    }
+    function exportSupportGuide() {
+      if (!state.guide) return;
+      const safe={exported_at_utc:new Date().toISOString(),guide_id:state.guide.guide_id,category:state.guide.category,license_status:state.guide.license_status,rank:state.guide.rank,steps:state.guide.steps,signed_update:state.guide.signed_update,privacy_notice:state.guide.privacy_notice};
+      const blob=new Blob([JSON.stringify(safe,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const link=document.createElement("a");
+      link.href=url; link.download=`vaultlink-${state.guide.category}-support-guide.json`; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); setStatus("Privacy-safe support guide exported.","good");
+    }
+    async function verifyUpdateFile(file) {
+      const output=$("updateVerifyStatus"); if (!file || !state.payload) return;
+      const release=state.payload.release; output.className="verify-status";
+      if (!release.published || !release.sha256) { output.textContent="No signed update hash is published."; output.classList.add("warn"); return; }
+      if (file.size > 1024*1024*1024) { output.textContent="Choose an update package no larger than 1 GB."; output.classList.add("bad"); return; }
+      if (release.size_bytes && file.size !== release.size_bytes) { output.textContent=`SIZE MISMATCH: selected ${file.size} bytes; expected ${release.size_bytes} bytes.`; output.classList.add("bad"); return; }
+      output.textContent="Hashing selected file locally...";
+      try {
+        const digest=await crypto.subtle.digest("SHA-256",await file.arrayBuffer());
+        const actual=[...new Uint8Array(digest)].map((value)=>value.toString(16).padStart(2,"0")).join("");
+        if (actual.toLowerCase()===String(release.sha256).toLowerCase()) { output.textContent=`MATCH: SHA-256 verified for ${file.name}.`; output.classList.add("good"); }
+        else { output.textContent=`MISMATCH: do not install ${file.name}.`; output.classList.add("bad"); }
+      } catch (_) { output.textContent="The browser could not verify this file."; output.classList.add("bad"); }
+      finally { const input=$("updateFileInput"); if (input) input.value=""; }
+    }
     function render(payload,upgrades,rankTools,checkup) {
       const root=$("result"); root.replaceChildren();
       const summary=document.createElement("div"); summary.className="summary";
@@ -2609,6 +2669,24 @@ def customer_license_center_html():
       const checkupGrid=document.createElement("div"); checkupGrid.className="checkup-grid";
       checkup.items.forEach((item)=>{ const card=document.createElement("article"); card.className=`checkup-item ${item.severity}`; const severity=document.createElement("div"); severity.className="eyebrow"; severity.textContent=item.severity.toUpperCase(); const title=document.createElement("h3"); title.textContent=item.title; const detail=document.createElement("p"); detail.textContent=item.detail; card.append(severity,title,detail); checkupGrid.append(card); });
       checkupSection.append(checkupGrid);
+      const helpCenter=document.createElement("section"); helpCenter.className="help-center";
+      const helpGrid=document.createElement("div"); helpGrid.className="help-grid";
+      const guidePanel=document.createElement("div"); guidePanel.className="help-panel";
+      const guideTitle=document.createElement("h2"); guideTitle.textContent="Support Guide";
+      const guideCopy=document.createElement("p"); guideCopy.textContent="Load fixed troubleshooting steps without sending free-form text, files, logs, or secrets.";
+      const guideControls=document.createElement("div"); guideControls.className="help-controls";
+      const guideSelectWrap=document.createElement("label"); guideSelectWrap.textContent="CATEGORY";
+      const guideSelect=document.createElement("select"); guideSelect.id="supportCategory"; [["licensing","Licensing"],["update","Update"],["recovery","Recovery"],["security","Security"],["privacy","Privacy"],["other","Other"]].forEach(([value,label])=>{ const option=document.createElement("option"); option.value=value; option.textContent=label; guideSelect.append(option); }); guideSelectWrap.append(guideSelect);
+      const guideButton=document.createElement("button"); guideButton.type="button"; guideButton.textContent="LOAD GUIDE"; guideButton.addEventListener("click",loadSupportGuide); guideControls.append(guideSelectWrap,guideButton);
+      const guideStatus=document.createElement("div"); guideStatus.id="supportGuideStatus"; guideStatus.className="verify-status"; guideStatus.textContent="No guide loaded.";
+      const guideResult=document.createElement("div"); guideResult.id="supportGuideResult"; guideResult.className="guide-result"; guidePanel.append(guideTitle,guideCopy,guideControls,guideStatus,guideResult);
+      const verifyPanel=document.createElement("div"); verifyPanel.className="help-panel";
+      const verifyTitle=document.createElement("h2"); verifyTitle.textContent="Signed Update Verifier";
+      const verifyCopy=document.createElement("p"); verifyCopy.textContent=payload.release.published?`Expected ${payload.release.package_filename || "update package"}. The selected file is hashed locally and never uploaded.`:"No signed Windows update package is currently published.";
+      const verifyLabel=document.createElement("label"); verifyLabel.className="verify-file"; verifyLabel.textContent="CHOOSE UPDATE ZIP";
+      const verifyInput=document.createElement("input"); verifyInput.id="updateFileInput"; verifyInput.type="file"; verifyInput.accept="application/zip,.zip"; verifyInput.addEventListener("change",()=>verifyUpdateFile(verifyInput.files?.[0])); verifyLabel.append(verifyInput);
+      const verifyStatus=document.createElement("div"); verifyStatus.id="updateVerifyStatus"; verifyStatus.className="verify-status"; verifyStatus.textContent=payload.release.sha256?`Expected SHA-256: ${payload.release.sha256}`:"No expected hash available.";
+      verifyPanel.append(verifyTitle,verifyCopy,verifyLabel,verifyStatus); helpGrid.append(guidePanel,verifyPanel); helpCenter.append(helpGrid);
       const details=document.createElement("div"); details.className="details";
       const included=document.createElement("section");
       const includedTitle=document.createElement("h2"); includedTitle.textContent=`Rank ${payload.plan.rank} included tools`;
@@ -2628,7 +2706,7 @@ def customer_license_center_html():
       const actionsTitle=document.createElement("h2"); actionsTitle.textContent="Next actions";
       const actionsList=document.createElement("ul"); payload.customer_actions.forEach((item) => { const li=document.createElement("li"); li.textContent=item; actionsList.append(li); });
       actions.append(actionsTitle,actionsList); details.append(included,service,actions);
-      root.append(summary,progress,message,toolbar,checkupSection,details);
+      root.append(summary,progress,message,toolbar,checkupSection,helpCenter,details);
       const rankSection=document.createElement("section"); rankSection.className="rank-tools";
       const rankHead=document.createElement("div"); rankHead.className="rank-tools-head";
       const rankTitle=document.createElement("h2"); rankTitle.textContent="Rank-exclusive tools";
@@ -2710,7 +2788,7 @@ def customer_license_center_html():
       finally { $("check").disabled=false; }
     }
     $("check").addEventListener("click",checkLicense);
-    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; state.checkup=null; state.favorites=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key and session data cleared from page memory."); });
+    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; state.checkup=null; state.guide=null; state.favorites=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key and session data cleared from page memory."); });
     $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
     $("appVersion").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
   </script>
@@ -3920,6 +3998,10 @@ def preview_license(payload):
         "latest_version": "",
         "minimum_supported_version": "",
         "published": False,
+        "download_path": "",
+        "sha256": "",
+        "size_bytes": 0,
+        "package_filename": "",
     }
     try:
         manifest, _package_path = load_windows_update_release()
@@ -3929,6 +4011,8 @@ def preview_license(payload):
             "published": True,
             "download_path": manifest.get("download_path", ""),
             "sha256": manifest.get("sha256", ""),
+            "size_bytes": int(manifest.get("size_bytes", 0) or 0),
+            "package_filename": manifest.get("package_filename", ""),
         }
     except (FileNotFoundError, OSError, ValueError):
         pass
@@ -4170,6 +4254,88 @@ def customer_checkup(payload):
         "privacy_notice": (
             "Customer checkup responses exclude license keys, license ids, customer identity, owner notes, "
             "machine identifiers, activation receipts, payment data, paths, PINs, USB secrets, and file contents."
+        ),
+    }
+
+
+def customer_support_guide(payload):
+    category = str(payload.get("category", "licensing") or "licensing").strip().lower()
+    categories = {"licensing", "update", "recovery", "security", "privacy", "other"}
+    if category not in categories:
+        raise ValueError("Choose licensing, update, recovery, security, privacy, or other.")
+    preview = preview_license(payload)
+    rank_tools = customer_rank_tools(payload)
+    guides = {
+        "licensing": [
+            "Read the license status and message shown in Customer Checkup.",
+            "Remove accidental spaces before or after the license key.",
+            "Use the Windows app to activate or refresh the machine-bound receipt.",
+            "If device seats are full, remove an old seat or ask the license owner for help.",
+            "Share only the privacy-safe customer summary when requesting support.",
+        ],
+        "update": [
+            "Create a current backup before replacing an installed app folder.",
+            "Download only the signed package published by this API.",
+            "Use the local file verifier below and require a SHA-256 match.",
+            "Keep existing USB keys, local app data, and locked files in place.",
+            "Run Microsoft Defender on the downloaded package before installation.",
+        ],
+        "recovery": [
+            "Stop and make a copy of the locked file before experimenting.",
+            "Use the original master USB key and the normal Windows unlock workflow.",
+            "Try the configured PIN only through the official app interface.",
+            "Use the documented recovery or permanent-unlock workflow when available.",
+            "Never send the USB secret, PIN, key file, or locked-file contents to support.",
+        ],
+        "security": [
+            "Disconnect from untrusted networks if active compromise is suspected.",
+            "Run Microsoft Defender full scan and Microsoft Defender Offline scan.",
+            "Do not run malware samples, RATs, laggers, or unknown scripts for testing.",
+            "Preserve privacy-safe timestamps and detection names without copying secrets.",
+            "Use qualified adult or professional help for high-risk findings.",
+        ],
+        "privacy": [
+            "Keep license keys, PINs, USB secrets, and recovery material out of reports.",
+            "Use anonymous device totals instead of machine or customer names.",
+            "Export only the privacy-safe customer summary or rank pack.",
+            "Review a report before sharing it and remove paths or file contents.",
+            "Delete unnecessary exported reports after the support issue is resolved.",
+        ],
+        "other": [
+            "Run Customer Checkup and note which fixed status cards need attention.",
+            "Record the exact visible error message and UTC time.",
+            "Do not include passwords, keys, PINs, names, paths, or file contents.",
+            "Try the same action with a disposable non-private test file when appropriate.",
+            "Use the licensed Windows support workflow for a privacy-safe owner message.",
+        ],
+    }
+    steps = list(guides[category])
+    if preview["status"] != "active":
+        steps.insert(0, f"License status is {preview['status']}. Local unlock and recovery remain available.")
+    current_tools = [item["name"] for item in rank_tools.get("current_rank_items", [])]
+    return {
+        "ok": True,
+        "guide_id": f"GUIDE-{category.upper()}",
+        "category": category,
+        "license_status": preview["status"],
+        "rank": preview["plan"]["rank"],
+        "rank_name": preview["plan"]["name"],
+        "steps": steps,
+        "current_rank_tool_names": current_tools,
+        "signed_update": {
+            "published": preview["release"].get("published", False),
+            "version": preview["release"].get("latest_version", ""),
+            "package_filename": preview["release"].get("package_filename", ""),
+            "size_bytes": preview["release"].get("size_bytes", 0),
+            "sha256": preview["release"].get("sha256", ""),
+            "download_path": preview["release"].get("download_path", ""),
+        },
+        "support_channel": "Use the activated Windows app for licensed encrypted support messaging.",
+        "local_file_verification": "The browser verifier hashes a selected file locally and does not upload it.",
+        "server_time_utc": utc_now(),
+        "privacy_notice": (
+            "Support guides accept only a fixed category and exclude free-form text, license keys, license ids, "
+            "customer identity, notes, machine identifiers, receipts, payment data, paths, PINs, USB secrets, and file contents."
         ),
     }
 
@@ -6507,6 +6673,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer upgrade options and added-entitlement comparisons",
                         "license-gated rank-exclusive customer checklists and tool packs",
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
+                        "fixed-category customer support guides and local signed-update verification metadata",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -6562,6 +6729,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Preview is read-only and does not activate or consume a device seat.",
                         "Rank-exclusive premium tools require an active signed license; limited, revoked, and expired licenses retain local unlock and recovery only.",
                         "Customer checkups are informational and cannot inspect, execute, lock, unlock, or modify a customer PC.",
+                        "Support Guide accepts no free-form report text, and browser update verification does not upload the selected file.",
                     ],
                 }
             )
@@ -6853,6 +7021,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/upgrade-options": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/rank-tools": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/customer-checkup": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/support-guide": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -6909,6 +7078,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/customer-checkup":
                 self.send_json(customer_checkup(payload))
+                return
+            if path == "/api/v1/licenses/support-guide":
+                self.send_json(customer_support_guide(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
