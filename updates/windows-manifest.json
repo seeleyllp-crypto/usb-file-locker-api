@@ -2,20 +2,19 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.12.5",
+  "version": "2026.07.12.6",
   "minimum_supported_version": "2026.07.11.3",
-  "published_at_utc": "2026-07-13T01:11:18Z",
-  "package_filename": "VaultLink-Windows-2026.07.12.5.zip",
+  "published_at_utc": "2026-07-13T02:52:41Z",
+  "package_filename": "VaultLink-Windows-2026.07.12.6.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "efa786ac09bd78c9ec6f5ec0dc87398e62c09d85554c235576f8994c93be7144",
-  "size_bytes": 125664,
+  "sha256": "0691b2bc7da0218f4f7748cdff2332b2d912a15e2d6dc5c4bf326c99e128510e",
+  "size_bytes": 127088,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Fixes WinError 183 during secure update extraction on Windows.",
-    "Accepts only an empty, non-link temporary extraction directory.",
-    "Keeps ZIP traversal, private-file, signature, hash, and backup protections enabled.",
-    "Preserves USB keys, licenses, settings, vault data, and audit logs in LocalAppData."
+    "Automatic on-screen owner announcements appear once per PC.",
+    "Owner service status is informational and cannot control customer PCs.",
+    "Tamper-evident API activity records exclude secrets, notes, messages, file data, and full paths."
   ],
   "preserves_local_app_data": true,
-  "signature": "UK9uDoHg30w1OCnzRA3swwaver_pCkGpstA-oadU5HgK6hQ8hg_BLQF4nGTnTglhaQzuWoImBJRxf_NnINZeCA"
+  "signature": "YHZu-YOitED2XPBdo1kAHouk9hKBopsI93fC2rNXHekiwWNX3YVvrP0yCDPiO9SAydF7jEJD4Ldg8ZZiNCztCw"
 }

@@ -4,6 +4,7 @@ import os
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib import error, request
 
@@ -366,6 +367,104 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Owner Announcements", owner_text)
         self.assertIn("publishAnnouncement", owner_text)
         self.assertIn("statAnnouncements", owner_text)
+
+    def test_service_status_activity_integrity_and_scoped_download(self):
+        status, public_status = self.call("/api/v1/service-status")
+        self.assertEqual(status, 200)
+        self.assertEqual(public_status["service_status"]["mode"], "normal")
+
+        expires_at = api.format_utc(datetime.now(timezone.utc) + timedelta(days=1))
+        status, denied = self.call(
+            "/api/v1/admin/service-status",
+            method="POST",
+            payload={"mode": "maintenance", "message": "Scheduled API maintenance", "expires_at_utc": expires_at},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        issued, activated = self.issue_and_activate("personal-plus", "STATUS-NEWS-PC")
+        status, announcement = self.call(
+            "/api/v1/admin/announcements/create",
+            method="POST",
+            payload={
+                "severity": "security",
+                "title": "Security notice",
+                "message": "Use the signed updater for the next release.",
+                "minimum_rank": 1,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, saved = self.call(
+            "/api/v1/admin/service-status",
+            method="POST",
+            payload={
+                "mode": "maintenance",
+                "message": "Scheduled API maintenance",
+                "expires_at_utc": expires_at,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(saved["service_status"]["mode"], "maintenance")
+
+        status, synced = self.call(
+            "/api/v1/licenses/sync",
+            method="POST",
+            payload={
+                "license_key": issued["license_key"],
+                "receipt": activated["receipt"],
+                "machine_id": "STATUS-NEWS-PC",
+                "app_version": "2026.07.12.6",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(synced["service_status"]["mode"], "maintenance")
+        self.assertEqual(synced["announcements"]["count"], 1)
+        self.assertEqual(
+            synced["announcements"]["items"][0]["announcement_id"],
+            announcement["announcement"]["announcement_id"],
+        )
+
+        status, activity = self.call(
+            "/api/v1/admin/activity",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(activity["integrity"]["valid"])
+        self.assertGreaterEqual(activity["count"], 3)
+        serialized = json.dumps(activity)
+        self.assertNotIn(issued["license_key"], serialized)
+        self.assertNotIn("Scheduled API maintenance", serialized)
+        self.assertNotIn("Use the signed updater", serialized)
+
+        status, link = self.call(
+            "/api/v1/admin/activity/download-link",
+            method="POST",
+            payload={},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn(TEST_ADMIN_TOKEN, link["download_path"])
+        status, headers, body = self.call_bytes(link["download_path"])
+        self.assertEqual(status, 200)
+        self.assertIn("attachment", headers.get("Content-Disposition", ""))
+        exported = json.loads(body.decode("utf-8"))
+        self.assertTrue(exported["integrity"]["valid"])
+
+        path = api.api_activity_log_path()
+        lines = path.read_text(encoding="utf-8").splitlines()
+        damaged = json.loads(lines[0])
+        damaged["action"] = "tampered_action"
+        lines[0] = json.dumps(damaged, sort_keys=True, separators=(",", ":"))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        status, damaged_activity = self.call(
+            "/api/v1/admin/activity",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(damaged_activity["integrity"]["valid"])
 
     def test_license_issue_activate_verify_and_header_only_admin(self):
         status, denied = self.call(
