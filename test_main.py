@@ -1573,6 +1573,104 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(downloaded["export_id"], item["export_id"])
 
+    def test_recovery_readiness_is_fixed_private_and_not_stored(self):
+        field_ids = [item["id"] for item in api.READINESS_CHECKS]
+        self.assertEqual(len(field_ids), 7)
+        self.assertEqual(len(set(field_ids)), 7)
+        self.assertEqual(sum(item["weight"] for item in api.READINESS_CHECKS), 100)
+
+        all_false = {field: False for field in field_ids}
+        status, blocked = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=all_false,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(blocked["status"], "blocked")
+        self.assertEqual(blocked["score"], 0)
+        self.assertEqual(blocked["critical_missing_count"], 3)
+        self.assertEqual(len(blocked["actions"]), 7)
+        self.assertFalse(blocked["ready_for_important_data"])
+        self.assertFalse(blocked["stored"])
+        self.assertIn("stores nothing", blocked["privacy_notice"])
+
+        action_answers = dict(all_false)
+        for field in ("backup_current", "master_usb_tested", "test_file_roundtrip"):
+            action_answers[field] = True
+        status, action = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=action_answers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(action["status"], "action")
+        self.assertEqual(action["score"], 55)
+        self.assertEqual(action["critical_missing_count"], 0)
+
+        review_answers = dict(action_answers)
+        review_answers["recovery_copy_separate"] = True
+        review_answers["pin_stored_separately"] = True
+        status, review = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=review_answers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(review["status"], "review")
+        self.assertEqual(review["score"], 80)
+        self.assertTrue(review["ready_for_important_data"])
+
+        all_true = {field: True for field in field_ids}
+        status, ready = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=all_true,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(ready["status"], "ready")
+        self.assertEqual(ready["score"], 100)
+        self.assertEqual(ready["completed_count"], 7)
+        self.assertEqual(ready["actions"], [])
+
+        status, unknown = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload={**all_true, "customer_name": "PRIVATE-NAME"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(unknown["error"], "bad_request")
+
+        invalid_type = dict(all_true)
+        invalid_type["backup_current"] = "yes"
+        status, invalid = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=invalid_type,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(invalid["error"], "bad_request")
+
+        missing = dict(all_true)
+        missing.pop("update_current")
+        status, incomplete = self.call(
+            "/api/v1/readiness/check",
+            method="POST",
+            payload=missing,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(incomplete["error"], "bad_request")
+
+        status, headers, page = self.call_bytes("/readiness")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Recovery Readiness", page_text)
+        self.assertIn("/api/v1/readiness/check", page_text)
+        self.assertIn("CHECK READINESS", page_text)
+        self.assertIn("Prioritized Action Plan", page_text)
+        self.assertIn("DOWNLOAD ACTION PLAN", page_text)
+        self.assertIn("Disposable file lock and unlock tested", page_text)
+
     def test_signed_update_manifest_and_package_endpoints(self):
         manifest, package = self.publish_test_update()
         status, response = self.call("/api/v1/updates/windows")

@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.22.0"
+API_VERSION = "0.23.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -149,6 +149,15 @@ MAX_API_ACTIVITY_BYTES = 4 * 1024 * 1024
 MAX_API_ACTIVITY_ITEMS = 5000
 MAX_API_ACTIVITY_ARCHIVES = 5
 LICENSE_STATE_LOCK = threading.RLock()
+READINESS_CHECKS = (
+    {"id": "backup_current", "label": "Current backup exists", "weight": 20, "critical": True, "action": "Create and verify a current backup before locking important data."},
+    {"id": "master_usb_tested", "label": "Master USB key tested", "weight": 20, "critical": True, "action": "Test the master USB key with a disposable non-private file."},
+    {"id": "recovery_copy_separate", "label": "Recovery copy stored separately", "weight": 15, "critical": False, "action": "Store a recovery copy away from both the PC and primary USB key."},
+    {"id": "pin_stored_separately", "label": "PIN stored separately from USB", "weight": 10, "critical": False, "action": "Keep the optional PIN separate from the USB key and locked files."},
+    {"id": "defender_enabled", "label": "Microsoft Defender active", "weight": 10, "critical": False, "action": "Confirm Microsoft Defender is active and run a current scan."},
+    {"id": "test_file_roundtrip", "label": "Disposable file lock and unlock tested", "weight": 15, "critical": True, "action": "Complete a lock and unlock round trip using a disposable non-private file."},
+    {"id": "update_current", "label": "VaultLink version checked", "weight": 10, "critical": False, "action": "Use Update Center to compare the installed app with the latest signed release."},
+)
 
 
 class RequestTooLarge(ValueError):
@@ -1677,6 +1686,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/updates/windows", "purpose": "Signed Windows desktop update manifest and compatibility data"},
             {"method": "GET", "path": "/api/v1/updates/windows/download", "purpose": "SHA-256-pinned Windows desktop update package"},
             {"method": "POST", "path": "/api/v1/updates/windows/check", "purpose": "Anonymous installed-version compatibility and update decision"},
+            {"method": "POST", "path": "/api/v1/readiness/check", "purpose": "Anonymous fixed-field recovery-readiness score and action plan"},
         ],
         "required_env": [
             {"name": "PORT", "required": False, "purpose": "HTTP bind port on Railway or local runs"},
@@ -1867,6 +1877,85 @@ def check_windows_update(payload):
         "privacy_notice": (
             "The entered version is evaluated for this response and is not stored. No license key, identity, "
             "device identifier, path, file, PIN, USB secret, or file content is requested."
+        ),
+    }
+
+
+def recovery_readiness_check(payload):
+    allowed = {item["id"] for item in READINESS_CHECKS}
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown readiness field: {unknown[0]}.")
+    missing = sorted(allowed - set(payload))
+    if missing:
+        raise ValueError(f"Missing readiness field: {missing[0]}.")
+    for field in allowed:
+        if type(payload.get(field)) is not bool:
+            raise ValueError(f"{field} must be true or false.")
+
+    items = []
+    score = 0
+    critical_missing = []
+    actions = []
+    for check in READINESS_CHECKS:
+        complete = payload[check["id"]]
+        if complete:
+            score += check["weight"]
+        else:
+            actions.append(
+                {
+                    "check_id": check["id"],
+                    "priority": "critical" if check["critical"] else "recommended",
+                    "action": check["action"],
+                }
+            )
+            if check["critical"]:
+                critical_missing.append(check["id"])
+        items.append(
+            {
+                "id": check["id"],
+                "label": check["label"],
+                "weight": check["weight"],
+                "critical": check["critical"],
+                "complete": complete,
+            }
+        )
+
+    if critical_missing:
+        status = "blocked"
+        headline = "Do not lock important data yet."
+    elif score < 80:
+        status = "action"
+        headline = "Complete more recovery preparation before important use."
+    elif score < 100:
+        status = "review"
+        headline = "Critical recovery checks pass; finish the remaining preparation."
+    else:
+        status = "ready"
+        headline = "All self-reported readiness checks pass."
+    actions.sort(key=lambda item: (item["priority"] != "critical", item["check_id"]))
+    return {
+        "ok": True,
+        "status": status,
+        "headline": headline,
+        "score": score,
+        "maximum_score": 100,
+        "completed_count": sum(item["complete"] for item in items),
+        "total_count": len(items),
+        "critical_missing_count": len(critical_missing),
+        "ready_for_important_data": status in {"review", "ready"},
+        "items": items,
+        "actions": actions,
+        "stored": False,
+        "server_time_utc": utc_now(),
+        "limitations": [
+            "This score is based only on the boxes selected by the customer.",
+            "It does not inspect the PC, test a key, verify a backup, run antivirus, or guarantee recovery.",
+            "Use a disposable non-private test file before locking important data.",
+        ],
+        "privacy_notice": (
+            "Readiness Check accepts only seven true-or-false fields and stores nothing. It does not accept "
+            "names, paths, keys, PINs, USB secrets, file contents, machine identifiers, or account data."
         ),
     }
 
@@ -2068,6 +2157,7 @@ def homepage_html():
         <a class="primary" href="/shop">Open Shop</a>
         <a href="/customer">Customer License Center</a>
         <a href="/update">Update Center</a>
+        <a href="/readiness">Recovery Readiness</a>
         <a href="/status">Customer Status</a>
         <a href="/terms">Draft Terms</a>
         <a href="/privacy">Privacy Notice</a>
@@ -2147,7 +2237,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -2222,7 +2312,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -2283,6 +2373,118 @@ def update_center_html():
     $("check").addEventListener("click",checkUpdate);
     $("clear").addEventListener("click",()=>{ state.payload=null; $("installedVersion").value=""; $("result").innerHTML='<div class="empty">Update compatibility information will appear here.</div>'; setStatus("Version and update result cleared from page memory."); });
     $("installedVersion").addEventListener("keydown",(event)=>{ if (event.key==="Enter") checkUpdate(); });
+  </script>
+</body>
+</html>""".replace("__API_VERSION__", html_escape(API_VERSION))
+
+
+def recovery_readiness_html():
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Recovery Readiness</title>
+  <style>
+    :root { --bg:#0f1216; --surface:#171c22; --surface2:#202731; --line:#34404c; --text:#f4f7f8; --muted:#aeb9c4; --green:#69df8a; --blue:#69bce8; --yellow:#ffd166; --red:#ff8278; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#14181d; }
+    header > div, main, footer > div { width:min(980px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-weight:800; }
+    nav { display:flex; gap:8px; flex-wrap:wrap; }
+    nav a { color:var(--text); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:8px 11px; }
+    main { padding:34px 0 52px; }
+    h1 { margin:0; font-size:clamp(2rem,5vw,3.4rem); line-height:1.04; letter-spacing:0; }
+    .lead { margin:10px 0 18px; color:var(--muted); line-height:1.55; max-width:760px; }
+    .privacy { padding:13px 14px; border-left:4px solid var(--blue); background:#171e25; color:var(--muted); line-height:1.45; }
+    .checklist-head { display:flex; align-items:end; justify-content:space-between; gap:12px; margin:24px 0 10px; }
+    .checklist-head h2 { margin:0; font-size:1.05rem; }
+    .checklist-head p { margin:0; color:var(--muted); font-size:.85rem; }
+    .checklist { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .check { display:flex; align-items:flex-start; gap:11px; min-width:0; padding:15px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--text); cursor:pointer; }
+    .check input { flex:0 0 auto; width:19px; height:19px; margin:2px 0 0; }
+    .check strong { display:block; font-size:.95rem; }
+    .check span span { display:block; margin-top:5px; color:var(--muted); font-size:.8rem; line-height:1.4; }
+    .check.critical { border-left:4px solid var(--yellow); }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    button { min-height:42px; border:0; border-radius:5px; padding:0 14px; font-weight:800; cursor:pointer; }
+    #checkReadiness { background:var(--green); color:#061109; }
+    #clear { background:var(--surface2); color:var(--text); border:1px solid var(--line); }
+    #status { min-height:23px; margin-top:10px; color:var(--muted); line-height:1.4; }
+    #status.good { color:var(--green); } #status.warn { color:var(--yellow); } #status.bad { color:var(--red); }
+    #result { margin-top:18px; }
+    .empty { padding:28px 18px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); text-align:center; }
+    .summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .summary > div { min-width:0; padding:17px; background:var(--surface); border-right:1px solid var(--line); }
+    .summary > div:last-child { border-right:0; }
+    .eyebrow { color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; }
+    .value { margin-top:6px; font-size:1.08rem; font-weight:800; overflow-wrap:anywhere; }
+    .value.ready { color:var(--green); } .value.review,.value.action { color:var(--yellow); } .value.blocked { color:var(--red); }
+    .progress { height:10px; margin-top:10px; overflow:hidden; border-radius:5px; background:#090d11; }
+    .progress span { display:block; height:100%; background:var(--green); }
+    .headline { margin-top:12px; padding:14px; border-left:4px solid var(--blue); background:#181f26; color:var(--muted); line-height:1.5; }
+    .result-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .result-actions button { min-height:38px; background:var(--surface2); border:1px solid var(--line); color:var(--text); }
+    .result-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr); gap:14px; margin-top:14px; }
+    .result-grid section { min-width:0; padding:18px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .result-grid h2 { margin:0 0 11px; font-size:1rem; }
+    ol,ul { margin:0; padding-left:20px; color:var(--muted); line-height:1.6; }
+    .priority { color:var(--red); font-size:.72rem; font-weight:800; }
+    footer { border-top:1px solid var(--line); background:#14181d; }
+    footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
+    @media(max-width:720px) { .checklist,.result-grid { grid-template-columns:1fr; } .checklist-head { align-items:flex-start; flex-direction:column; } }
+    @media(max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line); } .summary > div:last-child { border-bottom:0; } .controls button { width:100%; } }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <main>
+    <h1>Recovery Readiness</h1>
+    <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
+    <div class="privacy">Only seven yes-or-no values are checked. VaultLink does not request or store names, paths, PINs, keys, files, or device information.</div>
+    <div class="checklist-head"><h2>Readiness Checks</h2><p>Critical checks carry a yellow left border.</p></div>
+    <div class="checklist">
+      <label class="check critical"><input id="backup_current" type="checkbox"><span><strong>Current backup exists</strong><span>20 points, critical</span></span></label>
+      <label class="check critical"><input id="master_usb_tested" type="checkbox"><span><strong>Master USB key tested</strong><span>20 points, critical</span></span></label>
+      <label class="check"><input id="recovery_copy_separate" type="checkbox"><span><strong>Recovery copy stored separately</strong><span>15 points</span></span></label>
+      <label class="check"><input id="pin_stored_separately" type="checkbox"><span><strong>PIN stored separately from USB</strong><span>10 points</span></span></label>
+      <label class="check"><input id="defender_enabled" type="checkbox"><span><strong>Microsoft Defender active</strong><span>10 points</span></span></label>
+      <label class="check critical"><input id="test_file_roundtrip" type="checkbox"><span><strong>Disposable file lock and unlock tested</strong><span>15 points, critical</span></span></label>
+      <label class="check"><input id="update_current" type="checkbox"><span><strong>VaultLink version checked</strong><span>10 points</span></span></label>
+    </div>
+    <div class="controls"><button id="checkReadiness" type="button">CHECK READINESS</button><button id="clear" type="button">CLEAR</button></div>
+    <div id="status" role="status" aria-live="polite">Not checked.</div>
+    <div id="result"><div class="empty">Readiness score and action plan will appear here.</div></div>
+  </main>
+  <footer><div>This self-check cannot inspect the PC, verify a backup, test a key, run antivirus, or guarantee recovery. API version __API_VERSION__.</div></footer>
+  <script>
+    const $=(id)=>document.getElementById(id);
+    const fields=["backup_current","master_usb_tested","recovery_copy_separate","pin_stored_separately","defender_enabled","test_file_roundtrip","update_current"];
+    const state={payload:null};
+    function setStatus(message,tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
+    function answers() { return Object.fromEntries(fields.map((field)=>[field,$(field).checked])); }
+    function safeReport() { if (!state.payload) return null; const value=state.payload; return {exported_at_utc:new Date().toISOString(),status:value.status,headline:value.headline,score:value.score,maximum_score:value.maximum_score,completed_count:value.completed_count,total_count:value.total_count,critical_missing_count:value.critical_missing_count,ready_for_important_data:value.ready_for_important_data,items:value.items,actions:value.actions,limitations:value.limitations,privacy_notice:value.privacy_notice}; }
+    async function copyReport() { const report=safeReport(); if (!report) return; const lines=["VaultLink Recovery Readiness",`Status: ${report.status}`,`Score: ${report.score} of ${report.maximum_score}`,report.headline,...report.actions.map((item,index)=>`${index+1}. ${item.action}`)]; try { await navigator.clipboard.writeText(lines.join("\\n")); setStatus("Privacy-safe readiness report copied.","good"); } catch (_) { setStatus("Browser clipboard access was blocked.","bad"); } }
+    function download(name,body,type) { const blob=new Blob([body],{type}); const url=URL.createObjectURL(blob); const link=document.createElement("a"); link.href=url; link.download=name; document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+    function exportJson() { const report=safeReport(); if (!report) return; download("vaultlink-recovery-readiness.json",JSON.stringify(report,null,2),"application/json"); setStatus("Privacy-safe readiness JSON exported.","good"); }
+    function exportPlan() { const report=safeReport(); if (!report) return; const lines=["VaultLink Recovery Action Plan",`Status: ${report.status}`,`Score: ${report.score} of ${report.maximum_score}`,"",...(report.actions.length?report.actions.map((item,index)=>`${index+1}. [${item.priority.toUpperCase()}] ${item.action}`):["All self-reported checks pass."]),"","Use a disposable non-private test file before important data."]; download("vaultlink-recovery-action-plan.txt",lines.join("\\r\\n"),"text/plain"); setStatus("Local recovery action plan created.","good"); }
+    function render(payload) {
+      const root=$("result"); root.replaceChildren();
+      const summary=document.createElement("div"); summary.className="summary";
+      [["Status",payload.status],["Score",`${payload.score} of ${payload.maximum_score}`],["Critical missing",payload.critical_missing_count]].forEach(([label,value],index)=>{ const cell=document.createElement("div"); const key=document.createElement("div"); key.className="eyebrow"; key.textContent=label; const data=document.createElement("div"); data.className=`value${index===0?` ${payload.status}`:""}`; data.textContent=value; cell.append(key,data); summary.append(cell); });
+      const progress=document.createElement("div"); progress.className="progress"; progress.setAttribute("aria-label",`Readiness score ${payload.score} percent`); const fill=document.createElement("span"); fill.style.width=`${payload.score}%`; progress.append(fill);
+      const headline=document.createElement("div"); headline.className="headline"; headline.textContent=payload.headline;
+      const actions=document.createElement("div"); actions.className="result-actions"; [["COPY REPORT",copyReport],["EXPORT JSON",exportJson],["DOWNLOAD ACTION PLAN",exportPlan]].forEach(([label,handler])=>{ const button=document.createElement("button"); button.type="button"; button.textContent=label; button.addEventListener("click",handler); actions.append(button); });
+      const grid=document.createElement("div"); grid.className="result-grid";
+      const plan=document.createElement("section"); const planTitle=document.createElement("h2"); planTitle.textContent="Prioritized Action Plan"; const planList=document.createElement("ol"); if (payload.actions.length) payload.actions.forEach((item)=>{ const row=document.createElement("li"); const priority=document.createElement("span"); priority.className=item.priority==="critical"?"priority":""; priority.textContent=`${item.priority.toUpperCase()}: `; row.append(priority,document.createTextNode(item.action)); planList.append(row); }); else { const row=document.createElement("li"); row.textContent="All self-reported checks pass."; planList.append(row); } plan.append(planTitle,planList);
+      const limits=document.createElement("section"); const limitsTitle=document.createElement("h2"); limitsTitle.textContent="Limits"; const limitsList=document.createElement("ul"); payload.limitations.forEach((item)=>{ const row=document.createElement("li"); row.textContent=item; limitsList.append(row); }); limits.append(limitsTitle,limitsList); grid.append(plan,limits);
+      root.append(summary,progress,headline,actions,grid);
+    }
+    async function checkReadiness() { $("checkReadiness").disabled=true; setStatus("Calculating readiness..."); try { const response=await fetch("/api/v1/readiness/check",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(answers()),cache:"no-store",redirect:"error"}); const payload=await response.json(); if (!response.ok) throw new Error(payload.message || "Readiness check failed."); state.payload=payload; render(payload); setStatus(payload.headline,payload.status==="ready"?"good":payload.status==="blocked"?"bad":"warn"); } catch (error) { state.payload=null; setStatus(error.message || "Readiness check failed.","bad"); } finally { $("checkReadiness").disabled=false; } }
+    $("checkReadiness").addEventListener("click",checkReadiness);
+    $("clear").addEventListener("click",()=>{ fields.forEach((field)=>{$(field).checked=false;}); state.payload=null; $("result").innerHTML='<div class="empty">Readiness score and action plan will appear here.</div>'; setStatus("Readiness answers and result cleared from page memory."); });
   </script>
 </body>
 </html>""".replace("__API_VERSION__", html_escape(API_VERSION))
@@ -2665,7 +2867,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/update">UPDATE</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -6936,6 +7138,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/update":
             self.send_html(update_center_html())
             return
+        if path == "/readiness":
+            self.send_html(recovery_readiness_html())
+            return
         if path == "/status":
             self.send_html(customer_status_html())
             return
@@ -6994,6 +7199,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_card_data_collected_by_vaultlink": False,
                     "windows_update_published": UPDATE_MANIFEST_PATH.exists(),
                     "windows_update_center_enabled": True,
+                    "recovery_readiness_center_enabled": True,
                 }
             )
             return
@@ -7048,6 +7254,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "fixed-category customer support guides and local signed-update verification metadata",
                         "anonymous Windows version compatibility checks and local update package verification",
+                        "anonymous fixed-field recovery-readiness scoring and action-plan export",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -7106,6 +7313,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Support Guide accepts no free-form report text, and browser update verification does not upload the selected file.",
                         "Customer timelines are read-only, and renewal calendar files are created locally without calendar-account access.",
                         "Update Center does not store entered versions, and selected ZIP files are hashed only in the browser.",
+                        "Recovery Readiness accepts only seven booleans, stores nothing, and cannot inspect or certify a PC.",
                     ],
                 }
             )
@@ -7422,6 +7630,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/shop/recommend": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/shop/compare": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/updates/windows/check": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/readiness/check": MAX_LICENSE_JSON_BODY_BYTES,
         }
         if path not in route_limits:
             self.send_json(
@@ -7441,6 +7650,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/updates/windows/check":
                 self.send_json(check_windows_update(payload))
+                return
+            if path == "/api/v1/readiness/check":
+                self.send_json(recovery_readiness_check(payload))
                 return
             if path == "/api/v1/licenses/activate":
                 self.send_json(activate_license(payload))
