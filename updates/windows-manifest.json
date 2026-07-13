@@ -2,20 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.13.1",
+  "version": "2026.07.13.2",
   "minimum_supported_version": "2026.07.12.9",
-  "published_at_utc": "2026-07-13T20:15:32Z",
-  "package_filename": "VaultLink-Windows-2026.07.13.1.zip",
+  "published_at_utc": "2026-07-13T21:08:42Z",
+  "package_filename": "VaultLink-Windows-2026.07.13.2.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "42eeab09636f8eda87e51f95ffb70a866d05c788b7a9dfe747aad2e983ed55e8",
-  "size_bytes": 133119,
+  "sha256": "7cab423cb13f9fdd60f7e0d5ea45af9bf04b5195180d687cb3f6c1aeea83b83f",
+  "size_bytes": 133978,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Desktop Update Center now opens the online compatibility checker.",
-    "Recovery Readiness is available directly from the main app and desktop Update Center.",
-    "The crowded main toolbar is split into two fully visible rows.",
+    "Owner-only Update Lab separates private candidate testing from public releases.",
+    "Publishing requires the registered removable owner USB, Windows signing key, and GitHub write access.",
+    "The exact signed package that passed tests and Defender is copied into the API release repo.",
     "Keys, licenses, settings, vault data, audit logs, and locked files remain untouched."
   ],
   "preserves_local_app_data": true,
-  "signature": "WAb4iKBGVl0XZ_p9gjuwtCqICidknVaQyKw5Lb8X6zIyBmahGoR-rvxfxDiKIELel82V6fL70rg6IFADJueGAw"
+  "signature": "E42A26CotnJREBgEpoKAqhFwJIj2vzsSg3xqYaflappF-JZanxdS3zW3bVI3qVNUroIQTvV6GhFOuBohhyMRBQ"
 }
