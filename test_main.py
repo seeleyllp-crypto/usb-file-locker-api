@@ -404,6 +404,35 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-NOTE-4581", serialized_rank_tools)
         self.assertNotIn(key, serialized_rank_tools)
 
+        self.publish_test_update()
+        status, checkup = self.call(
+            "/api/v1/licenses/customer-checkup",
+            method="POST",
+            payload={"license_key": key, "app_version": "2026.07.12.8"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(checkup["overall"], "check")
+        self.assertEqual(len(checkup["items"]), 6)
+        self.assertEqual(sum(checkup["counts"].values()), 6)
+        self.assertEqual(checkup["attention_count"], checkup["counts"]["check"] + checkup["counts"]["action"])
+        update_item = next(item for item in checkup["items"] if item["id"] == "update")
+        self.assertEqual(update_item["severity"], "check")
+        self.assertEqual(update_item["title"], "Update available")
+        self.assertIn("not an antivirus scan", " ".join(checkup["limitations"]).lower())
+        serialized_checkup = json.dumps(checkup)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_checkup)
+        self.assertNotIn("private-4581@example.test", serialized_checkup)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized_checkup)
+        self.assertNotIn(key, serialized_checkup)
+
+        status, bad_checkup = self.call(
+            "/api/v1/licenses/customer-checkup",
+            method="POST",
+            payload={"license_key": key, "app_version": "x" * 81},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(bad_checkup["error"], "bad_request")
+
         status, _limited = self.call(
             "/api/v1/licenses/limit",
             method="POST",
@@ -480,6 +509,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("/api/v1/licenses/preview", page_text)
         self.assertIn("/api/v1/licenses/upgrade-options", page_text)
         self.assertIn("/api/v1/licenses/rank-tools", page_text)
+        self.assertIn("/api/v1/licenses/customer-checkup", page_text)
         self.assertIn("COPY SUMMARY", page_text)
         self.assertIn("EXPORT JSON", page_text)
         self.assertIn("COPY RANK TOOLS", page_text)
@@ -488,6 +518,13 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("SEARCH UNLOCKED TOOLS", page_text)
         self.assertIn("RESET PROGRESS", page_text)
         self.assertIn("checklist steps complete in this session", page_text)
+        self.assertIn("Installed app version", page_text)
+        self.assertIn("Customer Checkup", page_text)
+        self.assertIn("CURRENT RANK ONLY", page_text)
+        self.assertIn("INCOMPLETE ONLY", page_text)
+        self.assertIn("FAVORITES ONLY", page_text)
+        self.assertIn("NEXT INCOMPLETE", page_text)
+        self.assertIn("IMPORT RANK PACK", page_text)
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 

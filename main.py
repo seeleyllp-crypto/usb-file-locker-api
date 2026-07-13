@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.18.0"
+API_VERSION = "0.19.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1640,6 +1640,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/preview", "purpose": "Read-only signed-license status without device activation"},
             {"method": "POST", "path": "/api/v1/licenses/upgrade-options", "purpose": "Privacy-safe higher-rank and added-entitlement comparison"},
             {"method": "POST", "path": "/api/v1/licenses/rank-tools", "purpose": "License-gated cumulative rank-exclusive customer tool packs"},
+            {"method": "POST", "path": "/api/v1/licenses/customer-checkup", "purpose": "Privacy-safe license, seat, service, update, and rank-tool attention check"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -2351,6 +2352,7 @@ def customer_license_center_html():
     .panel { padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
     label { display:block; margin-bottom:7px; color:var(--muted); font-size:.75rem; font-weight:800; text-transform:uppercase; }
     input { width:100%; min-width:0; height:44px; padding:0 12px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .secondary-field { margin-top:11px; }
     .actions { display:grid; grid-template-columns:1fr auto; gap:9px; margin-top:10px; }
     button { min-height:42px; border:0; border-radius:5px; padding:0 14px; font-weight:800; cursor:pointer; }
     #check { background:var(--green); color:#061109; }
@@ -2367,6 +2369,14 @@ def customer_license_center_html():
     .badge { display:inline-flex; align-items:center; min-height:28px; padding:0 9px; border-radius:4px; background:#203329; color:var(--green); }
     .badge.warn { background:#3a321c; color:var(--yellow); } .badge.bad { background:#3b2324; color:var(--red); }
     .message { margin-top:12px; padding:14px; background:#181f26; border-left:4px solid var(--blue); color:var(--muted); line-height:1.5; }
+    .checkup { margin-top:16px; }
+    .checkup-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
+    .checkup-head p { margin:0; color:var(--muted); font-size:.85rem; }
+    .checkup-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .checkup-item { min-width:0; padding:14px; border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:8px; background:var(--surface); }
+    .checkup-item.good { border-top-color:var(--green); } .checkup-item.check { border-top-color:var(--yellow); } .checkup-item.action { border-top-color:var(--red); }
+    .checkup-item h3 { margin:5px 0; font-size:.96rem; }
+    .checkup-item p { margin:0; color:var(--muted); line-height:1.45; }
     .dashboard-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
     .dashboard-actions button,.dashboard-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 12px; border-radius:5px; background:var(--surface2); border:1px solid var(--line); color:var(--text); text-decoration:none; font-size:.78rem; font-weight:800; }
     .dashboard-actions .primary-action { background:var(--blue); border-color:var(--blue); color:#071119; }
@@ -2382,11 +2392,20 @@ def customer_license_center_html():
     .rank-session { display:grid; grid-template-columns:minmax(0,1fr) minmax(170px,.45fr) auto; gap:9px; align-items:end; margin:0 0 12px; }
     .rank-session label { margin:0; }
     .rank-session input,.rank-session select { width:100%; min-width:0; height:40px; padding:0 10px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .rank-options { display:flex; gap:12px; flex-wrap:wrap; margin:0 0 12px; }
+    .rank-options label { display:flex; align-items:center; gap:7px; margin:0; color:var(--muted); font-size:.78rem; font-weight:700; }
+    .rank-options input { width:17px; height:17px; margin:0; }
+    .rank-options button { min-height:36px; }
+    .rank-options .import-pack { display:inline-flex; align-items:center; min-height:36px; padding:0 11px; border:1px solid var(--line); border-radius:5px; background:var(--surface2); color:var(--text); cursor:pointer; }
+    .rank-options .import-pack input { display:none; }
     .session-progress { margin:0 0 12px; color:var(--muted); font-size:.85rem; }
     .rank-tool-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:12px; }
     .rank-tool { min-width:0; padding:16px; border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:8px; background:var(--surface); }
     .rank-tool.current { border-top-color:var(--green); background:#17221c; }
     .rank-tool h3 { margin:6px 0; font-size:1rem; }
+    .rank-tool-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .favorite-tool { min-width:38px; min-height:34px; padding:0 8px; background:var(--surface2); border:1px solid var(--line); color:var(--muted); }
+    .favorite-tool.active { background:#3a321c; color:var(--yellow); }
     .rank-tool p { margin:0 0 10px; color:var(--muted); line-height:1.45; }
     .rank-tool ul { list-style:none; padding:0; font-size:.86rem; }
     .rank-tool li { margin:7px 0; }
@@ -2408,7 +2427,7 @@ def customer_license_center_html():
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
     @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
-    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
+    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head,.checkup-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2424,6 +2443,8 @@ def customer_license_center_html():
       <section class="panel">
         <label for="licenseKey">License key</label>
         <input id="licenseKey" type="password" autocomplete="off" spellcheck="false">
+        <label class="secondary-field" for="appVersion">Installed app version, optional</label>
+        <input id="appVersion" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Example: 2026.07.12.9">
         <div class="actions"><button id="check" type="button">CHECK LICENSE</button><button id="clear" type="button">CLEAR</button></div>
         <div id="status" role="status" aria-live="polite">Not checked.</div>
       </section>
@@ -2433,7 +2454,7 @@ def customer_license_center_html():
   <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { payload:null, upgrades:null, rankTools:null };
+    const state = { payload:null, upgrades:null, rankTools:null, checkup:null, favorites:new Set() };
     const text = (value) => String(value ?? "");
     function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
     function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
@@ -2447,6 +2468,7 @@ def customer_license_center_html():
         device_usage:payload.device_usage,
         service_status:payload.service_status,
         release:payload.release,
+        customer_checkup:state.checkup ? {overall:state.checkup.overall,counts:state.checkup.counts,attention_count:state.checkup.attention_count,items:state.checkup.items} : null,
         privacy_notice:"This customer-created summary excludes the license key, license id, identity, notes, device identities, receipts, paths, PINs, USB secrets, and file contents."
       };
     }
@@ -2471,6 +2493,7 @@ def customer_license_center_html():
         rank:{current:state.rankTools.current_rank,name:state.rankTools.current_rank_name},
         unlocked_count:state.rankTools.unlocked_count,
         tools:state.rankTools.items,
+        favorite_tool_ids:[...state.favorites].sort(),
         session_progress:{
           completed:steps.filter((input) => input.checked).length,
           total:steps.length,
@@ -2496,22 +2519,55 @@ def customer_license_center_html():
       const steps=[...document.querySelectorAll(".rank-step input")];
       const completed=steps.filter((input) => input.checked).length;
       const progress=$("rankSessionProgress");
-      if (progress) progress.textContent=`${completed} of ${steps.length} checklist steps complete in this session.`;
+      if (progress) progress.textContent=`${completed} of ${steps.length} checklist steps complete in this session. ${state.favorites.size} favorite tool${state.favorites.size===1?"":"s"}.`;
+      if ($("incompleteOnly")?.checked) filterRankTools();
     }
     function filterRankTools() {
       const query=($("rankToolSearch")?.value || "").trim().toLowerCase();
       const category=$("rankToolCategory")?.value || "";
+      const currentOnly=Boolean($("currentRankOnly")?.checked);
+      const incompleteOnly=Boolean($("incompleteOnly")?.checked);
+      const favoritesOnly=Boolean($("favoritesOnly")?.checked);
       document.querySelectorAll(".rank-tool").forEach((card) => {
         const matchesText=!query || card.dataset.search.includes(query);
         const matchesCategory=!category || card.dataset.category===category;
-        card.classList.toggle("hidden",!(matchesText && matchesCategory));
+        const matchesRank=!currentOnly || card.dataset.current==="true";
+        const matchesIncomplete=!incompleteOnly || Boolean(card.querySelector('.rank-step input:not(:checked)'));
+        const matchesFavorite=!favoritesOnly || state.favorites.has(card.dataset.toolId);
+        card.classList.toggle("hidden",!(matchesText && matchesCategory && matchesRank && matchesIncomplete && matchesFavorite));
       });
+    }
+    function toggleFavorite(toolId,button) {
+      if (state.favorites.has(toolId)) state.favorites.delete(toolId); else state.favorites.add(toolId);
+      const active=state.favorites.has(toolId); button.classList.toggle("active",active); button.textContent=active?"FAVORITED":"FAVORITE"; button.setAttribute("aria-pressed",String(active));
+      updateRankProgress(); filterRankTools();
+    }
+    function focusNextIncomplete() {
+      const next=[...document.querySelectorAll('.rank-tool:not(.hidden) .rank-step input:not(:checked)')][0];
+      if (!next) return setStatus("No incomplete visible checklist step.","good");
+      next.scrollIntoView({behavior:"smooth",block:"center"}); next.focus(); setStatus("Focused the next incomplete visible step.");
+    }
+    async function importRankPack(file) {
+      if (!file) return;
+      if (file.size > 1024*1024) return setStatus("Rank pack must be 1 MB or smaller.","bad");
+      try {
+        const pack=JSON.parse(await file.text());
+        const savedSteps=pack?.session_progress?.steps;
+        if (!Array.isArray(savedSteps) || savedSteps.length > 1000) throw new Error("Rank pack progress is invalid.");
+        const inputs=[...document.querySelectorAll('.rank-step input')]; const known=new Map(inputs.map((input)=>[`${input.dataset.toolId}:${input.dataset.step}`,input]));
+        inputs.forEach((input)=>{input.checked=false;});
+        savedSteps.forEach((item)=>{ const input=known.get(`${String(item.tool_id)}:${Number(item.step)}`); if (input) input.checked=Boolean(item.completed); });
+        state.favorites=new Set((Array.isArray(pack.favorite_tool_ids)?pack.favorite_tool_ids:[]).filter((id)=>state.rankTools.items.some((tool)=>tool.id===id)));
+        document.querySelectorAll('.favorite-tool').forEach((button)=>{ const active=state.favorites.has(button.dataset.toolId); button.classList.toggle("active",active); button.textContent=active?"FAVORITED":"FAVORITE"; button.setAttribute("aria-pressed",String(active)); });
+        updateRankProgress(); filterRankTools(); setStatus("Privacy-safe rank pack imported into this page session.","good");
+      } catch (error) { setStatus(error.message || "Rank pack import failed.","bad"); }
+      finally { const input=$("rankPackImport"); if (input) input.value=""; }
     }
     function resetRankProgress() {
       document.querySelectorAll(".rank-step input").forEach((input) => { input.checked=false; });
       updateRankProgress(); setStatus("Session checklist progress reset.");
     }
-    function render(payload,upgrades,rankTools) {
+    function render(payload,upgrades,rankTools,checkup) {
       const root=$("result"); root.replaceChildren();
       const summary=document.createElement("div"); summary.className="summary";
       const fields=[
@@ -2545,6 +2601,14 @@ def customer_license_center_html():
       if (payload.release.published && payload.release.download_path) {
         const update=document.createElement("a"); update.className="primary-action"; update.href=payload.release.download_path; update.textContent="DOWNLOAD SIGNED UPDATE"; toolbar.append(update);
       }
+      const checkupSection=document.createElement("section"); checkupSection.className="checkup";
+      const checkupHead=document.createElement("div"); checkupHead.className="checkup-head";
+      const checkupTitle=document.createElement("h2"); checkupTitle.textContent="Customer Checkup";
+      const checkupSummary=document.createElement("p"); checkupSummary.textContent=`${checkup.attention_count} item${checkup.attention_count===1?"":"s"} need attention. Overall: ${checkup.overall}.`;
+      checkupHead.append(checkupTitle,checkupSummary); checkupSection.append(checkupHead);
+      const checkupGrid=document.createElement("div"); checkupGrid.className="checkup-grid";
+      checkup.items.forEach((item)=>{ const card=document.createElement("article"); card.className=`checkup-item ${item.severity}`; const severity=document.createElement("div"); severity.className="eyebrow"; severity.textContent=item.severity.toUpperCase(); const title=document.createElement("h3"); title.textContent=item.title; const detail=document.createElement("p"); detail.textContent=item.detail; card.append(severity,title,detail); checkupGrid.append(card); });
+      checkupSection.append(checkupGrid);
       const details=document.createElement("div"); details.className="details";
       const included=document.createElement("section");
       const includedTitle=document.createElement("h2"); includedTitle.textContent=`Rank ${payload.plan.rank} included tools`;
@@ -2564,7 +2628,7 @@ def customer_license_center_html():
       const actionsTitle=document.createElement("h2"); actionsTitle.textContent="Next actions";
       const actionsList=document.createElement("ul"); payload.customer_actions.forEach((item) => { const li=document.createElement("li"); li.textContent=item; actionsList.append(li); });
       actions.append(actionsTitle,actionsList); details.append(included,service,actions);
-      root.append(summary,progress,message,toolbar,details);
+      root.append(summary,progress,message,toolbar,checkupSection,details);
       const rankSection=document.createElement("section"); rankSection.className="rank-tools";
       const rankHead=document.createElement("div"); rankHead.className="rank-tools-head";
       const rankTitle=document.createElement("h2"); rankTitle.textContent="Rank-exclusive tools";
@@ -2580,16 +2644,23 @@ def customer_license_center_html():
         rankTools.categories.forEach((value) => { const option=document.createElement("option"); option.value=value; option.textContent=value; category.append(option); }); categoryWrap.append(category);
         const reset=document.createElement("button"); reset.type="button"; reset.textContent="RESET PROGRESS"; reset.addEventListener("click",resetRankProgress);
         session.append(searchWrap,categoryWrap,reset); rankSection.append(session);
-        const sessionProgress=document.createElement("div"); sessionProgress.id="rankSessionProgress"; sessionProgress.className="session-progress"; sessionProgress.textContent=`0 of ${rankTools.total_checklist_steps} checklist steps complete in this session.`; rankSection.append(sessionProgress);
+        const options=document.createElement("div"); options.className="rank-options";
+        [["currentRankOnly","CURRENT RANK ONLY"],["incompleteOnly","INCOMPLETE ONLY"],["favoritesOnly","FAVORITES ONLY"]].forEach(([id,labelText])=>{ const label=document.createElement("label"); const input=document.createElement("input"); input.id=id; input.type="checkbox"; input.addEventListener("change",filterRankTools); const value=document.createElement("span"); value.textContent=labelText; label.append(input,value); options.append(label); });
+        const next=document.createElement("button"); next.type="button"; next.textContent="NEXT INCOMPLETE"; next.addEventListener("click",focusNextIncomplete); options.append(next);
+        const importLabel=document.createElement("label"); importLabel.className="import-pack"; importLabel.textContent="IMPORT RANK PACK";
+        const importInput=document.createElement("input"); importInput.id="rankPackImport"; importInput.type="file"; importInput.accept="application/json,.json"; importInput.addEventListener("change",()=>importRankPack(importInput.files?.[0])); importLabel.append(importInput); options.append(importLabel); rankSection.append(options);
+        const sessionProgress=document.createElement("div"); sessionProgress.id="rankSessionProgress"; sessionProgress.className="session-progress"; sessionProgress.textContent=`0 of ${rankTools.total_checklist_steps} checklist steps complete in this session. 0 favorite tools.`; rankSection.append(sessionProgress);
         const rankGrid=document.createElement("div"); rankGrid.className="rank-tool-grid";
         rankTools.items.forEach((tool) => {
           const card=document.createElement("article"); card.className=`rank-tool${tool.rank===rankTools.current_rank?" current":""}`;
-          card.dataset.category=tool.category; card.dataset.search=`${tool.name} ${tool.summary} ${tool.category}`.toLowerCase();
+          card.dataset.toolId=tool.id; card.dataset.current=String(tool.rank===rankTools.current_rank); card.dataset.category=tool.category; card.dataset.search=`${tool.name} ${tool.summary} ${tool.category}`.toLowerCase();
           const rank=document.createElement("div"); rank.className="eyebrow"; rank.textContent=`RANK ${tool.rank}${tool.rank===rankTools.current_rank?" - CURRENT RANK":""} - ${tool.category.toUpperCase()} - ${tool.estimated_minutes} MIN`;
+          const head=document.createElement("div"); head.className="rank-tool-head";
           const title=document.createElement("h3"); title.textContent=tool.name;
+          const favorite=document.createElement("button"); favorite.type="button"; favorite.className="favorite-tool"; favorite.dataset.toolId=tool.id; favorite.textContent="FAVORITE"; favorite.setAttribute("aria-label",`Favorite ${tool.name}`); favorite.setAttribute("aria-pressed","false"); favorite.addEventListener("click",()=>toggleFavorite(tool.id,favorite)); head.append(title,favorite);
           const detail=document.createElement("p"); detail.textContent=tool.summary;
           const list=document.createElement("ul"); tool.checklist.forEach((item,index) => { const li=document.createElement("li"); const label=document.createElement("label"); label.className="rank-step"; const input=document.createElement("input"); input.type="checkbox"; input.dataset.toolId=tool.id; input.dataset.step=String(index+1); input.addEventListener("change",updateRankProgress); const value=document.createElement("span"); value.textContent=item; label.append(input,value); li.append(label); list.append(li); });
-          card.append(rank,title,detail,list); rankGrid.append(card);
+          card.append(rank,head,detail,list); rankGrid.append(card);
         });
         rankSection.append(rankGrid); search.addEventListener("input",filterRankTools); category.addEventListener("change",filterRankTools);
       }
@@ -2618,6 +2689,7 @@ def customer_license_center_html():
     }
     async function checkLicense() {
       const licenseKey=$("licenseKey").value.trim();
+      const appVersion=$("appVersion").value.trim();
       if (!licenseKey) return setStatus("Enter a license key.","warn");
       setStatus("Checking..."); $("check").disabled=true;
       try {
@@ -2630,13 +2702,17 @@ def customer_license_center_html():
         const rankResponse=await fetch("/api/v1/licenses/rank-tools",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
         const rankTools=await rankResponse.json();
         if (!rankResponse.ok) throw new Error(rankTools.message || "Rank tools failed.");
-        state.payload=payload; state.upgrades=upgrades; state.rankTools=rankTools; render(payload,upgrades,rankTools); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
+        const checkupResponse=await fetch("/api/v1/licenses/customer-checkup",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey,app_version:appVersion}),cache:"no-store",redirect:"error"});
+        const checkup=await checkupResponse.json();
+        if (!checkupResponse.ok) throw new Error(checkup.message || "Customer checkup failed.");
+        state.payload=payload; state.upgrades=upgrades; state.rankTools=rankTools; state.checkup=checkup; state.favorites=new Set(); render(payload,upgrades,rankTools,checkup); setStatus("Customer dashboard loaded.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
       } catch (error) { setStatus(error.message || "License check failed.","bad"); }
       finally { $("check").disabled=false; }
     }
     $("check").addEventListener("click",checkLicense);
-    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
+    $("clear").addEventListener("click",() => { state.payload=null; state.upgrades=null; state.rankTools=null; state.checkup=null; state.favorites=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key and session data cleared from page memory."); });
     $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
+    $("appVersion").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
   </script>
 </body>
 </html>"""
@@ -4007,6 +4083,94 @@ def customer_rank_tools(payload):
             "activation receipts, payment data, paths, PINs, USB secrets, and file contents."
         ),
         "server_time_utc": utc_now(),
+    }
+
+
+def customer_checkup(payload):
+    preview = preview_license(payload)
+    rank_tools = customer_rank_tools(payload)
+    app_version = str(payload.get("app_version", "") or "").strip()
+    if len(app_version) > 80:
+        raise ValueError("app_version must be 80 characters or fewer.")
+
+    def version_parts(value):
+        parts = []
+        for part in str(value or "").replace("-", ".").split("."):
+            digits = "".join(character for character in part if character.isdigit())
+            parts.append(int(digits or 0))
+        return tuple(parts)
+
+    attention = []
+
+    def add(identifier, severity, title, detail):
+        attention.append(
+            {"id": identifier, "severity": severity, "title": title, "detail": detail}
+        )
+
+    if preview["status"] == "active":
+        add("license", "good", "License active", "Signed license status is active.")
+    else:
+        add("license", "action", f"License {preview['status']}", preview["message"])
+
+    service = preview["service_status"]
+    if service.get("mode") == "normal":
+        add("service", "good", "Service normal", service.get("message", "Service is operating normally."))
+    else:
+        add("service", "check", f"Service {service.get('mode', 'unknown')}", service.get("message", "Review service status."))
+
+    devices = preview["device_usage"]
+    if devices["available"] > 0:
+        add("devices", "good", "Device seat available", f"{devices['available']} of {devices['maximum']} anonymous seats remain available.")
+    else:
+        add("devices", "check", "Device seats full", f"All {devices['maximum']} anonymous device seats are in use.")
+
+    expires_at = parse_utc(preview["license"].get("expires_at_utc"))
+    if expires_at is None:
+        add("expiration", "info", "No expiration set", "This signed license does not include an expiration time.")
+    else:
+        days_left = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds() // 86400))
+        if days_left <= 7:
+            add("expiration", "action", "Expiration close", f"The license expires in {days_left} day(s).")
+        elif days_left <= 30:
+            add("expiration", "check", "Expiration approaching", f"The license expires in {days_left} day(s).")
+        else:
+            add("expiration", "good", "Expiration not close", f"The license expires in {days_left} day(s).")
+
+    release = preview["release"]
+    latest_version = str(release.get("latest_version", ""))
+    if not release.get("published"):
+        add("update", "check", "No signed update published", "The owner has not published a Windows update package.")
+    elif not app_version:
+        add("update", "info", "App version not entered", f"Latest signed release is {latest_version}.")
+    elif version_parts(app_version) < version_parts(latest_version):
+        add("update", "check", "Update available", f"Installed {app_version}; latest signed release is {latest_version}.")
+    else:
+        add("update", "good", "App version current", f"Installed version {app_version} is current against {latest_version}.")
+
+    if rank_tools["active"]:
+        add("rank-tools", "good", "Rank tools available", f"{rank_tools['unlocked_count']} rank-exclusive tools are unlocked.")
+    else:
+        add("rank-tools", "action", "Rank tools unavailable", rank_tools["message"])
+
+    counts = {severity: sum(item["severity"] == severity for item in attention) for severity in ("good", "info", "check", "action")}
+    overall = "action" if counts["action"] else "check" if counts["check"] else "good"
+    return {
+        "ok": True,
+        "overall": overall,
+        "counts": counts,
+        "attention_count": counts["check"] + counts["action"],
+        "items": attention,
+        "app_version": app_version,
+        "server_time_utc": utc_now(),
+        "limitations": [
+            "This is a license, service, seat, release, and rank-tool checkup, not an antivirus scan.",
+            "It is not a security certification, compliance determination, or guarantee against data loss.",
+            "It cannot inspect, lock, unlock, execute, or modify anything on the customer PC.",
+        ],
+        "privacy_notice": (
+            "Customer checkup responses exclude license keys, license ids, customer identity, owner notes, "
+            "machine identifiers, activation receipts, payment data, paths, PINs, USB secrets, and file contents."
+        ),
     }
 
 
@@ -6342,6 +6506,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "read-only customer license preview without device activation",
                         "privacy-safe customer upgrade options and added-entitlement comparisons",
                         "license-gated rank-exclusive customer checklists and tool packs",
+                        "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -6396,6 +6561,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Preview responses exclude customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, and file contents.",
                         "Preview is read-only and does not activate or consume a device seat.",
                         "Rank-exclusive premium tools require an active signed license; limited, revoked, and expired licenses retain local unlock and recovery only.",
+                        "Customer checkups are informational and cannot inspect, execute, lock, unlock, or modify a customer PC.",
                     ],
                 }
             )
@@ -6686,6 +6852,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/preview": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/upgrade-options": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/rank-tools": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/customer-checkup": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -6739,6 +6906,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/rank-tools":
                 self.send_json(customer_rank_tools(payload))
+                return
+            if path == "/api/v1/licenses/customer-checkup":
+                self.send_json(customer_checkup(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
