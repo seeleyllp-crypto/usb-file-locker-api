@@ -23,6 +23,8 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Privacy-safe audit report upload with signed, expiring downloads
 - Server-calculated breach summaries plus direct admin log downloads on the owner website
 - A public seven-rank shop at `/shop` using allowlisted provider-hosted checkout links
+- An anonymous Plan Advisor and two-to-three-rank comparison workflow in the shop
+- A read-only Customer License Center at `/customer` that checks signed-license status without activating a device seat
 - A homepage at `/`
 - A route index at `/docs`
 - A health endpoint at `/health`
@@ -82,6 +84,7 @@ Then open:
 - `http://127.0.0.1:8000/`
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/shop`
+- `http://127.0.0.1:8000/customer`
 - `http://127.0.0.1:8000/owner`
 - `http://127.0.0.1:8000/owner/insights`
 
@@ -89,11 +92,19 @@ Then open:
 
 - `GET /shop` shows all seven ranks and their cumulative features.
 - `GET /api/v1/shop` returns the same catalog plus checkout readiness.
+- `POST /api/v1/shop/recommend` recommends the lowest matching rank from audience, priority, and optional budget inputs without accepting identity or payment data.
+- `POST /api/v1/shop/compare` compares two or three ranks and returns a cumulative entitlement matrix.
 - A tier has a buy button only when its environment variable contains a valid HTTPS URL on the checkout-host allowlist. Missing, insecure, spoofed, credential-bearing, or malformed URLs leave that tier marked `NOT ON SALE YET`.
 - Payment happens entirely on the checkout provider's page. VaultLink does not receive or store card numbers.
 - License delivery is manual: after independently confirming payment in the provider dashboard, the owner issues the matching license from `/owner`.
 
 Use an adult-owned merchant account and follow the payment provider's age, identity, tax, refund, and business requirements. This release does not include webhook-based payment verification or automatic license fulfillment.
+
+## Customer License Center
+
+- `GET /customer` opens the read-only browser app.
+- `POST /api/v1/licenses/preview` validates a signed license and reports its rank, expiration, limited/revoked state, public service status, and published release.
+- Preview never activates a device, consumes a seat, saves the key in browser storage, or returns customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, USB secrets, or file contents.
 
 ## License endpoints
 

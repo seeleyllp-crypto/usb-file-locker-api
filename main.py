@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.14.0"
+API_VERSION = "0.15.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -588,6 +588,144 @@ def shop_payload():
         "payment_handling": "provider_hosted_checkout_only",
         "card_data_collected_by_vaultlink": False,
         "license_fulfillment": "manual_owner_confirmation",
+        "server_time_utc": utc_now(),
+    }
+
+
+SHOP_AUDIENCE_MINIMUM_RANK = {
+    "personal": 1,
+    "family": 4,
+    "office": 5,
+    "professional": 7,
+}
+SHOP_PRIORITY_MINIMUM_RANK = {
+    "simple-locking": 1,
+    "recovery-guides": 2,
+    "private-vault": 3,
+    "family-safety": 4,
+    "office-evidence": 5,
+    "multi-pc": 6,
+    "professional-review": 7,
+}
+
+
+def recommend_shop_plan(payload):
+    """Return a deterministic, privacy-safe plan recommendation."""
+    audience = str(payload.get("audience", "personal") or "personal").strip().lower()
+    if audience not in SHOP_AUDIENCE_MINIMUM_RANK:
+        raise ValueError("Choose personal, family, office, or professional for audience.")
+    raw_priorities = payload.get("priorities", [])
+    if not isinstance(raw_priorities, list):
+        raise ValueError("priorities must be a list.")
+    priorities = []
+    for value in raw_priorities:
+        priority = str(value or "").strip().lower()
+        if priority not in SHOP_PRIORITY_MINIMUM_RANK:
+            raise ValueError(f"Unknown priority: {priority or 'blank'}")
+        if priority not in priorities:
+            priorities.append(priority)
+    if len(priorities) > 7:
+        raise ValueError("Choose no more than seven priorities.")
+    raw_budget = payload.get("max_budget_usd")
+    max_budget = None
+    if raw_budget not in (None, ""):
+        try:
+            max_budget = int(raw_budget)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("max_budget_usd must be a whole number.") from exc
+        if max_budget < 5 or max_budget > 100000:
+            raise ValueError("max_budget_usd must be between 5 and 100000.")
+
+    target_rank = SHOP_AUDIENCE_MINIMUM_RANK[audience]
+    for priority in priorities:
+        target_rank = max(target_rank, SHOP_PRIORITY_MINIMUM_RANK[priority])
+    ordered = sorted(PLAN_TIERS, key=lambda item: item["rank"])
+    target = next(item for item in ordered if item["rank"] >= target_rank)
+    affordable = [
+        item
+        for item in ordered
+        if max_budget is None or int(item["price_min_usd"]) <= max_budget
+    ]
+    if not affordable:
+        recommended = ordered[0]
+        fit = "over_budget"
+    else:
+        meeting = [item for item in affordable if item["rank"] >= target_rank]
+        if meeting:
+            recommended = meeting[0]
+            fit = "full"
+        else:
+            recommended = affordable[-1]
+            fit = "partial"
+
+    index = ordered.index(recommended)
+    alternatives = []
+    for candidate_index in (index - 1, index + 1):
+        if 0 <= candidate_index < len(ordered):
+            alternatives.append(public_plan_payload(ordered[candidate_index]))
+    reasons = [
+        f"Audience '{audience}' starts at Rank {SHOP_AUDIENCE_MINIMUM_RANK[audience]}.",
+        f"Selected priorities require up to Rank {target_rank}.",
+    ]
+    if fit == "full":
+        reasons.append("This is the lowest-priced rank that meets the selected goals and budget.")
+    elif fit == "partial":
+        reasons.append("No rank inside the budget meets every goal; this is the strongest affordable option.")
+    else:
+        reasons.append("The entered budget is below the current starting price.")
+    return {
+        "ok": True,
+        "fit": fit,
+        "recommended": shop_plan_payload(recommended),
+        "target": public_plan_payload(target),
+        "alternatives": alternatives,
+        "audience": audience,
+        "priorities": priorities,
+        "max_budget_usd": max_budget,
+        "reasons": reasons,
+        "privacy_notice": "Plan Advisor does not request or store a name, email address, payment data, license key, or device identifier.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def compare_shop_plans(payload):
+    raw_plan_ids = payload.get("plan_ids", [])
+    if not isinstance(raw_plan_ids, list):
+        raise ValueError("plan_ids must be a list.")
+    plan_ids = []
+    for value in raw_plan_ids:
+        plan_id = canonical_plan_id(value)
+        if plan_id not in PLAN_INDEX:
+            raise ValueError(f"Unknown plan id: {plan_id or 'blank'}")
+        if plan_id not in plan_ids:
+            plan_ids.append(plan_id)
+    if not 2 <= len(plan_ids) <= 3:
+        raise ValueError("Choose two or three different plans to compare.")
+    plans = [PLAN_INDEX[plan_id] for plan_id in plan_ids]
+    entitlement_ids = []
+    for plan in plans:
+        for feature_id in plan_entitlements(plan["id"]):
+            if feature_id not in entitlement_ids:
+                entitlement_ids.append(feature_id)
+    items = []
+    for plan in plans:
+        entitlements = set(plan_entitlements(plan["id"]))
+        items.append(
+            {
+                **shop_plan_payload(plan),
+                "entitlement_matrix": {
+                    feature_id: feature_id in entitlements for feature_id in entitlement_ids
+                },
+            }
+        )
+    highest = max(plans, key=lambda item: item["rank"])
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+        "entitlement_ids": entitlement_ids,
+        "highest_rank": public_plan_payload(highest),
+        "privacy_notice": "Plan comparison is anonymous and does not accept customer, payment, license, device, or file data.",
         "server_time_utc": utc_now(),
     }
 
@@ -1209,6 +1347,7 @@ def docs_payload():
         "routes": [
             {"method": "GET", "path": "/", "purpose": "HTML homepage"},
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
+            {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/status", "purpose": "Public customer service and signed-release status"},
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
             {"method": "GET", "path": "/privacy", "purpose": "Public privacy notice and data-handling summary"},
@@ -1222,6 +1361,8 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/plans", "purpose": "Plan and entitlement catalog"},
             {"method": "GET", "path": "/api/v1/ranks", "purpose": "Complete ordered license-rank comparison"},
             {"method": "GET", "path": "/api/v1/shop", "purpose": "Public shop readiness and validated checkout links"},
+            {"method": "POST", "path": "/api/v1/shop/recommend", "purpose": "Anonymous audience, priority, and budget plan advisor"},
+            {"method": "POST", "path": "/api/v1/shop/compare", "purpose": "Anonymous comparison of two or three license ranks"},
             {"method": "GET", "path": "/api/v1/legal", "purpose": "Public legal-document version and review status"},
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
@@ -1229,6 +1370,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
+            {"method": "POST", "path": "/api/v1/licenses/preview", "purpose": "Read-only signed-license status without device activation"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -1573,6 +1715,7 @@ def homepage_html():
       <p>{product['tagline']}</p>
       <div class="cta">
         <a class="primary" href="/shop">Open Shop</a>
+        <a href="/customer">Customer License Center</a>
         <a href="/status">Customer Status</a>
         <a href="/terms">Draft Terms</a>
         <a href="/privacy">Privacy Notice</a>
@@ -1756,13 +1899,15 @@ def shop_html():
         else:
             action = '<span class="unavailable" aria-disabled="true">NOT ON SALE YET</span>'
         cards.append(
-            f'<article class="plan rank-{item["rank"]}">'
+            f'<article class="plan rank-{item["rank"]}" data-available="{str(item["checkout_available"]).lower()}" '
+            f'data-search="{html_escape(" ".join([item["name"], item["best_for"], *item["includes"]]).lower(), quote=True)}">'
             f'<div class="rank">RANK {item["rank"]}</div>'
             f'<h2>{html_escape(item["name"])}</h2>'
             f'<div class="price">{html_escape(item["price_label"])}</div>'
             f'<p>{html_escape(item["best_for"])}</p>'
             f'<ul>{included}</ul>'
             f'<div class="entitlements">{len(item["entitlements"])} cumulative entitlements</div>'
+            f'<label class="compare-choice"><input class="compare-plan" type="checkbox" value="{html_escape(item["id"], quote=True)}"> ADD TO COMPARE</label>'
             f'{action}</article>'
         )
     readiness = (
@@ -1791,6 +1936,21 @@ def shop_html():
     h1 {{ margin:0; font-size:clamp(2.1rem,5vw,4rem); line-height:1; letter-spacing:0; }}
     .intro p {{ color:var(--muted); line-height:1.6; margin:14px 0 0; }}
     .ready {{ display:inline-block; margin-top:16px; padding:8px 10px; border-left:4px solid var(--yellow); background:#212026; color:var(--text); }}
+    .advisor {{ margin:0 0 22px; padding:18px; border:1px solid var(--line); border-radius:8px; background:#171c22; }}
+    .advisor h2 {{ margin:0; font-size:1.1rem; }}
+    .advisor-grid {{ display:grid; grid-template-columns:1fr 1fr 1.2fr auto; gap:10px; margin-top:14px; align-items:end; }}
+    label {{ display:block; margin-bottom:6px; color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; }}
+    select,input {{ width:100%; min-width:0; height:42px; padding:0 10px; border:1px solid var(--line); border-radius:5px; background:#0f1318; color:var(--text); font:inherit; }}
+    button {{ min-height:42px; padding:0 14px; border:0; border-radius:5px; background:var(--blue); color:#071119; font-weight:800; cursor:pointer; }}
+    #advisorResult {{ min-height:22px; margin-top:12px; color:var(--muted); line-height:1.5; }}
+    #advisorResult strong {{ color:var(--green); }}
+    .compare-tray {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; margin:0 0 18px; padding:14px; border:1px solid var(--line); border-radius:8px; background:#151a20; }}
+    #compareResult {{ min-width:0; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }}
+    #compareResult strong {{ color:var(--green); }}
+    .catalog-tools {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:end; margin:0 0 14px; }}
+    .toggle {{ display:flex; align-items:center; gap:8px; min-height:42px; color:var(--muted); white-space:nowrap; }}
+    .toggle input {{ width:18px; height:18px; }}
+    .hidden {{ display:none!important; }}
     .plans {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }}
     .plan {{ display:flex; min-width:0; flex-direction:column; padding:20px; background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--green); border-radius:8px; }}
     .plan.rank-2 {{ border-top-color:var(--blue); }} .plan.rank-3 {{ border-top-color:var(--yellow); }} .plan.rank-4 {{ border-top-color:#ef98bd; }}
@@ -1801,6 +1961,8 @@ def shop_html():
     .plan p {{ min-height:72px; color:var(--muted); line-height:1.5; }}
     ul {{ flex:1; margin:0; padding-left:19px; color:var(--muted); line-height:1.55; }}
     .entitlements {{ margin:17px 0 12px; padding-top:12px; border-top:1px solid var(--line); font-size:.82rem; font-weight:700; }}
+    .compare-choice {{ display:flex; align-items:center; gap:8px; min-height:38px; margin:0 0 8px; color:var(--muted); font-size:.72rem; font-weight:800; }}
+    .compare-choice input {{ width:18px; height:18px; }}
     .buy,.unavailable {{ display:block; width:100%; min-height:44px; padding:12px; border-radius:6px; text-align:center; font-size:.82rem; font-weight:800; }}
     .buy {{ background:var(--green); color:#071109; text-decoration:none; }}
     .buy:hover {{ background:#8aeb96; }}
@@ -1808,20 +1970,219 @@ def shop_html():
     footer {{ border-top:1px solid var(--line); background:#14171c; }}
     footer > div {{ padding:24px 0 32px; color:var(--muted); line-height:1.6; }}
     footer strong {{ color:var(--text); }}
-    @media (max-width:620px) {{ header > div {{ align-items:flex-start; flex-direction:column; padding:16px 0; }} main {{ padding-top:28px; }} .plans {{ grid-template-columns:1fr; }} .plan p {{ min-height:0; }} }}
+    @media (max-width:800px) {{ .advisor-grid {{ grid-template-columns:1fr 1fr; }} }}
+    @media (max-width:620px) {{ header > div {{ align-items:flex-start; flex-direction:column; padding:16px 0; }} main {{ padding-top:28px; }} .advisor-grid,.catalog-tools,.compare-tray {{ grid-template-columns:1fr; }} .plans {{ grid-template-columns:1fr; }} .plan p {{ min-height:0; }} .toggle {{ white-space:normal; }} }}
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink</div><nav><a href="/">HOME</a><a href="/owner">OWNER</a></nav></div></header>
+  <header><div><div class="brand">VaultLink</div><nav><a href="/">HOME</a><a href="/customer">CUSTOMER</a><a href="/owner">OWNER</a></nav></div></header>
   <main>
     <section class="intro">
       <h1>VaultLink Shop</h1>
       <p>Choose a Windows USB File Locker rank. Payments open only on the payment provider's hosted checkout page; this site does not collect card numbers.</p>
       <div class="ready">{html_escape(readiness)}</div>
     </section>
+    <section class="advisor" aria-labelledby="advisorTitle">
+      <h2 id="advisorTitle">Plan Advisor</h2>
+      <div class="advisor-grid">
+        <div><label for="audience">For</label><select id="audience"><option value="personal">Personal</option><option value="family">Family</option><option value="office">Office</option><option value="professional">Professional review</option></select></div>
+        <div><label for="budget">Maximum budget, USD</label><input id="budget" type="number" min="5" max="100000" step="1" placeholder="No maximum"></div>
+        <div><label for="priority">Main priority</label><select id="priority"><option value="simple-locking">Simple locking</option><option value="recovery-guides">Recovery guides</option><option value="private-vault">Private vault</option><option value="family-safety">Family safety</option><option value="office-evidence">Office evidence</option><option value="multi-pc">Multiple PCs</option><option value="professional-review">Professional review</option></select></div>
+        <button id="recommend" type="button">RECOMMEND</button>
+      </div>
+      <div id="advisorResult" role="status" aria-live="polite">Choose your needs to see the lowest matching rank.</div>
+    </section>
+    <section class="compare-tray" aria-label="Plan comparison">
+      <div id="compareResult" role="status" aria-live="polite">Select two or three ranks below.</div>
+      <button id="comparePlans" type="button">COMPARE SELECTED</button>
+    </section>
+    <div class="catalog-tools">
+      <div><label for="planSearch">Search plans and included tools</label><input id="planSearch" type="search" placeholder="Search"></div>
+      <label class="toggle"><input id="availableOnly" type="checkbox"> Show available checkout only</label>
+    </div>
     <section class="plans">{''.join(cards)}</section>
   </main>
   <footer><div><strong>How delivery works:</strong> after the payment provider confirms payment, the owner issues the matching VaultLink license. A checkout receipt is not itself a license key. The plans are software packages, not HIPAA certification or a guarantee against data loss, malware, or legal risk.</div></footer>
+  <script>
+    const plans=[...document.querySelectorAll(".plan")];
+    function filterPlans() {{
+      const query=document.getElementById("planSearch").value.trim().toLowerCase();
+      const availableOnly=document.getElementById("availableOnly").checked;
+      plans.forEach((card) => {{
+        const matchesText=!query || card.dataset.search.includes(query);
+        const matchesAvailability=!availableOnly || card.dataset.available==="true";
+        card.classList.toggle("hidden",!(matchesText && matchesAvailability));
+      }});
+    }}
+    async function recommend() {{
+      const output=document.getElementById("advisorResult");
+      const budget=document.getElementById("budget").value.trim();
+      const payload={{audience:document.getElementById("audience").value,priorities:[document.getElementById("priority").value]}};
+      if (budget) payload.max_budget_usd=Number(budget);
+      output.textContent="Checking the plan catalog...";
+      try {{
+        const response=await fetch("/api/v1/shop/recommend",{{method:"POST",headers:{{"Content-Type":"application/json","Accept":"application/json"}},body:JSON.stringify(payload),cache:"no-store",redirect:"error"}});
+        const result=await response.json();
+        if (!response.ok) throw new Error(result.message || "Recommendation failed.");
+        output.replaceChildren();
+        const strong=document.createElement("strong"); strong.textContent=result.recommended.name;
+        output.append(strong,document.createTextNode(`: ${{result.reasons[result.reasons.length-1]}}`));
+      }} catch (error) {{ output.textContent=error.message || "Recommendation failed."; }}
+    }}
+    async function compareSelected() {{
+      const output=document.getElementById("compareResult");
+      const planIds=[...document.querySelectorAll(".compare-plan:checked")].map((input) => input.value);
+      if (planIds.length < 2 || planIds.length > 3) {{ output.textContent="Choose two or three ranks to compare."; return; }}
+      output.textContent="Comparing selected ranks...";
+      try {{
+        const response=await fetch("/api/v1/shop/compare",{{method:"POST",headers:{{"Content-Type":"application/json","Accept":"application/json"}},body:JSON.stringify({{plan_ids:planIds}}),cache:"no-store",redirect:"error"}});
+        const result=await response.json();
+        if (!response.ok) throw new Error(result.message || "Comparison failed.");
+        output.replaceChildren();
+        const strong=document.createElement("strong"); strong.textContent=result.items.map((item) => item.name).join(" vs ");
+        output.append(strong,document.createTextNode(`. Highest selected: ${{result.highest_rank.name}} with ${{result.entitlement_ids.length}} cumulative entitlement types in the comparison.`));
+      }} catch (error) {{ output.textContent=error.message || "Comparison failed."; }}
+    }}
+    document.querySelectorAll(".compare-plan").forEach((input) => input.addEventListener("change",() => {{
+      const selected=[...document.querySelectorAll(".compare-plan:checked")];
+      if (selected.length > 3) {{ input.checked=false; document.getElementById("compareResult").textContent="You can compare up to three ranks."; }}
+      else document.getElementById("compareResult").textContent=selected.length ? `${{selected.length}} rank${{selected.length===1?"":"s"}} selected.` : "Select two or three ranks below.";
+    }}));
+    document.getElementById("planSearch").addEventListener("input",filterPlans);
+    document.getElementById("availableOnly").addEventListener("change",filterPlans);
+    document.getElementById("recommend").addEventListener("click",recommend);
+    document.getElementById("comparePlans").addEventListener("click",compareSelected);
+  </script>
+</body>
+</html>"""
+
+
+def customer_license_center_html():
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Customer License Center</title>
+  <style>
+    :root { --bg:#0f1216; --surface:#171c22; --surface2:#202731; --line:#34404c; --text:#f4f7f8; --muted:#aeb9c4; --green:#69df8a; --blue:#69bce8; --yellow:#ffd166; --red:#ff8278; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#14181d; }
+    header > div, main, footer > div { width:min(1040px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-weight:800; }
+    nav { display:flex; gap:8px; flex-wrap:wrap; }
+    nav a { color:var(--text); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:8px 11px; }
+    main { padding:38px 0 54px; }
+    .top { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr); gap:18px; align-items:start; }
+    h1 { margin:0; max-width:680px; font-size:clamp(2rem,5vw,3.8rem); line-height:1.02; letter-spacing:0; }
+    .lead { color:var(--muted); line-height:1.55; max-width:680px; }
+    .privacy { margin-top:18px; padding:13px 14px; border-left:4px solid var(--blue); background:#171e25; color:var(--muted); line-height:1.45; }
+    .panel { padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+    label { display:block; margin-bottom:7px; color:var(--muted); font-size:.75rem; font-weight:800; text-transform:uppercase; }
+    input { width:100%; min-width:0; height:44px; padding:0 12px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .actions { display:grid; grid-template-columns:1fr auto; gap:9px; margin-top:10px; }
+    button { min-height:42px; border:0; border-radius:5px; padding:0 14px; font-weight:800; cursor:pointer; }
+    #check { background:var(--green); color:#061109; }
+    #clear { background:var(--surface2); color:var(--text); border:1px solid var(--line); }
+    #status { min-height:23px; margin-top:12px; color:var(--muted); line-height:1.4; }
+    #status.good { color:var(--green); } #status.bad { color:var(--red); } #status.warn { color:var(--yellow); }
+    #result { margin-top:20px; }
+    .empty { padding:30px 18px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); text-align:center; }
+    .summary { display:grid; grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(130px,.55fr)); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .summary > div { min-width:0; padding:17px; background:var(--surface); border-right:1px solid var(--line); }
+    .summary > div:last-child { border-right:0; }
+    .eyebrow { color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; }
+    .value { margin-top:6px; font-size:1.05rem; font-weight:800; overflow-wrap:anywhere; }
+    .badge { display:inline-flex; align-items:center; min-height:28px; padding:0 9px; border-radius:4px; background:#203329; color:var(--green); }
+    .badge.warn { background:#3a321c; color:var(--yellow); } .badge.bad { background:#3b2324; color:var(--red); }
+    .message { margin-top:12px; padding:14px; background:#181f26; border-left:4px solid var(--blue); color:var(--muted); line-height:1.5; }
+    .details { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+    .details section { min-width:0; padding:18px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    h2 { margin:0 0 13px; font-size:1rem; }
+    ul { margin:0; padding-left:19px; color:var(--muted); line-height:1.6; }
+    footer { border-top:1px solid var(--line); background:#14181d; }
+    footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
+    @media (max-width:760px) { .top,.details { grid-template-columns:1fr; } .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(2) { border-right:0; } .summary > div:nth-child(3),.summary > div:nth-child(4) { border-bottom:0; } }
+    @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <main>
+    <div class="top">
+      <section>
+        <h1>Customer License Center</h1>
+        <p class="lead">Check your signed VaultLink rank, expiration, service status, release, and included tools without activating another device.</p>
+        <div class="privacy">Your license key stays in this page's memory for this check. It is not saved in browser storage, placed in a URL, or included in the result.</div>
+      </section>
+      <section class="panel">
+        <label for="licenseKey">License key</label>
+        <input id="licenseKey" type="password" autocomplete="off" spellcheck="false">
+        <div class="actions"><button id="check" type="button">CHECK LICENSE</button><button id="clear" type="button">CLEAR</button></div>
+        <div id="status" role="status" aria-live="polite">Not checked.</div>
+      </section>
+    </div>
+    <div id="result"><div class="empty">License information will appear here.</div></div>
+  </main>
+  <footer><div>This page is read-only. It cannot activate a device, unlock files, retrieve PINs, read file contents, or change your PC.</div></footer>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { payload:null };
+    const text = (value) => String(value ?? "");
+    function setStatus(message, tone="") { const node=$("status"); node.textContent=message; node.className=tone; }
+    function badgeTone(status) { return status === "active" ? "" : status === "limited" ? "warn" : "bad"; }
+    function render(payload) {
+      const root=$("result"); root.replaceChildren();
+      const summary=document.createElement("div"); summary.className="summary";
+      const fields=[
+        ["Plan", payload.license.plan_name],
+        ["Status", payload.status],
+        ["Expires", payload.license.expires_at_utc || "No expiration"],
+        ["Latest release", payload.release.latest_version || "Not published"]
+      ];
+      fields.forEach(([label,value],index) => {
+        const cell=document.createElement("div");
+        const key=document.createElement("div"); key.className="eyebrow"; key.textContent=label;
+        const val=document.createElement("div"); val.className="value"; val.textContent=text(value);
+        if (index===1) { val.className=`value badge ${badgeTone(payload.status)}`; }
+        cell.append(key,val); summary.append(cell);
+      });
+      const message=document.createElement("div"); message.className="message"; message.textContent=payload.message;
+      const details=document.createElement("div"); details.className="details";
+      const included=document.createElement("section");
+      const includedTitle=document.createElement("h2"); includedTitle.textContent=`Rank ${payload.plan.rank} included tools`;
+      const list=document.createElement("ul"); payload.plan.includes.forEach((item) => { const li=document.createElement("li"); li.textContent=item; list.append(li); });
+      included.append(includedTitle,list);
+      const service=document.createElement("section");
+      const serviceTitle=document.createElement("h2"); serviceTitle.textContent="Service and privacy";
+      const serviceList=document.createElement("ul");
+      [
+        `Service: ${payload.service_status.mode}`,
+        payload.service_status.message,
+        "No device seat was activated by this check.",
+        "Customer names, email addresses, notes, and machine identifiers are excluded."
+      ].forEach((item) => { const li=document.createElement("li"); li.textContent=item; serviceList.append(li); });
+      service.append(serviceTitle,serviceList); details.append(included,service);
+      root.append(summary,message,details);
+    }
+    async function checkLicense() {
+      const licenseKey=$("licenseKey").value.trim();
+      if (!licenseKey) return setStatus("Enter a license key.","warn");
+      setStatus("Checking..."); $("check").disabled=true;
+      try {
+        const response=await fetch("/api/v1/licenses/preview",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({license_key:licenseKey}),cache:"no-store",redirect:"error"});
+        const payload=await response.json();
+        if (!response.ok) throw new Error(payload.message || "License check failed.");
+        state.payload=payload; render(payload); setStatus("License check complete.",payload.status==="active"?"good":payload.status==="limited"?"warn":"bad");
+      } catch (error) { setStatus(error.message || "License check failed.","bad"); }
+      finally { $("check").disabled=false; }
+    }
+    $("check").addEventListener("click",checkLicense);
+    $("clear").addEventListener("click",() => { state.payload=null; $("licenseKey").value=""; $("result").innerHTML='<div class="empty">License information will appear here.</div>'; setStatus("License key cleared from page memory."); });
+    $("licenseKey").addEventListener("keydown",(event) => { if (event.key === "Enter") checkLicense(); });
+  </script>
 </body>
 </html>"""
 
@@ -3000,6 +3361,66 @@ def owner_insights_html():
 
 def public_plans():
     return [public_plan_payload(item) for item in sorted(PLAN_TIERS, key=lambda item: item["rank"])]
+
+
+def preview_license(payload):
+    """Check signed-license status without activating or consuming a device seat."""
+    license_key = str(payload.get("license_key", "")).strip()
+    if not license_key:
+        raise ValueError("license_key is required.")
+    license_payload = verify_token(license_key, LICENSE_KEY_PREFIX)
+    plan = current_plan_for_license(license_payload)
+    status = "active"
+    message = "This signed license is active. Use the Windows app to activate it on a PC."
+    limited_until = ""
+    if license_is_revoked(license_payload):
+        status = "revoked"
+        message = "This license is blocked from licensed premium features. Local unlock and recovery remain available."
+    else:
+        limit = license_limit_payload(license_payload)
+        if limit:
+            status = "limited"
+            limited_until = limit["limited_until_utc"]
+            message = f"Premium access is limited until {limited_until}: {limit['reason']}"
+        elif license_is_expired(license_payload):
+            status = "expired"
+            message = "This license has expired. Local unlock and recovery remain available."
+    release = {
+        "latest_version": "",
+        "minimum_supported_version": "",
+        "published": False,
+    }
+    try:
+        manifest, _package_path = load_windows_update_release()
+        release = {
+            "latest_version": manifest.get("version", ""),
+            "minimum_supported_version": manifest.get("minimum_supported_version", ""),
+            "published": True,
+        }
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    return {
+        "ok": True,
+        "status": status,
+        "active": status == "active",
+        "message": message,
+        "license": {
+            "license_id": license_payload.get("license_id", ""),
+            "plan_id": plan["id"],
+            "plan_name": plan["name"],
+            "expires_at_utc": license_payload.get("expires_at_utc", ""),
+        },
+        "plan": public_plan_payload(plan),
+        "limited_until_utc": limited_until,
+        "service_status": service_status_payload(),
+        "release": release,
+        "does_not_activate": True,
+        "privacy_notice": (
+            "This response excludes customer labels, email addresses, owner notes, machine identifiers, "
+            "activation receipts, USB secrets, PINs, paths, and file contents."
+        ),
+        "server_time_utc": utc_now(),
+    }
 
 
 def require_json_object(payload):
@@ -5223,6 +5644,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/shop":
             self.send_html(shop_html())
             return
+        if path == "/customer":
+            self.send_html(customer_license_center_html())
+            return
         if path == "/status":
             self.send_html(customer_status_html())
             return
@@ -5275,6 +5699,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "api_activity_enabled": True,
                     "api_activity_integrity": list_admin_api_activity()["integrity"],
                     "shop_enabled": True,
+                    "customer_license_center_enabled": True,
+                    "anonymous_plan_advisor_enabled": True,
                     "shop_checkout_links_configured": shop_payload()["configured_count"],
                     "shop_card_data_collected_by_vaultlink": False,
                     "windows_update_published": UPDATE_MANIFEST_PATH.exists(),
@@ -5325,6 +5751,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "admin rank-targeted read-only owner announcements",
                         "admin informational service status and tamper-evident API activity export",
                         "public shop catalog and validated provider-hosted checkout links",
+                        "anonymous plan recommendations and rank comparisons",
+                        "read-only customer license preview without device activation",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",
@@ -5372,6 +5800,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Only HTTPS links on the configured checkout-host allowlist are published.",
                         "Missing or invalid links leave that tier visibly unavailable.",
                         "License delivery remains an owner action after independent payment confirmation.",
+                        "Plan advice and comparisons do not request or store customer or payment information.",
+                    ],
+                    "customer_center_controls": [
+                        "The license key is sent only in a JSON request body and is never placed in a URL.",
+                        "Preview responses exclude customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, and file contents.",
+                        "Preview is read-only and does not activate or consume a device seat.",
                     ],
                 }
             )
@@ -5659,6 +6093,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/activate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/verify": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/preview": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -5679,6 +6114,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/admin/activity/download-link": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/audit-exports/download-link": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/audit-exports": MAX_AUDIT_JSON_BODY_BYTES,
+            "/api/v1/shop/recommend": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/shop/compare": MAX_LICENSE_JSON_BODY_BYTES,
         }
         if path not in route_limits:
             self.send_json(
@@ -5701,6 +6138,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/verify":
                 self.send_json(verify_license(payload))
+                return
+            if path == "/api/v1/licenses/preview":
+                self.send_json(preview_license(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
@@ -5775,6 +6215,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/audit-exports":
                 self.send_json(create_audit_export(payload), status=HTTPStatus.CREATED)
+                return
+            if path == "/api/v1/shop/recommend":
+                self.send_json(recommend_shop_plan(payload))
+                return
+            if path == "/api/v1/shop/compare":
+                self.send_json(compare_shop_plans(payload))
                 return
         except RequestTooLarge as exc:
             self.send_json(

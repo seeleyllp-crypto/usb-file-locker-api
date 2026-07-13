@@ -249,6 +249,126 @@ class VaultLinkApiTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+    def test_anonymous_plan_advisor_and_comparison(self):
+        status, recommendation = self.call(
+            "/api/v1/shop/recommend",
+            method="POST",
+            payload={
+                "audience": "personal",
+                "priorities": ["private-vault"],
+                "max_budget_usd": 50,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(recommendation["fit"], "full")
+        self.assertEqual(recommendation["recommended"]["id"], "personal-plus")
+        serialized_recommendation = json.dumps(recommendation)
+        self.assertNotIn("customer_email", serialized_recommendation)
+        self.assertNotIn("license_key", serialized_recommendation)
+        self.assertNotIn("machine_id", serialized_recommendation)
+        self.assertNotIn("payment_method", serialized_recommendation)
+
+        status, partial = self.call(
+            "/api/v1/shop/recommend",
+            method="POST",
+            payload={
+                "audience": "family",
+                "priorities": ["family-safety"],
+                "max_budget_usd": 50,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(partial["fit"], "partial")
+        self.assertEqual(partial["recommended"]["id"], "personal-plus")
+        self.assertEqual(partial["target"]["id"], "family-safety")
+
+        status, comparison = self.call(
+            "/api/v1/shop/compare",
+            method="POST",
+            payload={"plan_ids": ["starter", "personal-plus"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(comparison["count"], 2)
+        self.assertEqual(comparison["highest_rank"]["id"], "personal-plus")
+        self.assertIn("personal-vault", comparison["entitlement_ids"])
+        starter = next(item for item in comparison["items"] if item["id"] == "starter")
+        plus = next(item for item in comparison["items"] if item["id"] == "personal-plus")
+        self.assertFalse(starter["entitlement_matrix"]["personal-vault"])
+        self.assertTrue(plus["entitlement_matrix"]["personal-vault"])
+
+        status, bad_comparison = self.call(
+            "/api/v1/shop/compare",
+            method="POST",
+            payload={"plan_ids": ["starter"]},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(bad_comparison["error"], "bad_request")
+
+        status, _headers, page = self.call_bytes("/shop")
+        page_text = page.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("Plan Advisor", page_text)
+        self.assertIn("COMPARE SELECTED", page_text)
+        self.assertIn("/api/v1/shop/recommend", page_text)
+        self.assertIn("/api/v1/shop/compare", page_text)
+
+    def test_customer_license_preview_is_read_only_and_private(self):
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "family-safety",
+                "customer_label": "PRIVATE-CUSTOMER-4581",
+                "customer_email": "private-4581@example.test",
+                "license_note": "PRIVATE-NOTE-4581",
+                "max_devices": 4,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        key = issued["license_key"]
+        license_id = issued["license"]["license_id"]
+        self.assertEqual(api.active_device_count(license_id), 0)
+
+        status, preview = self.call(
+            "/api/v1/licenses/preview",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["status"], "active")
+        self.assertTrue(preview["does_not_activate"])
+        self.assertEqual(preview["plan"]["id"], "family-safety")
+        self.assertEqual(api.active_device_count(license_id), 0)
+        serialized = json.dumps(preview)
+        self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized)
+        self.assertNotIn("private-4581@example.test", serialized)
+        self.assertNotIn("PRIVATE-NOTE-4581", serialized)
+        self.assertNotIn(key, serialized)
+
+        status, _revoked = self.call(
+            "/api/v1/licenses/revoke",
+            method="POST",
+            payload={"license_key": key},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        status, preview = self.call(
+            "/api/v1/licenses/preview",
+            method="POST",
+            payload={"license_key": key},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(preview["status"], "revoked")
+        self.assertFalse(preview["active"])
+
+        status, _headers, page = self.call_bytes("/customer")
+        page_text = page.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("Customer License Center", page_text)
+        self.assertIn("/api/v1/licenses/preview", page_text)
+        self.assertIn("without activating", page_text.lower())
+
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")
         self.assertEqual(status, 403)
