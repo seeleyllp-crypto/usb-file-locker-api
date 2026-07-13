@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.17.0"
+API_VERSION = "0.18.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -596,7 +596,123 @@ RANK_EXCLUSIVE_TOOLS = [
         "summary": "A handoff checklist for legal and security reviewers.",
         "checklist": ["State that the product is not certified", "Include threat model and limitations", "Include signed release evidence", "Track reviewer findings and remediation"],
     },
+    {
+        "id": "defender-baseline-snapshot",
+        "rank": 1,
+        "name": "Defender Baseline Snapshot",
+        "summary": "A simple record of Windows protection readiness.",
+        "checklist": ["Confirm real-time protection is on", "Confirm security intelligence is current", "Run a quick scan", "Record only status and UTC time"],
+    },
+    {
+        "id": "key-separation-plan",
+        "rank": 1,
+        "name": "Key Separation Plan",
+        "summary": "A checklist for keeping recovery material separated.",
+        "checklist": ["Store the USB away from the PC", "Store the PIN separately", "Keep one recovery copy offline", "Test access without revealing the secret"],
+    },
+    {
+        "id": "update-day-checklist",
+        "rank": 2,
+        "name": "Home Update Day",
+        "summary": "A monthly Windows and app update checklist.",
+        "checklist": ["Create a current backup", "Install Windows updates", "Verify Defender status", "Test VaultLink lock and recovery"],
+    },
+    {
+        "id": "backup-verification-log",
+        "rank": 2,
+        "name": "Backup Verification Log",
+        "summary": "A content-free record of successful restore tests.",
+        "checklist": ["Choose a disposable test file", "Restore it from backup", "Compare the restored result", "Record date and success only"],
+    },
+    {
+        "id": "secure-sharing-checklist",
+        "rank": 3,
+        "name": "Secure Sharing Checklist",
+        "summary": "A pre-share privacy and recovery review.",
+        "checklist": ["Remove unnecessary private fields", "Use an approved transfer method", "Share keys through a separate channel", "Confirm the recipient can open the test package"],
+    },
+    {
+        "id": "sensitive-data-map",
+        "rank": 3,
+        "name": "Sensitive Data Map",
+        "summary": "A category-only map of protected information.",
+        "checklist": ["List data categories only", "Assign a protection level", "Mark backup coverage", "Exclude names, paths, values, and file contents"],
+    },
+    {
+        "id": "family-update-day",
+        "rank": 4,
+        "name": "Family Update Day",
+        "summary": "An anonymous household update and recovery session.",
+        "checklist": ["Count devices needing updates", "Update one device at a time", "Verify backups before restart", "Complete one family recovery drill"],
+    },
+    {
+        "id": "guardian-safety-review",
+        "rank": 4,
+        "name": "Guardian Safety Review",
+        "summary": "An adult-led review of family key and recovery practices.",
+        "checklist": ["Review who holds the master key", "Confirm minors do not hold recovery secrets", "Confirm backup separation", "Record completion without personal names"],
+    },
+    {
+        "id": "incident-triage-board",
+        "rank": 5,
+        "name": "Incident Triage Board",
+        "summary": "A severity-based office incident checklist.",
+        "checklist": ["Record symptom and UTC time", "Assign low, medium, high, or critical", "Preserve privacy-safe evidence", "Escalate high-risk events to qualified help"],
+    },
+    {
+        "id": "change-approval-check",
+        "rank": 5,
+        "name": "Change Approval Check",
+        "summary": "A compact pre-release office change review.",
+        "checklist": ["Describe the intended change", "Record test evidence", "Confirm rollback steps", "Require an authorized adult approval"],
+    },
+    {
+        "id": "recovery-coverage-map",
+        "rank": 6,
+        "name": "Recovery Coverage Map",
+        "summary": "An anonymous multi-PC recovery coverage report.",
+        "checklist": ["Count protected PCs", "Count tested recovery paths", "Identify coverage gaps by anonymous ID", "Schedule the next recovery drill"],
+    },
+    {
+        "id": "deployment-exception-register",
+        "rank": 6,
+        "name": "Deployment Exception Register",
+        "summary": "A privacy-safe record of rollout exceptions.",
+        "checklist": ["Assign an anonymous exception ID", "Record the reason category", "Record temporary safeguards", "Set an adult review date"],
+    },
+    {
+        "id": "threat-model-review",
+        "rank": 7,
+        "name": "Threat Model Review",
+        "summary": "A structured review of assets, threats, and safeguards.",
+        "checklist": ["List protected asset categories", "List realistic threat actors", "Map implemented safeguards", "Record residual risks for professional review"],
+    },
+    {
+        "id": "audit-readiness-index",
+        "rank": 7,
+        "name": "Audit Readiness Index",
+        "summary": "A preparation checklist for an independent review.",
+        "checklist": ["Verify policy review dates", "Verify evidence hashes", "Verify incident records", "List gaps without claiming certification"],
+    },
 ]
+
+
+RANK_TOOL_MINUTES = {1: 10, 2: 15, 3: 20, 4: 25, 5: 30, 6: 35, 7: 45}
+
+
+def rank_tool_category(tool_id):
+    value = str(tool_id or "").lower()
+    categories = (
+        ("Recovery", ("recovery", "backup", "custody", "key-separation")),
+        ("Evidence", ("evidence", "manifest", "attestation", "audit")),
+        ("Governance", ("policy", "control", "professional", "approval", "delegation", "exception")),
+        ("Privacy", ("privacy", "vault", "sensitive-data", "secure-sharing")),
+        ("Security", ("defender", "incident", "threat", "safety", "update-day", "guardian")),
+    )
+    for category, terms in categories:
+        if any(term in value for term in terms):
+            return category
+    return "Operations"
 
 
 PLAN_INDEX = {item["id"]: item for item in PLAN_TIERS}
@@ -2263,13 +2379,22 @@ def customer_license_center_html():
     .rank-tools { margin-top:18px; }
     .rank-tools-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
     .rank-tools-head p { margin:0; max-width:620px; color:var(--muted); font-size:.85rem; text-align:right; }
+    .rank-session { display:grid; grid-template-columns:minmax(0,1fr) minmax(170px,.45fr) auto; gap:9px; align-items:end; margin:0 0 12px; }
+    .rank-session label { margin:0; }
+    .rank-session input,.rank-session select { width:100%; min-width:0; height:40px; padding:0 10px; border:1px solid var(--line); border-radius:5px; background:#0d1116; color:var(--text); font:inherit; }
+    .session-progress { margin:0 0 12px; color:var(--muted); font-size:.85rem; }
     .rank-tool-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:12px; }
     .rank-tool { min-width:0; padding:16px; border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:8px; background:var(--surface); }
     .rank-tool.current { border-top-color:var(--green); background:#17221c; }
     .rank-tool h3 { margin:6px 0; font-size:1rem; }
     .rank-tool p { margin:0 0 10px; color:var(--muted); line-height:1.45; }
-    .rank-tool ul { font-size:.86rem; }
+    .rank-tool ul { list-style:none; padding:0; font-size:.86rem; }
+    .rank-tool li { margin:7px 0; }
+    .rank-step { display:flex; align-items:flex-start; gap:8px; color:var(--muted); text-transform:none; font-size:inherit; font-weight:400; line-height:1.4; }
+    .rank-step input { flex:0 0 auto; width:17px; height:17px; margin:2px 0 0; padding:0; }
+    .rank-step input:checked + span { color:var(--green); text-decoration:line-through; }
     .locked-summary { margin-top:10px; color:var(--muted); font-size:.82rem; }
+    .hidden { display:none!important; }
     .upgrades { margin-top:18px; }
     .upgrades-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:10px; }
     .upgrades-head p { margin:0; color:var(--muted); font-size:.85rem; }
@@ -2283,7 +2408,7 @@ def customer_license_center_html():
     footer { border-top:1px solid var(--line); background:#14181d; }
     footer > div { padding:23px 0 30px; color:var(--muted); line-height:1.5; }
     @media (max-width:900px) { .summary { grid-template-columns:1fr 1fr; } .summary > div { border-bottom:1px solid var(--line); } .summary > div:nth-child(even) { border-right:0; } .summary > div:nth-last-child(-n+2) { border-bottom:0; } }
-    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } }
+    @media (max-width:760px) { .top { grid-template-columns:1fr; } .rank-tools-head,.upgrades-head { align-items:flex-start; flex-direction:column; } .rank-tools-head p { text-align:left; } .rank-session { grid-template-columns:1fr; } }
     @media (max-width:480px) { header > div { align-items:flex-start; flex-direction:column; padding:14px 0; } .summary { grid-template-columns:1fr; } .summary > div { border-right:0; border-bottom:1px solid var(--line)!important; } .summary > div:last-child { border-bottom:0!important; } .actions { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -2340,11 +2465,17 @@ def customer_license_center_html():
       setTimeout(() => URL.revokeObjectURL(url),1000); setStatus("Privacy-safe summary exported.","good");
     }
     function safeRankPack() {
+      const steps=[...document.querySelectorAll(".rank-step input")];
       return {
         exported_at_utc:new Date().toISOString(),
         rank:{current:state.rankTools.current_rank,name:state.rankTools.current_rank_name},
         unlocked_count:state.rankTools.unlocked_count,
         tools:state.rankTools.items,
+        session_progress:{
+          completed:steps.filter((input) => input.checked).length,
+          total:steps.length,
+          steps:steps.map((input) => ({tool_id:input.dataset.toolId,step:Number(input.dataset.step),completed:input.checked}))
+        },
         privacy_notice:"This rank pack excludes the license key, license id, customer identity, notes, device data, receipts, payment data, paths, PINs, USB secrets, and file contents."
       };
     }
@@ -2360,6 +2491,25 @@ def customer_license_center_html():
       const url=URL.createObjectURL(blob); const link=document.createElement("a");
       link.href=url; link.download=`vaultlink-rank-${state.rankTools.current_rank}-tool-pack.json`; document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url),1000); setStatus("Privacy-safe rank tool pack exported.","good");
+    }
+    function updateRankProgress() {
+      const steps=[...document.querySelectorAll(".rank-step input")];
+      const completed=steps.filter((input) => input.checked).length;
+      const progress=$("rankSessionProgress");
+      if (progress) progress.textContent=`${completed} of ${steps.length} checklist steps complete in this session.`;
+    }
+    function filterRankTools() {
+      const query=($("rankToolSearch")?.value || "").trim().toLowerCase();
+      const category=$("rankToolCategory")?.value || "";
+      document.querySelectorAll(".rank-tool").forEach((card) => {
+        const matchesText=!query || card.dataset.search.includes(query);
+        const matchesCategory=!category || card.dataset.category===category;
+        card.classList.toggle("hidden",!(matchesText && matchesCategory));
+      });
+    }
+    function resetRankProgress() {
+      document.querySelectorAll(".rank-step input").forEach((input) => { input.checked=false; });
+      updateRankProgress(); setStatus("Session checklist progress reset.");
     }
     function render(payload,upgrades,rankTools) {
       const root=$("result"); root.replaceChildren();
@@ -2421,16 +2571,27 @@ def customer_license_center_html():
       const rankMessage=document.createElement("p"); rankMessage.textContent=rankTools.message;
       rankHead.append(rankTitle,rankMessage); rankSection.append(rankHead);
       if (rankTools.items.length) {
+        const session=document.createElement("div"); session.className="rank-session";
+        const searchWrap=document.createElement("label"); searchWrap.textContent="SEARCH UNLOCKED TOOLS";
+        const search=document.createElement("input"); search.id="rankToolSearch"; search.type="search"; search.placeholder="Search"; searchWrap.append(search);
+        const categoryWrap=document.createElement("label"); categoryWrap.textContent="CATEGORY";
+        const category=document.createElement("select"); category.id="rankToolCategory";
+        const all=document.createElement("option"); all.value=""; all.textContent="All categories"; category.append(all);
+        rankTools.categories.forEach((value) => { const option=document.createElement("option"); option.value=value; option.textContent=value; category.append(option); }); categoryWrap.append(category);
+        const reset=document.createElement("button"); reset.type="button"; reset.textContent="RESET PROGRESS"; reset.addEventListener("click",resetRankProgress);
+        session.append(searchWrap,categoryWrap,reset); rankSection.append(session);
+        const sessionProgress=document.createElement("div"); sessionProgress.id="rankSessionProgress"; sessionProgress.className="session-progress"; sessionProgress.textContent=`0 of ${rankTools.total_checklist_steps} checklist steps complete in this session.`; rankSection.append(sessionProgress);
         const rankGrid=document.createElement("div"); rankGrid.className="rank-tool-grid";
         rankTools.items.forEach((tool) => {
           const card=document.createElement("article"); card.className=`rank-tool${tool.rank===rankTools.current_rank?" current":""}`;
-          const rank=document.createElement("div"); rank.className="eyebrow"; rank.textContent=`RANK ${tool.rank}${tool.rank===rankTools.current_rank?" - CURRENT RANK":""}`;
+          card.dataset.category=tool.category; card.dataset.search=`${tool.name} ${tool.summary} ${tool.category}`.toLowerCase();
+          const rank=document.createElement("div"); rank.className="eyebrow"; rank.textContent=`RANK ${tool.rank}${tool.rank===rankTools.current_rank?" - CURRENT RANK":""} - ${tool.category.toUpperCase()} - ${tool.estimated_minutes} MIN`;
           const title=document.createElement("h3"); title.textContent=tool.name;
           const detail=document.createElement("p"); detail.textContent=tool.summary;
-          const list=document.createElement("ul"); tool.checklist.forEach((item) => { const li=document.createElement("li"); li.textContent=item; list.append(li); });
+          const list=document.createElement("ul"); tool.checklist.forEach((item,index) => { const li=document.createElement("li"); const label=document.createElement("label"); label.className="rank-step"; const input=document.createElement("input"); input.type="checkbox"; input.dataset.toolId=tool.id; input.dataset.step=String(index+1); input.addEventListener("change",updateRankProgress); const value=document.createElement("span"); value.textContent=item; label.append(input,value); li.append(label); list.append(li); });
           card.append(rank,title,detail,list); rankGrid.append(card);
         });
-        rankSection.append(rankGrid);
+        rankSection.append(rankGrid); search.addEventListener("input",filterRankTools); category.addEventListener("change",filterRankTools);
       }
       const locked=document.createElement("div"); locked.className="locked-summary"; locked.textContent=rankTools.locked_count ? `${rankTools.locked_count} additional tool${rankTools.locked_count===1?"":"s"} remain locked or unavailable.` : "All rank-exclusive tools are unlocked.";
       rankSection.append(locked); root.append(rankSection);
@@ -3798,20 +3959,23 @@ def customer_rank_tools(payload):
             "rank_name": PLAN_TIERS[tool["rank"] - 1]["name"],
             "name": tool["name"],
             "summary": tool["summary"],
+            "category": rank_tool_category(tool["id"]),
+            "estimated_minutes": RANK_TOOL_MINUTES[tool["rank"]],
         }
         if include_checklist:
             result["checklist"] = list(tool["checklist"])
         return result
 
+    ordered_tools = sorted(RANK_EXCLUSIVE_TOOLS, key=lambda item: (item["rank"], item["name"]))
     unlocked = [
         public_tool(tool, include_checklist=True)
-        for tool in RANK_EXCLUSIVE_TOOLS
+        for tool in ordered_tools
         if premium_available and tool["rank"] <= current_rank
     ]
     current_exclusive = [item for item in unlocked if item["rank"] == current_rank]
     locked = [
         public_tool(tool, include_checklist=False)
-        for tool in RANK_EXCLUSIVE_TOOLS
+        for tool in ordered_tools
         if not premium_available or tool["rank"] > current_rank
     ]
     message = (
@@ -3831,6 +3995,8 @@ def customer_rank_tools(payload):
         "unlocked_count": len(unlocked),
         "current_rank_exclusive_count": len(current_exclusive),
         "locked_count": len(locked),
+        "total_checklist_steps": sum(len(item.get("checklist", [])) for item in unlocked),
+        "categories": sorted({item["category"] for item in unlocked}),
         "items": unlocked,
         "current_rank_items": current_exclusive,
         "locked_previews": locked,

@@ -105,9 +105,9 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 - `GET /customer` opens the read-only browser app.
 - `POST /api/v1/licenses/preview` validates a signed license and reports its rank, expiration, limited/revoked state, anonymous seat totals, public service status, published release, and status-specific next actions.
 - `POST /api/v1/licenses/upgrade-options` returns higher ranks, added entitlements, and validated hosted-checkout availability without returning the key or private license fields.
-- `POST /api/v1/licenses/rank-tools` returns three concrete checklist tools per unlocked rank, for 21 cumulative rank-exclusive tools across all seven ranks.
+- `POST /api/v1/licenses/rank-tools` returns five concrete checklist tools per unlocked rank, for 35 cumulative rank-exclusive tools across all seven ranks, with categories and time estimates.
 - The browser dashboard can copy or export a privacy-safe customer summary and link to the published SHA-256-pinned Windows update package.
-- Active customers can copy their current-rank tools or export every unlocked checklist as a privacy-safe rank pack. Limited, revoked, and expired licenses keep local unlock and recovery but do not receive premium rank-tool contents.
+- Active customers can search and filter tools, track checklist progress in page memory, copy their current-rank tools, or export every unlocked checklist and session result as a privacy-safe rank pack. Limited, revoked, and expired licenses keep local unlock and recovery but do not receive premium rank-tool contents.
 - Preview never activates a device, consumes a seat, saves the key in browser storage, or returns customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, USB secrets, or file contents.
 
 ## License endpoints

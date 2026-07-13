@@ -313,6 +313,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("/api/v1/shop/compare", page_text)
 
     def test_customer_license_preview_is_read_only_and_private(self):
+        self.assertEqual(len(api.RANK_EXCLUSIVE_TOOLS), 35)
+        self.assertEqual(len({item["id"] for item in api.RANK_EXCLUSIVE_TOOLS}), 35)
+        for rank in range(1, 8):
+            self.assertEqual(sum(item["rank"] == rank for item in api.RANK_EXCLUSIVE_TOOLS), 5)
+        self.assertTrue(all(len(item["checklist"]) == 4 for item in api.RANK_EXCLUSIVE_TOOLS))
+
         status, issued = self.call(
             "/api/v1/licenses/issue",
             method="POST",
@@ -378,14 +384,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(rank_tools["active"])
         self.assertEqual(rank_tools["current_rank"], 4)
-        self.assertEqual(rank_tools["unlocked_count"], 12)
-        self.assertEqual(rank_tools["current_rank_exclusive_count"], 3)
-        self.assertEqual(rank_tools["locked_count"], 9)
-        self.assertEqual(len(rank_tools["items"]), 12)
-        self.assertEqual(len(rank_tools["current_rank_items"]), 3)
+        self.assertEqual(rank_tools["unlocked_count"], 20)
+        self.assertEqual(rank_tools["current_rank_exclusive_count"], 5)
+        self.assertEqual(rank_tools["locked_count"], 15)
+        self.assertEqual(rank_tools["total_checklist_steps"], 80)
+        self.assertIn("Recovery", rank_tools["categories"])
+        self.assertIn("Security", rank_tools["categories"])
+        self.assertEqual(len(rank_tools["items"]), 20)
+        self.assertEqual(len(rank_tools["current_rank_items"]), 5)
         self.assertTrue(all(item["rank"] <= 4 for item in rank_tools["items"]))
         self.assertTrue(all(item["rank"] == 4 for item in rank_tools["current_rank_items"]))
         self.assertTrue(all(item.get("checklist") for item in rank_tools["items"]))
+        self.assertTrue(all(item.get("category") for item in rank_tools["items"]))
+        self.assertTrue(all(item.get("estimated_minutes") for item in rank_tools["items"]))
         self.assertTrue(all("checklist" not in item for item in rank_tools["locked_previews"]))
         serialized_rank_tools = json.dumps(rank_tools)
         self.assertNotIn("PRIVATE-CUSTOMER-4581", serialized_rank_tools)
@@ -441,7 +452,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertFalse(blocked_tools["active"])
         self.assertEqual(blocked_tools["unlocked_count"], 0)
         self.assertEqual(blocked_tools["items"], [])
-        self.assertEqual(blocked_tools["locked_count"], 21)
+        self.assertEqual(blocked_tools["locked_count"], 35)
         self.assertTrue(blocked_tools["recovery_always_available"])
 
         status, pro_issued = self.call(
@@ -458,8 +469,8 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(pro_tools["current_rank"], 7)
-        self.assertEqual(pro_tools["unlocked_count"], 21)
-        self.assertEqual(pro_tools["current_rank_exclusive_count"], 3)
+        self.assertEqual(pro_tools["unlocked_count"], 35)
+        self.assertEqual(pro_tools["current_rank_exclusive_count"], 5)
         self.assertEqual(pro_tools["locked_count"], 0)
 
         status, _headers, page = self.call_bytes("/customer")
@@ -474,6 +485,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("COPY RANK TOOLS", page_text)
         self.assertIn("EXPORT RANK PACK", page_text)
         self.assertIn("Rank-exclusive tools", page_text)
+        self.assertIn("SEARCH UNLOCKED TOOLS", page_text)
+        self.assertIn("RESET PROGRESS", page_text)
+        self.assertIn("checklist steps complete in this session", page_text)
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 
