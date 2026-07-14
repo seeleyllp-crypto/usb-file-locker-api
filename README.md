@@ -12,6 +12,8 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Trust Center at `/trust` with a privacy-safe 100-point score for service configuration, signed releases, persistent storage, recovery boundaries, and security limitations
+- An owner-only Trust Operations console at `/owner/trust` with a 100-point operational score, aggregate security gates, concrete owner actions, and safe JSON export
 - An encrypted customer Bug Inbox with owner status actions, private notes, replies, and deletion
 - Rank-targeted, scheduled, read-only Owner Announcements with desktop delivery
 - Public informational service status with automatic licensed-desktop notices
@@ -94,9 +96,20 @@ Then open:
 - `http://127.0.0.1:8000/workspace`
 - `http://127.0.0.1:8000/update`
 - `http://127.0.0.1:8000/readiness`
+- `http://127.0.0.1:8000/trust`
 - `http://127.0.0.1:8000/owner`
 - `http://127.0.0.1:8000/owner/insights`
 - `http://127.0.0.1:8000/owner/customers`
+- `http://127.0.0.1:8000/owner/trust`
+
+## Trust Center
+
+- `GET /trust` opens the public scored Trust Center without requiring a license or returning customer records.
+- `GET /api/v1/trust-center` returns exactly ten weighted checks totaling 100 points, signed-release status, storage and cryptography descriptions, data boundaries, recovery steps, and honest limitations.
+- `GET /owner/trust` opens Trust Operations. The admin token stays in page memory and is sent only in the `X-License-Admin-Token` header.
+- `GET /api/v1/admin/trust-center` returns exactly fourteen weighted operational checks totaling 100 points plus aggregate actions and category summaries.
+- Trust responses never return license keys, customer labels, receipts, private notes, machine identity, paths, PINs, USB secrets, filenames, or file contents.
+- These scores are operational readiness indicators, not certification, legal advice, guaranteed protection, or a replacement for independent security review.
 
 ## Shop
 

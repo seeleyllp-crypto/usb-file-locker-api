@@ -16,11 +16,16 @@ from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from customer_experience_pages import customer_workspace_html, owner_customer_experience_html
+from customer_experience_pages import (
+    customer_trust_center_html,
+    customer_workspace_html,
+    owner_customer_experience_html,
+    owner_trust_center_html,
+)
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.26.0"
+API_VERSION = "0.27.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -86,6 +91,16 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "license_sync",
         "load_key",
         "load_recent_key",
+        "local_control_center_open",
+        "local_control_desktop_lock",
+        "local_control_launch",
+        "local_control_login",
+        "local_control_logout",
+        "local_control_pin_change",
+        "local_control_report_export",
+        "local_control_start",
+        "local_control_stop",
+        "local_control_usb_removed",
         "lock",
         "lock_note",
         "lock_remove_original",
@@ -106,6 +121,9 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "scan_personal_files",
         "support_ticket_submit",
         "support_ticket_view",
+        "trust_center_export",
+        "trust_center_open",
+        "trust_center_refresh",
         "shop_open",
         "unlock",
         "unlock_double_click",
@@ -173,6 +191,12 @@ class UnsupportedMediaType(ValueError):
 
 
 FEATURES = [
+    {
+        "id": "trust-recovery-center",
+        "title": "Trust and Recovery Center",
+        "summary": "Review privacy-safe local and online trust checks, signed-release evidence, recovery guidance, and service boundaries without uploading files or secrets.",
+        "category": "starter",
+    },
     {
         "id": "customer-hub",
         "title": "Customer Workspace",
@@ -285,6 +309,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Trust and Recovery Center", "script": "trust_recovery_center.py", "purpose": "Combine local Defender, audit-chain, USB-policy, license, update, and API trust status in a privacy-safe report."},
     {"name": "Customer Workspace", "script": "customer_hub.py", "purpose": "Load the saved license into a privacy-safe customer action center and safe export."},
     {"name": "Privacy Safety Hub", "script": "privacy_safety_hub.py", "purpose": "Launch dashboard for the toolkit."},
     {"name": "Locked File Browser", "script": "locked_file_browser.py", "purpose": "Find .locked files quickly and jump into unlock mode."},
@@ -321,11 +346,13 @@ PLAN_TIERS = [
         "includes": [
             "Portable locking tools",
             "Quick lock notes",
+            "Trust and Recovery Center",
             "Microsoft Defender package scan",
             "Signed purchase verification",
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "trust-recovery-center",
             "portable-locking",
             "quick-lock-note",
         ],
@@ -1608,6 +1635,7 @@ def product_payload():
             "key_inspector.py",
             "quick_lock_note.py",
             "customer_hub.py",
+            "trust_recovery_center.py",
         }
     )
     return {
@@ -1630,12 +1658,14 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/trust", "purpose": "Public trust, signed-release, privacy-boundary, and recovery center"},
             {"method": "GET", "path": "/status", "purpose": "Public customer service and signed-release status"},
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
             {"method": "GET", "path": "/privacy", "purpose": "Public privacy notice and data-handling summary"},
             {"method": "GET", "path": "/owner", "purpose": "Owner-only key and note web console"},
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
+            {"method": "GET", "path": "/owner/trust", "purpose": "Owner-only trust, release, storage, audit, and service operations gate"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1649,6 +1679,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/legal", "purpose": "Public legal-document version and review status"},
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
+            {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
             {"method": "GET", "path": "/api/v1/deploy", "purpose": "Railway deploy hints"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
@@ -1675,6 +1706,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/updates/windows/status", "purpose": "Admin-only live Ed25519, SHA-256, package-size, and app-data release test"},
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "GET", "path": "/api/v1/admin/customer-experience", "purpose": "Admin-only aggregate customer experience, rank, release, and support health"},
+            {"method": "GET", "path": "/api/v1/admin/trust-center", "purpose": "Admin-only trust gate with concrete operational actions"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -1860,6 +1892,186 @@ def windows_update_release_status():
             },
             "tested_at_utc": utc_now(),
         }
+
+
+def trust_center_payload():
+    """Return public operational posture without customer or license records."""
+    release = windows_update_release_status()
+    service = service_status_payload()
+    license_persistent = license_state_storage_is_persistent()
+    audit_persistent = audit_storage_is_persistent()
+    release_checks = release.get("checks") or {}
+    checks = []
+
+    def add(identifier, category, title, passed, weight, detail, action=""):
+        checks.append(
+            {
+                "id": identifier,
+                "category": category,
+                "title": title,
+                "state": "good" if passed else "attention",
+                "passed": bool(passed),
+                "weight": int(weight),
+                "detail": detail,
+                "action": action,
+            }
+        )
+
+    add("api-online", "Service", "API is responding", True, 10, f"VaultLink API {API_VERSION} is responding over this endpoint.")
+    add(
+        "service-normal",
+        "Service",
+        "Customer service mode",
+        service.get("mode") == "normal",
+        10,
+        str(service.get("message", "No public service message is available.")),
+        "Review the public service notice before relying on online licensing or updates.",
+    )
+    add(
+        "admin-auth",
+        "Access",
+        "Owner API authentication configured",
+        admin_token_configured(),
+        10,
+        "Owner mutations require the X-License-Admin-Token request header.",
+        "Configure LICENSE_ADMIN_TOKEN before using owner operations.",
+    )
+    add(
+        "license-signing",
+        "Cryptography",
+        "Dedicated license signing secret",
+        not using_default_signing_secret(),
+        10,
+        "Signed license and receipt tokens use a configured HMAC secret." if not using_default_signing_secret() else "The development signing-secret fallback is active.",
+        "Configure a strong LICENSE_SIGNING_SECRET and retain it for license continuity.",
+    )
+    add(
+        "license-storage",
+        "Durability",
+        "Persistent license storage",
+        license_persistent,
+        10,
+        "License, revocation, device-seat, support, and announcement records use configured persistent storage." if license_persistent else "License records currently use local ephemeral storage.",
+        "Mount a persistent volume and configure LICENSE_STATE_DIR.",
+    )
+    add(
+        "audit-storage",
+        "Durability",
+        "Persistent privacy-safe audit storage",
+        audit_persistent,
+        10,
+        "Privacy-safe audit exports use configured persistent storage." if audit_persistent else "Audit exports currently use local ephemeral storage.",
+        "Mount a persistent volume and configure AUDIT_EXPORT_DIR.",
+    )
+    add(
+        "signed-release",
+        "Updates",
+        "Signed Windows release available",
+        bool(release.get("ready")),
+        15,
+        f"Signed desktop release {release.get('version', 'unavailable')} is available." if release.get("ready") else str(release.get("message", "No signed Windows release is ready.")),
+        "Publish only an owner-tested package with an Ed25519-signed manifest.",
+    )
+    add(
+        "release-signature",
+        "Updates",
+        "Ed25519 manifest signature",
+        release_checks.get("ed25519_signature") == "passed",
+        10,
+        "The current release manifest signature verified." if release_checks.get("ed25519_signature") == "passed" else "The current release manifest signature is not verified.",
+        "Rebuild and sign the release through the owner Update Lab.",
+    )
+    add(
+        "release-hash",
+        "Updates",
+        "SHA-256 package integrity",
+        release_checks.get("package_sha256") == "passed",
+        10,
+        "The published package matches its signed SHA-256 digest." if release_checks.get("package_sha256") == "passed" else "The published package does not have a verified SHA-256 result.",
+        "Remove the release and publish a package whose digest matches the signed manifest.",
+    )
+    add(
+        "remote-boundary",
+        "Privacy",
+        "Remote unlock and secret collection disabled",
+        True,
+        5,
+        "The internet-facing API cannot unlock files and does not accept PINs, USB secrets, file paths, or file contents.",
+    )
+
+    score = sum(item["weight"] for item in checks if item["passed"])
+    maximum = sum(item["weight"] for item in checks)
+    attention_count = sum(not item["passed"] for item in checks)
+    label = "ready" if score >= 90 else "attention" if score >= 65 else "action"
+    safe_release = {
+        "ready": bool(release.get("ready")),
+        "version": str(release.get("version", "")),
+        "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+        "published_at_utc": str(release.get("published_at_utc", "")),
+        "package_filename": str(release.get("package_filename", "")),
+        "size_bytes": int(release.get("size_bytes", 0) or 0),
+        "sha256": str(release.get("sha256", "")),
+        "signing_key_id": str(release.get("signing_key_id", "")),
+        "checks": dict(release_checks),
+    }
+    return {
+        "ok": True,
+        "trust_schema_version": 1,
+        "api_version": API_VERSION,
+        "score": {"value": score, "maximum": maximum, "label": label, "attention_count": attention_count},
+        "checks": checks,
+        "service_status": service,
+        "signed_release": safe_release,
+        "storage": {
+            "license_state": "persistent_configured" if license_persistent else "local_ephemeral",
+            "audit_exports": "persistent_configured" if audit_persistent else "local_ephemeral",
+            "private_license_fields_encrypted": True,
+            "support_private_fields_encrypted": True,
+        },
+        "cryptography": [
+            {"purpose": "Desktop file locking", "control": "AES-256-GCM with scrypt key derivation for portable .locked files"},
+            {"purpose": "Signed desktop updates", "control": "Ed25519 manifest signature plus SHA-256 package digest"},
+            {"purpose": "API licenses and receipts", "control": "HMAC-signed tokens with persistent revocation and anonymous seat ledgers"},
+            {"purpose": "Private API records", "control": "AES-GCM encrypted private fields with server-side access controls"},
+        ],
+        "data_boundaries": {
+            "stays_on_customer_pc": [
+                "USB key bytes and owner policy",
+                "Encryption PINs and local control PIN verifier",
+                "Locked and unlocked file contents",
+                "Personal Vault contents and full local paths",
+                "Local Control Center browser session",
+            ],
+            "may_reach_api_after_explicit_action": [
+                "Signed license proof and anonymous machine hash",
+                "App version and coarse sync time",
+                "Customer-written support text after review",
+                "Approved privacy-safe audit fields after export confirmation",
+            ],
+            "never_requested_by_api": [
+                "Passwords or keystrokes",
+                "Encryption PINs or USB secrets",
+                "File contents or full local paths",
+                "Payment-card numbers",
+                "Remote lock or unlock permission",
+            ],
+        },
+        "recovery_steps": [
+            "Keep the original .locked item unchanged and make a second copy before troubleshooting.",
+            "Use the original master USB key and exact optional encryption PIN only in the desktop app.",
+            "Complete a disposable-file recovery drill before relying on the workflow for important data.",
+            "Keep a separate offline recovery copy and do not store the PIN beside the USB key.",
+            "Use Microsoft Defender for current malware scanning; this trust report is not an antivirus result.",
+        ],
+        "limitations": [
+            "This score is operational guidance, not a security certification, HIPAA certification, legal opinion, or guarantee.",
+            "The public service cannot inspect a customer PC, confirm backups, test a USB key, or prove that recovery will succeed.",
+            "A valid signed update proves package integrity and publisher-key possession, not that software is free of every possible defect.",
+        ],
+        "safe_to_export": True,
+        "customer_records_included": False,
+        "server_time_utc": utc_now(),
+    }
 
 
 def windows_update_payload():
@@ -2312,7 +2524,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -2387,7 +2599,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -2514,7 +2726,7 @@ def recovery_readiness_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Recovery Readiness</h1>
     <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
@@ -2628,7 +2840,7 @@ def legal_document_html(document):
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/status">STATUS</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/trust">TRUST</a><a href="/status">STATUS</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="draft">DRAFT FOR ADULT AND LEGAL REVIEW</div>
     <h1>{html_escape(title)}</h1>
@@ -2942,7 +3154,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3448,7 +3660,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -4376,7 +4588,7 @@ def owner_insights_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand"><h1>Owner Command Center</h1><span class="version">50 live insights</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/status">CUSTOMER STATUS</a></nav></div></header>
+  <header><div><div class="brand"><h1>Owner Command Center</h1><span class="version">50 live insights</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/status">CUSTOMER STATUS</a></nav></div></header>
   <main>
     <section>
       <h2>Owner Access</h2>
@@ -5293,6 +5505,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "trust", "label": "TRUST CENTER", "path": "/trust"},
             {"id": "update", "label": "SIGNED UPDATE", "path": "/update"},
             {"id": "recovery", "label": "RECOVERY READINESS", "path": "/readiness"},
             {"id": "status", "label": "SERVICE STATUS", "path": "/status"},
@@ -5464,6 +5677,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "trust", "label": "Trust Center", "path": "/trust", "purpose": "Public service, update, privacy, and recovery posture", "ready": trust_center_payload()["score"]["label"] != "action"},
         {"id": "license", "label": "License Center", "path": "/customer", "purpose": "Detailed read-only license view", "ready": True},
         {"id": "update", "label": "Update Center", "path": "/update", "purpose": "Signed release and local hash verification", "ready": bool(release.get("signed_release_ready"))},
         {"id": "recovery", "label": "Recovery Readiness", "path": "/readiness", "purpose": "Anonymous fixed-field recovery planning", "ready": True},
@@ -7451,6 +7665,103 @@ def admin_dashboard_summary():
     }
 
 
+def admin_trust_center():
+    """Build an owner-only, aggregate trust gate without customer identity data."""
+    public = trust_center_payload()
+    dashboard = admin_dashboard_summary()
+    release = dashboard["release"]
+    storage = dashboard["storage"]
+    support = dashboard["support_tickets"]
+    audits = dashboard["audit_exports"]
+    clients = dashboard["client_health"]
+    service = dashboard["service_status"]
+    checks = []
+
+    def add(identifier, category, title, passed, weight, detail, action):
+        checks.append(
+            {
+                "id": identifier,
+                "category": category,
+                "title": title,
+                "state": "good" if passed else "action",
+                "passed": bool(passed),
+                "weight": int(weight),
+                "detail": detail,
+                "action": action,
+            }
+        )
+
+    add("admin-token", "Access", "Admin token configured", admin_token_configured(), 8, "Owner routes require a header token.", "Configure and protect LICENSE_ADMIN_TOKEN.")
+    add("license-secret", "Cryptography", "Production license signing secret", not using_default_signing_secret(), 8, "License and receipt signatures do not use the development fallback." if not using_default_signing_secret() else "The development signing fallback is active.", "Configure a strong LICENSE_SIGNING_SECRET and retain it securely.")
+    records_secret_configured = bool(os.getenv("LICENSE_RECORDS_SECRET", "").strip())
+    add("records-secret", "Cryptography", "Separate private-record secret", records_secret_configured, 6, "Private owner records use an explicitly configured encryption secret." if records_secret_configured else "Private records currently derive protection from the license signing secret.", "Configure LICENSE_RECORDS_SECRET separately and keep a protected recovery copy.")
+    add("private-encryption", "Cryptography", "Private record encryption enabled", True, 5, "License notes, customer labels, email, and support private fields are encrypted at rest.", "Keep encryption dependencies and secrets available during upgrades.")
+    add("license-storage", "Durability", "License-state storage persistent", storage.get("licenses") == "persistent_configured", 8, str(storage.get("licenses", "unknown")), "Mount a Railway Volume and configure LICENSE_STATE_DIR.")
+    add("audit-storage", "Durability", "Audit-export storage persistent", storage.get("audit_exports") == "persistent_configured", 8, str(storage.get("audit_exports", "unknown")), "Mount a Railway Volume and configure AUDIT_EXPORT_DIR.")
+    add("service-mode", "Service", "Service mode normal", service.get("mode") == "normal", 6, str(service.get("message", "No service message.")), "Publish a clear service notice and resolve the active maintenance or degradation condition.")
+    add("release-ready", "Release", "Signed desktop release ready", bool(release.get("signed_release_ready")), 10, f"Published desktop: {release.get('desktop_version') or 'none'}.", "Build, test, Defender-scan, sign, and publish through Owner Update Lab.")
+    add("release-signature", "Release", "Release signature verified", release.get("signature_check") == "passed", 8, f"Ed25519 check: {release.get('signature_check', 'failed')}.", "Remove the release and republish a correctly signed manifest.")
+    add("release-hash", "Release", "Release package hash verified", release.get("package_hash_check") == "passed", 8, f"SHA-256 check: {release.get('package_hash_check', 'failed')}.", "Remove the release and republish a package matching the signed digest.")
+    add("activity-integrity", "Audit", "Owner API activity chain valid", bool(dashboard["api_activity"].get("integrity_valid")), 8, str(dashboard["api_activity"].get("integrity_message", "No integrity result.")), "Export the activity record, preserve evidence, and investigate the first failed chain entry.")
+    support_needs_action = int(support.get("needs_action", 0) or 0)
+    add("support-queue", "Customer", "Support queue reviewed", support_needs_action == 0, 5, f"{support_needs_action} support ticket(s) need owner action.", "Review the encrypted support inbox and update each open or acknowledged ticket.")
+    breach_levels = audits.get("breach_levels") or {}
+    severe_audits = int(breach_levels.get("high", 0) or 0) + int(breach_levels.get("critical", 0) or 0)
+    add("audit-findings", "Audit", "No unresolved High or Critical uploads", severe_audits == 0, 7, f"{severe_audits} stored privacy-safe report(s) are High or Critical.", "Download and review each High or Critical privacy-safe report; do not assume it is malware without evidence.")
+    active_clients = int(clients.get("active_devices", 0) or 0)
+    current_clients = int(clients.get("current_release_devices", 0) or 0)
+    adoption = 100 if not active_clients else round((current_clients / active_clients) * 100)
+    add("release-adoption", "Customer", "Signed-release adoption at least 80%", adoption >= 80, 5, f"{adoption}% of reporting devices use the current signed release.", "Publish a customer announcement and verify automatic-update compatibility before escalation.")
+
+    score = sum(item["weight"] for item in checks if item["passed"])
+    maximum = sum(item["weight"] for item in checks)
+    failed = [item for item in checks if not item["passed"]]
+    label = "ready" if score >= 90 else "attention" if score >= 65 else "action"
+    categories = {}
+    for item in checks:
+        row = categories.setdefault(item["category"], {"total": 0, "passed": 0, "weight": 0, "earned": 0})
+        row["total"] += 1
+        row["passed"] += int(item["passed"])
+        row["weight"] += item["weight"]
+        row["earned"] += item["weight"] if item["passed"] else 0
+    return {
+        "ok": True,
+        "trust_schema_version": 1,
+        "score": {"value": score, "maximum": maximum, "label": label, "passed": len(checks) - len(failed), "total": len(checks)},
+        "checks": checks,
+        "actions": [
+            {"id": item["id"], "category": item["category"], "title": item["title"], "action": item["action"]}
+            for item in failed
+        ],
+        "category_summary": [
+            {"category": name, **values}
+            for name, values in sorted(categories.items())
+        ],
+        "metrics": {
+            "support_needs_action": support_needs_action,
+            "high_critical_audits": severe_audits,
+            "release_adoption_percent": adoption,
+            "active_reporting_devices": active_clients,
+            "persistent_stores": sum(value == "persistent_configured" for value in storage.values()),
+            "total_stores": len(storage),
+        },
+        "public_trust_score": public["score"],
+        "service_status": service,
+        "release": public["signed_release"],
+        "storage": storage,
+        "limitations": [
+            "This owner score is an operational checklist, not certification, legal advice, or a guarantee of security.",
+            "A passing API gate cannot test customer backups, USB custody, encryption PINs, local malware state, or successful recovery.",
+            "High or Critical audit labels require evidence review and can be false positives.",
+        ],
+        "privacy_notice": (
+            "This owner trust response contains aggregate service results only. It excludes license keys, customer labels, "
+            "email addresses, notes, machine hashes, receipts, report contents, file data, paths, PINs, and USB secrets."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
 def admin_owner_insights():
     """Build a fixed 50-point, aggregate-only owner operations report."""
     dashboard = admin_dashboard_summary()
@@ -7758,6 +8069,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
             return
+        if path == "/trust":
+            self.send_html(customer_trust_center_html(API_VERSION))
+            return
         if path == "/update":
             self.send_html(update_center_html())
             return
@@ -7784,6 +8098,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/owner/customers":
             self.send_html(owner_customer_experience_html(API_VERSION))
+            return
+        if path == "/owner/trust":
+            self.send_html(owner_trust_center_html(API_VERSION))
             return
         if path == "/health":
             self.send_json(
@@ -7822,6 +8139,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
                     "owner_customer_experience_enabled": True,
+                    "public_trust_center_enabled": True,
+                    "owner_trust_center_enabled": True,
                     "anonymous_plan_advisor_enabled": True,
                     "shop_checkout_links_configured": shop_payload()["configured_count"],
                     "shop_card_data_collected_by_vaultlink": False,
@@ -7855,6 +8174,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/service-status":
             self.send_json({"ok": True, "service_status": service_status_payload(), "server_time_utc": utc_now()})
             return
+        if path == "/api/v1/trust-center":
+            self.send_json(trust_center_payload())
+            return
         if path == "/api/v1/security":
             self.send_json(
                 {
@@ -7882,6 +8204,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "unified privacy-safe customer workspace with a session-only action checklist",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
+                        "public trust, signed-release, storage, privacy-boundary, and recovery posture",
+                        "admin-only aggregate trust gate with release, audit, storage, and service actions",
                         "fixed-category customer support guides and local signed-update verification metadata",
                         "anonymous Windows version compatibility checks and local update package verification",
                         "anonymous fixed-field recovery-readiness scoring and action-plan export",
@@ -7946,6 +8270,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "The owner customer-experience console exposes aggregate counts only and never returns customer identity or license proof.",
                         "Update Center does not store entered versions, and selected ZIP files are hashed only in the browser.",
                         "Recovery Readiness accepts only seven booleans, stores nothing, and cannot inspect or certify a PC.",
+                        "Trust Center exposes configuration states and signed-release evidence but no environment values, customer records, license proof, machine identity, or local PC data.",
                     ],
                 }
             )
@@ -8140,6 +8465,21 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 self.require_admin_token()
                 self.send_json(admin_customer_experience())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/admin/trust-center":
+            try:
+                self.require_admin_token()
+                self.send_json(admin_trust_center())
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "forbidden", "message": str(exc)},

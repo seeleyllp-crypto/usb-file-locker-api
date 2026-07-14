@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 6)
+        self.assertEqual(len(workspace["quick_links"]), 7)
+        self.assertTrue(any(item["path"] == "/trust" for item in workspace["quick_links"]))
         self.assertEqual(len(workspace["support_categories"]), 6)
         self.assertGreaterEqual(workspace["workspace_score"]["score"], 0)
         self.assertLessEqual(workspace["workspace_score"]["score"], 100)
@@ -710,7 +711,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 7)
+        self.assertEqual(len(experience["customer_surfaces"]), 8)
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
         self.assertGreaterEqual(experience["experience_score"]["score"], 0)
@@ -720,7 +721,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 7)
+        self.assertEqual(experience["surface_summary"]["total"], 8)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -740,6 +741,107 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("EXPORT JOURNEY CSV", owner_text)
         self.assertIn("Customer Journey", owner_text)
         self.assertIn("Renewal Health", owner_text)
+
+    def test_public_and_owner_trust_centers_are_scored_private_and_protected(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "personal-plus",
+                "customer_label": "TRUST-PRIVATE-CUSTOMER-4401",
+                "customer_email": "trust-4401@example.test",
+                "license_note": "TRUST-PRIVATE-NOTE-4401",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, public = self.call("/api/v1/trust-center")
+        self.assertEqual(status, 200)
+        self.assertEqual(public["trust_schema_version"], 1)
+        self.assertEqual(public["score"]["maximum"], 100)
+        self.assertEqual(len(public["checks"]), 10)
+        self.assertTrue(public["safe_to_export"])
+        self.assertFalse(public["customer_records_included"])
+        self.assertTrue(public["signed_release"]["ready"])
+        self.assertEqual(public["signed_release"]["version"], manifest["version"])
+        self.assertEqual(public["signed_release"]["checks"]["ed25519_signature"], "passed")
+        self.assertEqual(public["signed_release"]["checks"]["package_sha256"], "passed")
+        self.assertEqual(len(public["data_boundaries"]), 3)
+        self.assertEqual(len(public["cryptography"]), 4)
+        self.assertEqual(len(public["recovery_steps"]), 5)
+        public_text = json.dumps(public)
+        for private_value in (
+            "TRUST-PRIVATE-CUSTOMER-4401",
+            "trust-4401@example.test",
+            "TRUST-PRIVATE-NOTE-4401",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, public_text)
+
+        status, headers, page = self.call_bytes("/trust")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Trust Center", page_text)
+        self.assertIn("/api/v1/trust-center", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("Data Boundaries", page_text)
+        self.assertNotIn("localStorage", page_text)
+
+        status, denied = self.call("/api/v1/admin/trust-center")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+        status, owner = self.call(
+            "/api/v1/admin/trust-center",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(owner["trust_schema_version"], 1)
+        self.assertEqual(owner["score"]["maximum"], 100)
+        self.assertEqual(len(owner["checks"]), 14)
+        self.assertEqual(owner["score"]["total"], 14)
+        self.assertEqual(
+            owner["score"]["passed"] + len(owner["actions"]),
+            owner["score"]["total"],
+        )
+        self.assertGreaterEqual(len(owner["category_summary"]), 6)
+        owner_text = json.dumps(owner)
+        for private_value in (
+            "TRUST-PRIVATE-CUSTOMER-4401",
+            "trust-4401@example.test",
+            "TRUST-PRIVATE-NOTE-4401",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, owner_text)
+
+        status, _headers, owner_page = self.call_bytes("/owner/trust")
+        self.assertEqual(status, 200)
+        owner_page_text = owner_page.decode("utf-8")
+        self.assertIn("VaultLink Trust Operations", owner_page_text)
+        self.assertIn("/api/v1/admin/trust-center", owner_page_text)
+        self.assertIn("EXPORT SAFE JSON", owner_page_text)
+        self.assertIn("Required Owner Actions", owner_page_text)
+        self.assertNotIn("localStorage", owner_page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["public_trust_center_enabled"])
+        self.assertTrue(health["owner_trust_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("trust_recovery_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("trust-recovery-center", starter["entitlements"])
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")

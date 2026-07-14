@@ -70,7 +70,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -251,7 +251,7 @@ def owner_customer_experience_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink Customer Experience</strong><a href="/owner">BACK TO OWNER CONSOLE</a></div></header>
+  <header><div><strong>VaultLink Customer Experience</strong><div><a href="/owner/trust">TRUST OPERATIONS</a> &nbsp; <a href="/owner">BACK TO OWNER CONSOLE</a></div></div></header>
   <main>
     <h1>Customer Experience Console</h1>
     <p class="lead">Aggregate customer readiness, service, release adoption, rank coverage, support workload, and public-surface health without customer identities or secrets.</p>
@@ -300,6 +300,163 @@ def owner_customer_experience_html(api_version):
     function exportCsv(){if(!state.payload)return;const rows=[["rank","name","price","licenses","entitlement_count"],...state.payload.rank_coverage.map(item=>[item.rank,item.name,item.price_label,item.licenses,item.entitlement_count])];const csv=rows.map(row=>row.map(value=>`"${text(value).replaceAll('"','""')}"`).join(",")).join("\r\n");download("vaultlink-rank-coverage.csv",csv,"text/csv");setStatus("Aggregate rank coverage exported.","good");}
     function exportJourneyCsv(){if(!state.payload)return;const rows=[["stage","count","maximum","percent"],...state.payload.customer_journey.map(item=>[item.label,item.count,item.maximum,item.percent])];const csv=rows.map(row=>row.map(value=>`"${text(value).replaceAll('"','""')}"`).join(",")).join("\r\n");download("vaultlink-customer-journey.csv",csv,"text/csv");setStatus("Aggregate customer journey exported.","good");}
     $("connect").addEventListener("click",connect);$("clear").addEventListener("click",clear);$("refresh").addEventListener("click",load);$("export").addEventListener("click",exportJson);$("csv").addEventListener("click",exportCsv);$("journeyCsv").addEventListener("click",exportJourneyCsv);$("token").addEventListener("keydown",event=>{if(event.key==="Enter")connect();});
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def customer_trust_center_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Trust Center</title>
+  <style>
+    :root { --bg:#0d1014; --band:#151a20; --panel:#1b2229; --line:#37434e; --text:#f4f7f8; --muted:#aab5bf; --green:#66df89; --blue:#68bee9; --yellow:#ffd166; --red:#ff7b72; }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    header,footer { background:#11161b; border-color:var(--line); border-style:solid; border-width:0 0 1px; }
+    header > div,main,footer > div { width:min(1160px,calc(100% - 32px)); margin:auto; }
+    header > div { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-size:18px; font-weight:800; }
+    nav { display:flex; flex-wrap:wrap; gap:7px; }
+    nav a { min-height:36px; display:inline-flex; align-items:center; padding:0 10px; border:1px solid var(--line); border-radius:5px; color:var(--text); text-decoration:none; font-weight:750; }
+    main { padding:28px 0 50px; }
+    h1 { margin:0; font-size:30px; } h2 { margin:0; font-size:18px; } h3 { margin:0; font-size:15px; }
+    .lead,.status,.muted,.item p { color:var(--muted); }
+    .lead { max-width:790px; margin:7px 0 0; font-size:15px; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    button { min-height:42px; padding:0 14px; border:0; border-radius:5px; background:#29333d; color:var(--text); font-weight:800; cursor:pointer; }
+    button.primary { background:var(--blue); color:#061119; }
+    .status { min-height:22px; margin-top:10px; } .status.good{color:var(--green)} .status.bad{color:var(--red)}
+    #content[hidden] { display:none; }
+    .score-band { display:grid; grid-template-columns:180px minmax(0,1fr); gap:18px; align-items:center; margin-top:15px; padding:18px; border:1px solid var(--line); background:var(--band); }
+    .score { min-height:110px; display:flex; flex-direction:column; justify-content:center; border-left:5px solid var(--blue); padding-left:16px; }
+    .score strong { font-size:34px; line-height:1; } .score span { color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; }
+    .metrics { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); border:1px solid var(--line); }
+    .metric { min-width:0; padding:13px; border-right:1px solid var(--line); }
+    .metric:last-child { border-right:0; }
+    .metric span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .metric strong { display:block; margin-top:4px; overflow-wrap:anywhere; }
+    .section { margin-top:24px; padding-top:19px; border-top:1px solid var(--line); }
+    .section-head { display:flex; align-items:end; justify-content:space-between; gap:14px; margin-bottom:11px; }
+    .section-head p { max-width:680px; margin:0; color:var(--muted); text-align:right; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(245px,1fr)); gap:9px; }
+    .item { min-width:0; padding:14px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+    .item p { margin:5px 0 0; }
+    .eyebrow { color:var(--blue); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .eyebrow.good { color:var(--green); } .eyebrow.attention { color:var(--yellow); } .eyebrow.action { color:var(--red); }
+    .boundary { border-left:4px solid var(--blue); }
+    .boundary.never { border-left-color:var(--green); } .boundary.explicit { border-left-color:var(--yellow); }
+    ul { margin:9px 0 0; padding-left:18px; color:var(--muted); } li { margin:5px 0; }
+    footer { border-width:1px 0 0; } footer > div { padding:21px 0 27px; color:var(--muted); }
+    @media(max-width:900px){.score-band{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.metric{border-bottom:1px solid var(--line)}}
+    @media(max-width:650px){header > div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.metrics{grid-template-columns:1fr}.metric{border-right:0}}
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <main>
+    <h1>Trust and recovery status</h1>
+    <p class="lead">Live service, signed-release, storage, privacy-boundary, and recovery evidence. This public view contains no customer or license records.</p>
+    <div class="toolbar"><button id="refresh" class="primary" type="button">REFRESH LIVE STATUS</button><button id="export" type="button" disabled>EXPORT SAFE JSON</button></div>
+    <div id="status" class="status" role="status" aria-live="polite">Loading current trust status...</div>
+    <div id="content" hidden>
+      <section class="score-band"><div class="score"><span>Operational score</span><strong id="score">0 / 100</strong><span id="scoreLabel">LOADING</span></div><div id="metrics" class="metrics"></div></section>
+      <section class="section"><div class="section-head"><h2>Live Checks</h2><p>Configuration and signed-release results. A passing result is useful evidence, not certification.</p></div><div id="checks" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Data Boundaries</h2><p>What stays local, what may be sent after an explicit action, and what the API never asks for.</p></div><div id="boundaries" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Cryptography And Release Evidence</h2><p id="releaseSummary"></p></div><div id="crypto" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Recovery Steps</h2><p>Use these before an emergency. They do not test the customer PC or guarantee recovery.</p></div><div id="recovery" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Limitations</h2><p>Plain-language boundaries for sharing this report.</p></div><div id="limitations" class="grid"></div></section>
+    </div>
+  </main>
+  <footer><div>API __API_VERSION__. This public page cannot inspect a PC, unlock files, receive USB secrets, capture PINs, or prove legal compliance.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id); const state={payload:null}; const value=input=>String(input??"");
+    function setStatus(message,tone=""){ $("status").textContent=message; $("status").className=`status ${tone}`; }
+    function add(parent,tag,text,className=""){const node=document.createElement(tag);node.textContent=value(text);if(className)node.className=className;parent.append(node);return node;}
+    function metric(label,text){const node=document.createElement("div");node.className="metric";add(node,"span",label);add(node,"strong",text);return node;}
+    function item(title,detail,tone="",eyebrow=""){const node=document.createElement("article");node.className="item";add(node,"div",eyebrow||tone||"INFO",`eyebrow ${tone}`);add(node,"h3",title);add(node,"p",detail);return node;}
+    function listCard(title,values,className=""){const node=document.createElement("article");node.className=`item boundary ${className}`;add(node,"h3",title);const list=document.createElement("ul");(values||[]).forEach(row=>add(list,"li",row));node.append(list);return node;}
+    function render(data){
+      state.payload=data; const score=data.score; $("score").textContent=`${score.value} / ${score.maximum}`; $("scoreLabel").textContent=`${score.label.toUpperCase()} | ${score.attention_count} attention`;
+      const metrics=$("metrics");metrics.replaceChildren();[["API",data.api_version],["Service",data.service_status.mode],["Desktop",data.signed_release.version||"Not published"],["Signature",data.signed_release.checks.ed25519_signature||"failed"],["Storage",data.storage.license_state]].forEach(row=>metrics.append(metric(...row)));
+      const checks=$("checks");checks.replaceChildren();(data.checks||[]).forEach(check=>checks.append(item(check.title,`${check.detail}${check.passed||!check.action?"":` Next: ${check.action}`}`,check.state,`${check.category} | ${check.weight} points`)));
+      const boundaries=$("boundaries");boundaries.replaceChildren(listCard("Stays On The Customer PC",data.data_boundaries.stays_on_customer_pc),listCard("Sent Only After Explicit Action",data.data_boundaries.may_reach_api_after_explicit_action,"explicit"),listCard("Never Requested By The API",data.data_boundaries.never_requested_by_api,"never"));
+      const release=data.signed_release; $("releaseSummary").textContent=release.ready?`Release ${release.version} | signing key ${release.signing_key_id} | ${release.size_bytes} bytes | SHA-256 ${release.sha256}`:"No verified release is currently available.";
+      const crypto=$("crypto");crypto.replaceChildren();(data.cryptography||[]).forEach(row=>crypto.append(item(row.purpose,row.control,"good","ACTIVE CONTROL")));
+      const recovery=$("recovery");recovery.replaceChildren();(data.recovery_steps||[]).forEach((step,index)=>recovery.append(item(`Step ${index+1}`,step,"","RECOVERY")));
+      const limitations=$("limitations");limitations.replaceChildren();(data.limitations||[]).forEach((text,index)=>limitations.append(item(`Boundary ${index+1}`,text,"attention","LIMITATION")));
+      $("content").hidden=false; $("export").disabled=false; setStatus(`Trust status refreshed at ${data.server_time_utc}.`,score.label==="action"?"bad":"good");
+    }
+    async function load(){ $("refresh").disabled=true; setStatus("Loading current trust status..."); try{const response=await fetch("/api/v1/trust-center",{headers:{"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Trust status could not be loaded.");render(data);}catch(error){state.payload=null;$("content").hidden=true;$("export").disabled=true;setStatus(error.message||"Trust status could not be loaded.","bad");}finally{$("refresh").disabled=false;}}
+    function exportJson(){if(!state.payload)return;const blob=new Blob([JSON.stringify(state.payload,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-public-trust-report.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe trust report exported.","good");}
+    $("refresh").addEventListener("click",load);$("export").addEventListener("click",exportJson);load();
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def owner_trust_center_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Trust Operations</title>
+  <style>
+    :root { --bg:#0d1014; --band:#151a20; --panel:#1b2229; --field:#090c10; --line:#37434e; --text:#f4f7f8; --muted:#aab5bf; --green:#66df89; --blue:#68bee9; --yellow:#ffd166; --red:#ff7b72; }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    header,footer { background:#11161b; border-color:var(--line); border-style:solid; border-width:0 0 1px; }
+    header > div,main,footer > div { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header > div { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-size:18px; font-weight:800; } nav { display:flex; flex-wrap:wrap; gap:7px; }
+    nav a { min-height:36px; display:inline-flex; align-items:center; padding:0 10px; border:1px solid var(--line); border-radius:5px; color:var(--text); text-decoration:none; font-weight:750; }
+    main { padding:28px 0 50px; } h1{margin:0;font-size:30px} h2{margin:0;font-size:18px} h3{margin:0;font-size:15px}.lead,.status,.item p{color:var(--muted)}.lead{max-width:820px;margin:7px 0 0}
+    .auth { display:grid; grid-template-columns:minmax(260px,1fr) auto auto; gap:9px; align-items:end; margin-top:18px; padding:17px; border:1px solid var(--line); background:var(--band); }
+    label{display:block;margin-bottom:6px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}input{width:100%;height:42px;padding:0 11px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--text);font:inherit}
+    button{min-height:42px;padding:0 14px;border:0;border-radius:5px;background:#29333d;color:var(--text);font-weight:800;cursor:pointer}.primary{background:var(--blue);color:#061119}.status{min-height:22px;margin-top:9px}.status.good{color:var(--green)}.status.bad{color:var(--red)}#console[hidden]{display:none}
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}.metrics{display:grid;grid-template-columns:repeat(7,minmax(115px,1fr));margin-top:13px;border:1px solid var(--line);background:var(--band)}.metric{min-width:0;padding:13px;border-right:1px solid var(--line)}.metric:last-child{border-right:0}.metric span{display:block;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.metric strong{display:block;margin-top:4px;font-size:17px;overflow-wrap:anywhere}
+    .section{margin-top:24px;padding-top:19px;border-top:1px solid var(--line)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:14px;margin-bottom:11px}.section-head p{max-width:680px;margin:0;color:var(--muted);text-align:right}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:9px}.item{min-width:0;padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.item p{margin:5px 0 0}.eyebrow{color:var(--blue);font-size:10px;font-weight:800;text-transform:uppercase}.eyebrow.good{color:var(--green)}.eyebrow.action{color:var(--red)}.eyebrow.attention{color:var(--yellow)}footer{border-width:1px 0 0}footer>div{padding:21px 0 27px;color:var(--muted)}
+    @media(max-width:1050px){.metrics{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){header>div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.auth{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:450px){.metrics{grid-template-columns:1fr}.metric{border-right:0;border-bottom:1px solid var(--line)}}
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Trust Operations</div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/customers">CUSTOMERS</a><a href="/owner/insights">INSIGHTS</a><a href="/trust">PUBLIC TRUST</a></nav></div></header>
+  <main>
+    <h1>Owner trust gate</h1>
+    <p class="lead">A scored operational review of owner authentication, secrets, persistent storage, release integrity, service status, audit integrity, support workload, and signed-release adoption.</p>
+    <section class="auth"><div><label for="token">Owner admin token</label><input id="token" type="password" autocomplete="off" spellcheck="false"></div><button id="connect" class="primary" type="button">LOAD TRUST GATE</button><button id="clear" type="button">CLEAR</button></section>
+    <div id="status" class="status" role="status" aria-live="polite">Disconnected. The token stays only in page memory and is sent only in a request header.</div>
+    <div id="console" hidden>
+      <div class="toolbar"><button id="refresh" type="button">REFRESH</button><button id="export" type="button">EXPORT SAFE JSON</button></div>
+      <div id="metrics" class="metrics"></div>
+      <section class="section"><div class="section-head"><h2>Required Owner Actions</h2><p>Only failed gates appear here. No action can control or disable a customer PC.</p></div><div id="actions" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Trust Checks</h2><p>Each result is aggregate and excludes customer records and license proof.</p></div><div id="checks" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Category Coverage</h2><p>Earned and available points by operational area.</p></div><div id="categories" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Release And Storage</h2><p id="releaseSummary"></p></div><div id="release" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Limitations</h2><p>Use this as an owner checklist, never as a certification claim.</p></div><div id="limitations" class="grid"></div></section>
+    </div>
+  </main>
+  <footer><div>API __API_VERSION__. This owner console excludes license keys, customer identity, notes, machine hashes, receipts, reports, files, paths, PINs, and USB secrets.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id);const state={token:"",payload:null};const value=input=>String(input??"");
+    function setStatus(message,tone=""){ $("status").textContent=message; $("status").className=`status ${tone}`; }
+    function add(parent,tag,text,className=""){const node=document.createElement(tag);node.textContent=value(text);if(className)node.className=className;parent.append(node);return node;}
+    function metric(label,text){const node=document.createElement("div");node.className="metric";add(node,"span",label);add(node,"strong",text);return node;}
+    function item(title,detail,tone="",eyebrow=""){const node=document.createElement("article");node.className="item";add(node,"div",eyebrow||tone||"INFO",`eyebrow ${tone}`);add(node,"h3",title);add(node,"p",detail);return node;}
+    function fill(rootId,items,renderer){const root=$(rootId);root.replaceChildren();if(!items.length){root.append(item("No action required","Every gate in this section currently passes.","good","CLEAR"));return;}items.forEach(row=>root.append(renderer(row)));}
+    function render(data){state.payload=data;const score=data.score;const metrics=$("metrics");metrics.replaceChildren();[["Trust score",`${score.value} / ${score.maximum}`],["Checks",`${score.passed} / ${score.total}`],["Required actions",data.actions.length],["Release adoption",`${data.metrics.release_adoption_percent}%`],["Support queue",data.metrics.support_needs_action],["High/Critical reports",data.metrics.high_critical_audits],["Persistent stores",`${data.metrics.persistent_stores} / ${data.metrics.total_stores}`]].forEach(row=>metrics.append(metric(...row)));
+      fill("actions",data.actions,row=>item(row.title,row.action,"action",row.category));fill("checks",data.checks,row=>item(row.title,`${row.detail}${row.passed?"":` Next: ${row.action}`}`,row.state,`${row.category} | ${row.weight} points`));fill("categories",data.category_summary,row=>item(row.category,`${row.passed} of ${row.total} checks | ${row.earned} of ${row.weight} points`,row.passed===row.total?"good":"attention","CATEGORY"));
+      const release=data.release;$("releaseSummary").textContent=release.ready?`Signed desktop ${release.version} | key ${release.signing_key_id} | SHA-256 ${release.sha256}`:"No verified desktop release is ready.";const releaseRows=[["Service",data.service_status.mode,data.service_status.mode==="normal"?"good":"action"],["Manifest",release.checks.ed25519_signature||"failed",release.checks.ed25519_signature==="passed"?"good":"action"],["Package hash",release.checks.package_sha256||"failed",release.checks.package_sha256==="passed"?"good":"action"],...["licenses","audit_exports","support_tickets","announcements","api_activity"].map(key=>[key.replaceAll("_"," "),data.storage[key],data.storage[key]==="persistent_configured"?"good":"action"] )];fill("release",releaseRows,row=>item(row[0],row[1],row[2],"LIVE RESULT"));fill("limitations",data.limitations.map((text,index)=>({text,index})),row=>item(`Boundary ${row.index+1}`,row.text,"attention","LIMITATION"));$("console").hidden=false;setStatus(`Trust gate refreshed at ${data.server_time_utc}.`,score.label==="action"?"bad":"good");}
+    async function load(){if(!state.token){setStatus("Enter the owner admin token.","bad");return;}$("connect").disabled=true;try{const response=await fetch("/api/v1/admin/trust-center",{headers:{"X-License-Admin-Token":state.token,"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Trust gate could not be loaded.");render(data);}catch(error){state.payload=null;$("console").hidden=true;setStatus(error.message||"Trust gate could not be loaded.","bad");}finally{$("connect").disabled=false;}}
+    function connect(){state.token=$("token").value.trim();load();}function clear(){state.token="";state.payload=null;$("token").value="";$("console").hidden=true;setStatus("Owner token cleared from page memory.");}
+    function exportJson(){if(!state.payload)return;const blob=new Blob([JSON.stringify(state.payload,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-owner-trust-gate.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe owner trust report exported.","good");}
+    $("connect").addEventListener("click",connect);$("clear").addEventListener("click",clear);$("refresh").addEventListener("click",load);$("export").addEventListener("click",exportJson);$("token").addEventListener("keydown",event=>{if(event.key==="Enter")connect();});
   </script>
 </body>
 </html>'''
