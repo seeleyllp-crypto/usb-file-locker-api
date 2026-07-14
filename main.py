@@ -20,7 +20,7 @@ from customer_experience_pages import customer_workspace_html, owner_customer_ex
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.25.0"
+API_VERSION = "0.26.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -4780,6 +4780,9 @@ def customer_checkup(payload):
     app_version = str(payload.get("app_version", "") or "").strip()
     if len(app_version) > 80:
         raise ValueError("app_version must be 80 characters or fewer.")
+    allowed_version_characters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._+-"
+    if app_version and any(character not in allowed_version_characters for character in app_version):
+        raise ValueError("app_version may contain only letters, numbers, dots, underscores, plus signs, and hyphens.")
 
     def version_parts(value):
         parts = []
@@ -5150,12 +5153,125 @@ def customer_workspace(payload):
         "release": preview["release"],
         "limited_until_utc": preview.get("limited_until_utc", ""),
     }
+    checkup_by_id = {str(item.get("id", "")): item for item in checkup.get("items", [])}
+    score_rules = [
+        ("license", "License", 25, {"good": 25, "info": 15, "check": 8, "action": 0}),
+        ("service", "Service", 15, {"good": 15, "info": 10, "check": 5, "action": 0}),
+        ("devices", "Device seats", 10, {"good": 10, "info": 8, "check": 5, "action": 0}),
+        ("expiration", "Renewal timing", 15, {"good": 15, "info": 12, "check": 7, "action": 0}),
+        ("update", "Signed desktop release", 20, {"good": 20, "info": 12, "check": 5, "action": 0}),
+        ("rank-tools", "Rank access", 15, {"good": 15, "info": 10, "check": 5, "action": 0}),
+    ]
+    score_factors = []
+    workspace_score = 0
+    for identifier, title, maximum, awards in score_rules:
+        item = checkup_by_id.get(identifier, {})
+        severity = str(item.get("severity", "info"))
+        awarded = int(awards.get(severity, 0))
+        workspace_score += awarded
+        score_factors.append(
+            {
+                "id": identifier,
+                "title": title,
+                "state": severity,
+                "awarded": awarded,
+                "maximum": maximum,
+                "detail": str(item.get("detail", "No result is available.")),
+            }
+        )
+    score_label = (
+        "excellent"
+        if workspace_score >= 90
+        else "ready"
+        if workspace_score >= 75
+        else "attention"
+        if workspace_score >= 50
+        else "action"
+    )
+
+    feature_by_id = {item["id"]: item for item in FEATURES}
+    unlocked_benefits = []
+    for feature_id in preview["plan"].get("entitlements", []):
+        feature = feature_by_id.get(feature_id)
+        if feature:
+            unlocked_benefits.append(
+                {
+                    "id": feature["id"],
+                    "title": feature["title"],
+                    "summary": feature["summary"],
+                    "category": feature["category"],
+                }
+            )
+    next_option = (upgrade_options.get("items") or [None])[0]
+    next_rank = None
+    if next_option:
+        added_ids = list(next_option.get("added_entitlements", []))
+        next_rank = {
+            "plan": next_option["plan"],
+            "ranks_up": next_option["ranks_up"],
+            "added_benefits": [
+                {
+                    "id": feature_id,
+                    "title": feature_by_id.get(feature_id, {}).get("title", feature_id),
+                }
+                for feature_id in added_ids
+            ],
+        }
+
+    success_plan = {
+        "today": [item for item in actions if item["when"] == "now"],
+        "this_week": [item for item in actions if item["when"] == "soon"],
+        "this_month": [item for item in actions if item["when"] == "maintain"],
+    }
+    support_pack = {
+        "title": "VaultLink Privacy-Safe Support Pack",
+        "facts": [
+            {"label": "License status", "value": preview["status"]},
+            {"label": "Rank", "value": f"{preview['plan']['rank']} - {preview['plan']['name']}"},
+            {"label": "Device seats", "value": f"{preview['device_usage']['active']} of {preview['device_usage']['maximum']}"},
+            {"label": "Installed version", "value": str(payload.get("app_version", "") or "Not supplied")},
+            {"label": "Latest signed version", "value": preview["release"].get("latest_version", "") or "Not published"},
+            {"label": "Service", "value": preview["service_status"].get("mode", "unknown")},
+            {"label": "Workspace score", "value": f"{workspace_score} of 100"},
+            {"label": "Attention items", "value": str(checkup.get("attention_count", 0))},
+        ],
+        "safe_to_share_after_review": True,
+        "attachments_included": False,
+        "instructions": [
+            "Review this pack before sharing it.",
+            "Describe the visible error separately without adding passwords, keys, PINs, names, paths, or file contents.",
+            "Use the activated Windows Bug Center when an owner reply is needed.",
+        ],
+    }
+    recovery_card = {
+        "title": "VaultLink Offline Recovery Card",
+        "steps": [
+            "Stop and keep the original .locked file unchanged.",
+            "Make a second copy of the .locked file before troubleshooting.",
+            "Use the original master USB key through the official Windows app.",
+            "Enter the exact optional PIN only if one was used when locking.",
+            "Use Unlock To Folder when a permanent readable copy is needed.",
+            "Run Recovery Readiness before changing keys, settings, or app folders.",
+            "Never send a USB key file, secret, PIN, locked-file contents, or recovery material to support.",
+            "Keep local unlock and recovery available even when premium license status needs attention.",
+        ],
+        "contains_key_material": False,
+        "contains_customer_identity": False,
+        "offline_copy_recommended": True,
+    }
     return {
         "ok": True,
-        "workspace_schema_version": 1,
+        "workspace_schema_version": 2,
         "message": "Customer workspace loaded without activating or changing a device seat.",
         "summary": summary,
         "checkup": checkup,
+        "workspace_score": {
+            "score": workspace_score,
+            "maximum": 100,
+            "label": score_label,
+            "factors": score_factors,
+            "limitations": "This is a customer workspace status score, not an antivirus result, certification, or guarantee.",
+        },
         "action_center": {
             "count": len(actions),
             "counts": action_counts,
@@ -5163,8 +5279,17 @@ def customer_workspace(payload):
             "progress_storage": "session_only_not_uploaded",
         },
         "timeline": timeline,
+        "success_plan": success_plan,
+        "benefit_map": {
+            "current_rank": {"rank": preview["plan"]["rank"], "name": preview["plan"]["name"]},
+            "unlocked_count": len(unlocked_benefits),
+            "unlocked": unlocked_benefits,
+            "next_rank": next_rank,
+        },
         "rank_tools": rank_tools,
         "upgrade_options": upgrade_options,
+        "support_pack": support_pack,
+        "recovery_card": recovery_card,
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
@@ -5187,6 +5312,11 @@ def customer_workspace(payload):
 
 def admin_customer_experience():
     """Return aggregate customer-experience health without customer identities."""
+    def aggregate_percent(count, maximum, empty=0):
+        if int(maximum or 0) <= 0:
+            return int(empty)
+        return min(100, max(0, round((int(count or 0) / int(maximum)) * 100)))
+
     dashboard = admin_dashboard_summary()
     inventory = list_admin_license_records()
     plan_counts = {plan["id"]: 0 for plan in PLAN_TIERS}
@@ -5206,8 +5336,56 @@ def admin_customer_experience():
     storage = dashboard["storage"]
     active_clients = int(clients.get("active_devices", 0) or 0)
     current_clients = int(clients.get("current_release_devices", 0) or 0)
-    adoption = round((current_clients / active_clients) * 100) if active_clients else 100
+    adoption = aggregate_percent(current_clients, active_clients, empty=100)
     persistent_stores = sum(value == "persistent_configured" for value in storage.values())
+    now = datetime.now(timezone.utc)
+    active_records = []
+    activated_licenses = 0
+    expiring_7_days = 0
+    expiring_30_days = 0
+    no_expiration = 0
+    for record in inventory.get("items", []):
+        expires_at = parse_utc(record.get("expires_at_utc"))
+        active = record.get("status") != "revoked" and not (expires_at and expires_at <= now)
+        if not active:
+            continue
+        active_records.append(record)
+        activated_licenses += int(record.get("active_devices", 0) or 0) > 0
+        if expires_at is None:
+            no_expiration += 1
+            continue
+        seconds_left = (expires_at - now).total_seconds()
+        if 0 <= seconds_left <= 7 * 86400:
+            expiring_7_days += 1
+        if 0 <= seconds_left <= 30 * 86400:
+            expiring_30_days += 1
+
+    experience_score = 0
+    experience_score += 15 if service.get("mode") == "normal" else 5
+    if (
+        release.get("signed_release_ready")
+        and release.get("signature_check") == "passed"
+        and release.get("package_hash_check") == "passed"
+    ):
+        experience_score += 20
+    experience_score += round((adoption / 100) * 20)
+    experience_score += max(0, 15 - min(15, int(support.get("needs_action", 0) or 0) * 3))
+    experience_score += 5 if announcements.get("active") else 0
+    shop_total = int(shop.get("total", 0) or 0)
+    shop_configured = int(shop.get("configured", 0) or 0)
+    experience_score += round((shop_configured / shop_total) * 5) if shop_total else 0
+    experience_score += round((persistent_stores / len(storage)) * 10) if storage else 0
+    experience_score += 10 if dashboard["api_activity"].get("integrity_valid") else 0
+    experience_score = min(100, max(0, experience_score))
+    experience_label = (
+        "excellent"
+        if experience_score >= 90
+        else "ready"
+        if experience_score >= 75
+        else "attention"
+        if experience_score >= 50
+        else "action"
+    )
 
     actions = [
         {
@@ -5269,14 +5447,17 @@ def admin_customer_experience():
     ]
 
     rank_coverage = []
+    total_licenses = int(licenses.get("total", 0) or 0)
     for plan in sorted(PLAN_TIERS, key=lambda item: item["rank"]):
+        count = int(plan_counts.get(plan["id"], 0))
         rank_coverage.append(
             {
                 "rank": plan["rank"],
                 "id": plan["id"],
                 "name": plan["name"],
                 "price_label": plan["price_label"],
-                "licenses": int(plan_counts.get(plan["id"], 0)),
+                "licenses": count,
+                "percent_of_licenses": aggregate_percent(count, total_licenses),
                 "entitlement_count": len(plan_entitlements(plan["id"])),
             }
         )
@@ -5290,23 +5471,55 @@ def admin_customer_experience():
         {"id": "shop", "label": "Rank Shop", "path": "/shop", "purpose": "Seven-rank catalog and hosted checkout routes", "ready": bool(shop.get("ready"))},
         {"id": "privacy", "label": "Privacy", "path": "/privacy", "purpose": "Published customer data boundaries", "ready": True},
     ]
+    ready_surfaces = sum(bool(item["ready"]) for item in customer_surfaces)
+    active_device_count = int(devices.get("active", 0) or 0)
+    customer_journey = [
+        {"id": "issued", "label": "Licenses issued", "count": total_licenses, "maximum": total_licenses, "percent": 100 if total_licenses else 0},
+        {"id": "active", "label": "Licenses active", "count": len(active_records), "maximum": total_licenses, "percent": aggregate_percent(len(active_records), total_licenses)},
+        {"id": "activated", "label": "Active licenses with a device", "count": activated_licenses, "maximum": len(active_records), "percent": aggregate_percent(activated_licenses, len(active_records))},
+        {"id": "reporting", "label": "Active devices reporting", "count": active_clients, "maximum": active_device_count, "percent": aggregate_percent(active_clients, active_device_count)},
+        {"id": "current", "label": "Reporting devices current", "count": current_clients, "maximum": active_clients, "percent": aggregate_percent(current_clients, active_clients)},
+    ]
     return {
         "ok": True,
-        "experience_schema_version": 1,
+        "experience_schema_version": 2,
         "metrics": {
-            "total_licenses": int(licenses.get("total", 0) or 0),
+            "total_licenses": total_licenses,
             "active_licenses": int(licenses.get("active", 0) or 0),
-            "active_devices": int(devices.get("active", 0) or 0),
+            "activated_licenses": activated_licenses,
+            "active_devices": active_device_count,
             "device_capacity": int(devices.get("capacity", 0) or 0),
             "release_adoption_percent": adoption,
+            "current_release_devices": current_clients,
             "support_needs_action": int(support.get("needs_action", 0) or 0),
             "active_announcements": int(announcements.get("active", 0) or 0),
-            "shop_links_live": int(shop.get("configured", 0) or 0),
-            "shop_links_total": int(shop.get("total", 0) or 0),
+            "shop_links_live": shop_configured,
+            "shop_links_total": shop_total,
+            "expiring_7_days": expiring_7_days,
+            "expiring_30_days": expiring_30_days,
+            "experience_score": experience_score,
+        },
+        "experience_score": {
+            "score": experience_score,
+            "maximum": 100,
+            "label": experience_label,
+            "limitations": "Aggregate operational score only; not a security certification or customer guarantee.",
         },
         "actions": actions,
         "rank_coverage": rank_coverage,
+        "customer_journey": customer_journey,
+        "renewal_health": {
+            "expiring_7_days": expiring_7_days,
+            "expiring_30_days": expiring_30_days,
+            "no_expiration": no_expiration,
+            "expired": int(licenses.get("expired", 0) or 0),
+        },
         "customer_surfaces": customer_surfaces,
+        "surface_summary": {
+            "ready": ready_surfaces,
+            "total": len(customer_surfaces),
+            "attention": len(customer_surfaces) - ready_surfaces,
+        },
         "service_status": service,
         "release": release,
         "storage_readiness": f"{persistent_stores} of {len(storage)} persistent",

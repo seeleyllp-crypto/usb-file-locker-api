@@ -10,8 +10,8 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
-- A unified Customer Workspace at `/workspace` with a composite account overview, prioritized action plan, unlocked rank tools, timeline, upgrades, and session-only progress
-- An aggregate Customer Experience Console at `/owner/customers` for rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
+- An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
 - An encrypted customer Bug Inbox with owner status actions, private notes, replies, and deletion
 - Rank-targeted, scheduled, read-only Owner Announcements with desktop delivery
 - Public informational service status with automatic licensed-desktop notices
@@ -130,10 +130,11 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 ## Customer Workspace
 
 - `GET /workspace` opens the unified customer app.
-- `POST /api/v1/licenses/customer-workspace` returns the account summary, six-point checkup, nine-item action center, timeline, cumulative rank tools, upgrade choices, and safe customer routes in one response.
+- `POST /api/v1/licenses/customer-workspace` returns the account summary, six-point checkup, six-factor workspace score, nine-item action center, 30-day success plan, benefit map, timeline, cumulative rank tools, upgrade choices, safe support pack, offline recovery card, and customer routes in one response.
 - Checklist progress stays only in the current browser tab and is never uploaded or saved in browser storage.
+- Customers can filter actions, search unlocked tools, and export the full safe workspace, a support pack, or an offline recovery card without exporting the license key or customer identity.
 - Safe exports exclude the license key, license id, customer identity, owner notes, machine identity, receipts, payment data, paths, PINs, USB secrets, and file contents.
-- `GET /owner/customers` and `GET /api/v1/admin/customer-experience` provide the owner a read-only aggregate console. The API requires the admin header and never returns customer-level identity or license proof.
+- `GET /owner/customers` and `GET /api/v1/admin/customer-experience` provide the owner a read-only aggregate console with an experience score, journey stages, renewal health, rank percentages, surface readiness, and JSON/CSV exports. The API requires the admin header and never returns customer-level identity or license proof.
 
 ## License endpoints
 

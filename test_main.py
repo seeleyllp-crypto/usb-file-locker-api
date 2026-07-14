@@ -626,10 +626,10 @@ class VaultLinkApiTests(unittest.TestCase):
         status, workspace = self.call(
             "/api/v1/licenses/customer-workspace",
             method="POST",
-            payload={"license_key": license_key, "app_version": "2026.07.14.1"},
+            payload={"license_key": license_key, "app_version": "2026.07.14.2"},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(workspace["workspace_schema_version"], 1)
+        self.assertEqual(workspace["workspace_schema_version"], 2)
         self.assertTrue(workspace["does_not_activate"])
         self.assertTrue(workspace["cannot_control_customer_pc"])
         self.assertEqual(workspace["summary"]["plan"]["rank"], 5)
@@ -642,6 +642,23 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(len(workspace["quick_links"]), 6)
         self.assertEqual(len(workspace["support_categories"]), 6)
+        self.assertGreaterEqual(workspace["workspace_score"]["score"], 0)
+        self.assertLessEqual(workspace["workspace_score"]["score"], 100)
+        self.assertEqual(workspace["workspace_score"]["maximum"], 100)
+        self.assertEqual(len(workspace["workspace_score"]["factors"]), 6)
+        self.assertEqual(set(workspace["success_plan"]), {"today", "this_week", "this_month"})
+        self.assertEqual(
+            sum(len(items) for items in workspace["success_plan"].values()),
+            workspace["action_center"]["count"],
+        )
+        self.assertEqual(workspace["benefit_map"]["current_rank"]["rank"], 5)
+        self.assertGreater(workspace["benefit_map"]["unlocked_count"], 0)
+        self.assertIsNotNone(workspace["benefit_map"]["next_rank"])
+        self.assertFalse(workspace["support_pack"]["attachments_included"])
+        self.assertTrue(workspace["support_pack"]["safe_to_share_after_review"])
+        self.assertEqual(len(workspace["recovery_card"]["steps"]), 8)
+        self.assertFalse(workspace["recovery_card"]["contains_key_material"])
+        self.assertFalse(workspace["recovery_card"]["contains_customer_identity"])
         self.assertEqual(api.active_device_count(issued["license"]["license_id"]), 0)
         serialized_workspace = json.dumps(workspace)
         for private_value in (
@@ -661,6 +678,14 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(rejected["error"], "bad_request")
 
+        status, rejected = self.call(
+            "/api/v1/licenses/customer-workspace",
+            method="POST",
+            payload={"license_key": license_key, "app_version": "C:/private/customer-file.txt"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(rejected["error"], "bad_request")
+
         status, _headers, page = self.call_bytes("/workspace")
         self.assertEqual(status, 200)
         workspace_page = page.decode("utf-8")
@@ -669,6 +694,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("LOAD WORKSPACE", workspace_page)
         self.assertIn("Priority Action Plan", workspace_page)
         self.assertIn("EXPORT SAFE JSON", workspace_page)
+        self.assertIn("EXPORT SUPPORT PACK", workspace_page)
+        self.assertIn("EXPORT RECOVERY CARD", workspace_page)
+        self.assertIn("30-Day Success Plan", workspace_page)
+        self.assertIn("Benefit Map", workspace_page)
         self.assertNotIn("localStorage", workspace_page)
 
         status, denied = self.call("/api/v1/admin/customer-experience")
@@ -679,11 +708,19 @@ class VaultLinkApiTests(unittest.TestCase):
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(experience["experience_schema_version"], 1)
+        self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
         self.assertEqual(len(experience["customer_surfaces"]), 7)
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
+        self.assertGreaterEqual(experience["experience_score"]["score"], 0)
+        self.assertLessEqual(experience["experience_score"]["score"], 100)
+        self.assertEqual(len(experience["customer_journey"]), 5)
+        self.assertEqual(
+            set(experience["renewal_health"]),
+            {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
+        )
+        self.assertEqual(experience["surface_summary"]["total"], 7)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -700,6 +737,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Customer Experience Console", owner_text)
         self.assertIn("/api/v1/admin/customer-experience", owner_text)
         self.assertIn("EXPORT RANK CSV", owner_text)
+        self.assertIn("EXPORT JOURNEY CSV", owner_text)
+        self.assertIn("Customer Journey", owner_text)
+        self.assertIn("Renewal Health", owner_text)
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")
