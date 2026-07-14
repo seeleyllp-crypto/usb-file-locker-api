@@ -607,6 +607,100 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Higher ranks", page_text)
         self.assertIn("without activating", page_text.lower())
 
+    def test_customer_workspace_and_owner_experience_are_private_and_complete(self):
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "small-office",
+                "customer_label": "WORKSPACE-PRIVATE-CUSTOMER-8821",
+                "customer_email": "workspace-8821@example.test",
+                "license_note": "WORKSPACE-PRIVATE-NOTE-8821",
+                "max_devices": 5,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        license_key = issued["license_key"]
+
+        status, workspace = self.call(
+            "/api/v1/licenses/customer-workspace",
+            method="POST",
+            payload={"license_key": license_key, "app_version": "2026.07.14.1"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(workspace["workspace_schema_version"], 1)
+        self.assertTrue(workspace["does_not_activate"])
+        self.assertTrue(workspace["cannot_control_customer_pc"])
+        self.assertEqual(workspace["summary"]["plan"]["rank"], 5)
+        self.assertEqual(workspace["summary"]["device_usage"]["active"], 0)
+        self.assertEqual(workspace["rank_tools"]["unlocked_count"], 25)
+        self.assertEqual(workspace["action_center"]["count"], 9)
+        self.assertEqual(
+            sum(workspace["action_center"]["counts"].values()),
+            workspace["action_center"]["count"],
+        )
+        self.assertEqual(len(workspace["quick_links"]), 6)
+        self.assertEqual(len(workspace["support_categories"]), 6)
+        self.assertEqual(api.active_device_count(issued["license"]["license_id"]), 0)
+        serialized_workspace = json.dumps(workspace)
+        for private_value in (
+            "WORKSPACE-PRIVATE-CUSTOMER-8821",
+            "workspace-8821@example.test",
+            "WORKSPACE-PRIVATE-NOTE-8821",
+            issued["license"]["license_id"],
+            license_key,
+        ):
+            self.assertNotIn(private_value, serialized_workspace)
+
+        status, rejected = self.call(
+            "/api/v1/licenses/customer-workspace",
+            method="POST",
+            payload={"license_key": license_key, "upload_files": True},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(rejected["error"], "bad_request")
+
+        status, _headers, page = self.call_bytes("/workspace")
+        self.assertEqual(status, 200)
+        workspace_page = page.decode("utf-8")
+        self.assertIn("VaultLink Customer Workspace", workspace_page)
+        self.assertIn("/api/v1/licenses/customer-workspace", workspace_page)
+        self.assertIn("LOAD WORKSPACE", workspace_page)
+        self.assertIn("Priority Action Plan", workspace_page)
+        self.assertIn("EXPORT SAFE JSON", workspace_page)
+        self.assertNotIn("localStorage", workspace_page)
+
+        status, denied = self.call("/api/v1/admin/customer-experience")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+        status, experience = self.call(
+            "/api/v1/admin/customer-experience",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(experience["experience_schema_version"], 1)
+        self.assertEqual(len(experience["rank_coverage"]), 7)
+        self.assertEqual(len(experience["customer_surfaces"]), 7)
+        self.assertEqual(len(experience["actions"]), 8)
+        self.assertEqual(experience["metrics"]["total_licenses"], 1)
+        serialized_experience = json.dumps(experience)
+        for private_value in (
+            "WORKSPACE-PRIVATE-CUSTOMER-8821",
+            "workspace-8821@example.test",
+            "WORKSPACE-PRIVATE-NOTE-8821",
+            issued["license"]["license_id"],
+            license_key,
+        ):
+            self.assertNotIn(private_value, serialized_experience)
+
+        status, _headers, owner_page = self.call_bytes("/owner/customers")
+        self.assertEqual(status, 200)
+        owner_text = owner_page.decode("utf-8")
+        self.assertIn("Customer Experience Console", owner_text)
+        self.assertIn("/api/v1/admin/customer-experience", owner_text)
+        self.assertIn("EXPORT RANK CSV", owner_text)
+
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")
         self.assertEqual(status, 403)

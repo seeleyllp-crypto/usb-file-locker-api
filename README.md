@@ -10,6 +10,8 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
+- A unified Customer Workspace at `/workspace` with a composite account overview, prioritized action plan, unlocked rank tools, timeline, upgrades, and session-only progress
+- An aggregate Customer Experience Console at `/owner/customers` for rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
 - An encrypted customer Bug Inbox with owner status actions, private notes, replies, and deletion
 - Rank-targeted, scheduled, read-only Owner Announcements with desktop delivery
 - Public informational service status with automatic licensed-desktop notices
@@ -89,10 +91,12 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
+- `http://127.0.0.1:8000/workspace`
 - `http://127.0.0.1:8000/update`
 - `http://127.0.0.1:8000/readiness`
 - `http://127.0.0.1:8000/owner`
 - `http://127.0.0.1:8000/owner/insights`
+- `http://127.0.0.1:8000/owner/customers`
 
 ## Shop
 
@@ -122,6 +126,14 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 - The session workspace adds current-rank, incomplete, and favorites filters; next-incomplete focus; and local JSON rank-pack import. Favorites and progress are not uploaded or saved in browser storage.
 - Customer Checkup is informational only. It is not an antivirus scan, security certification, compliance determination, or permission to remotely inspect or modify a customer PC.
 - Preview never activates a device, consumes a seat, saves the key in browser storage, or returns customer labels, email addresses, private notes, machine identifiers, receipts, paths, PINs, USB secrets, or file contents.
+
+## Customer Workspace
+
+- `GET /workspace` opens the unified customer app.
+- `POST /api/v1/licenses/customer-workspace` returns the account summary, six-point checkup, nine-item action center, timeline, cumulative rank tools, upgrade choices, and safe customer routes in one response.
+- Checklist progress stays only in the current browser tab and is never uploaded or saved in browser storage.
+- Safe exports exclude the license key, license id, customer identity, owner notes, machine identity, receipts, payment data, paths, PINs, USB secrets, and file contents.
+- `GET /owner/customers` and `GET /api/v1/admin/customer-experience` provide the owner a read-only aggregate console. The API requires the admin header and never returns customer-level identity or license proof.
 
 ## License endpoints
 

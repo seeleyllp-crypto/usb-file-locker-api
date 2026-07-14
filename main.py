@@ -16,9 +16,11 @@ from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from customer_experience_pages import customer_workspace_html, owner_customer_experience_html
+
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.24.0"
+API_VERSION = "0.25.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -173,8 +175,8 @@ class UnsupportedMediaType(ValueError):
 FEATURES = [
     {
         "id": "customer-hub",
-        "title": "Customer Hub",
-        "summary": "Review privacy-safe license, rank, service, update, and customer-page information without displaying license proof or machine identity.",
+        "title": "Customer Workspace",
+        "summary": "Combine privacy-safe account health, seats, releases, prioritized actions, rank tools, milestones, upgrades, and customer routes without displaying license proof or machine identity.",
         "category": "starter",
     },
     {
@@ -283,6 +285,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Customer Workspace", "script": "customer_hub.py", "purpose": "Load the saved license into a privacy-safe customer action center and safe export."},
     {"name": "Privacy Safety Hub", "script": "privacy_safety_hub.py", "purpose": "Launch dashboard for the toolkit."},
     {"name": "Locked File Browser", "script": "locked_file_browser.py", "purpose": "Find .locked files quickly and jump into unlock mode."},
     {"name": "Quick Lock Note", "script": "quick_lock_note.py", "purpose": "Turn pasted text into a locked note fast."},
@@ -1626,11 +1629,13 @@ def docs_payload():
             {"method": "GET", "path": "/", "purpose": "HTML homepage"},
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
+            {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
             {"method": "GET", "path": "/status", "purpose": "Public customer service and signed-release status"},
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
             {"method": "GET", "path": "/privacy", "purpose": "Public privacy notice and data-handling summary"},
             {"method": "GET", "path": "/owner", "purpose": "Owner-only key and note web console"},
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
+            {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1654,6 +1659,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/customer-checkup", "purpose": "Privacy-safe license, seat, service, update, and rank-tool attention check"},
             {"method": "POST", "path": "/api/v1/licenses/support-guide", "purpose": "Fixed-category privacy-safe customer troubleshooting guide"},
             {"method": "POST", "path": "/api/v1/licenses/timeline", "purpose": "Read-only license milestones and local renewal-reminder metadata"},
+            {"method": "POST", "path": "/api/v1/licenses/customer-workspace", "purpose": "Composite customer workspace without activation or identity fields"},
             {"method": "POST", "path": "/api/v1/licenses/sync", "purpose": "Automatic client heartbeat with revocation, seat, release, and sync policy"},
             {"method": "POST", "path": "/api/v1/licenses/deactivate", "purpose": "Remove the current machine activation"},
             {"method": "POST", "path": "/api/v1/licenses/revoke", "purpose": "Admin-only license revocation"},
@@ -1668,6 +1674,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/dashboard", "purpose": "Admin-only license, device, audit, breach, and release totals"},
             {"method": "GET", "path": "/api/v1/admin/updates/windows/status", "purpose": "Admin-only live Ed25519, SHA-256, package-size, and app-data release test"},
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
+            {"method": "GET", "path": "/api/v1/admin/customer-experience", "purpose": "Admin-only aggregate customer experience, rank, release, and support health"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -2935,7 +2942,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3441,7 +3448,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5043,6 +5050,270 @@ def customer_timeline(payload):
         "privacy_notice": (
             "Timeline responses exclude the license key, license id, customer identity, notes, machine identifiers, "
             "receipts, payment data, paths, PINs, USB secrets, file contents, and calendar-account data."
+        ),
+    }
+
+
+def customer_workspace(payload):
+    """Build one privacy-safe customer workspace without activating a device seat."""
+    require_json_object(payload)
+    allowed_fields = {"license_key", "app_version"}
+    unknown_fields = sorted(set(payload) - allowed_fields)
+    if unknown_fields:
+        raise ValueError(f"Unknown customer workspace field: {unknown_fields[0]}.")
+
+    preview = preview_license(payload)
+    checkup = customer_checkup(payload)
+    timeline = customer_timeline(payload)
+    rank_tools = customer_rank_tools(payload)
+    upgrade_options = license_upgrade_options(payload)
+
+    target_paths = {
+        "license": "/customer",
+        "service": "/status",
+        "devices": "/customer",
+        "expiration": "/shop",
+        "update": "/update",
+        "rank-tools": "/workspace#rank-tools",
+    }
+    when_by_severity = {
+        "action": "now",
+        "check": "soon",
+        "info": "maintain",
+        "good": "maintain",
+    }
+    actions = []
+    for item in checkup.get("items", []):
+        identifier = str(item.get("id", "check"))
+        severity = str(item.get("severity", "info"))
+        actions.append(
+            {
+                "id": f"checkup-{identifier}",
+                "source": "customer_checkup",
+                "when": when_by_severity.get(severity, "maintain"),
+                "severity": severity,
+                "title": str(item.get("title", "Review customer status")),
+                "detail": str(item.get("detail", "Review this customer workspace item.")),
+                "target_path": target_paths.get(identifier, "/workspace"),
+            }
+        )
+    actions.extend(
+        [
+            {
+                "id": "recovery-drill",
+                "source": "workspace",
+                "when": "soon",
+                "severity": "check",
+                "title": "Complete a recovery-readiness drill",
+                "detail": "Use the fixed-field readiness tool before an emergency; it stores no answers.",
+                "target_path": "/readiness",
+            },
+            {
+                "id": "safe-support-export",
+                "source": "workspace",
+                "when": "maintain",
+                "severity": "info",
+                "title": "Keep a privacy-safe support summary",
+                "detail": "Export this workspace without license proof, identity, paths, PINs, USB secrets, or file contents.",
+                "target_path": "/workspace",
+            },
+            {
+                "id": "privacy-review",
+                "source": "workspace",
+                "when": "maintain",
+                "severity": "info",
+                "title": "Review the privacy boundary",
+                "detail": "Confirm which data stays on the customer PC before sending any support information.",
+                "target_path": "/privacy",
+            },
+        ]
+    )
+    order = {"now": 0, "soon": 1, "maintain": 2}
+    actions.sort(key=lambda item: (order.get(item["when"], 3), item["id"]))
+    action_counts = {
+        name: sum(item["when"] == name for item in actions)
+        for name in ("now", "soon", "maintain")
+    }
+
+    summary = {
+        "status": preview["status"],
+        "active": preview["active"],
+        "message": preview["message"],
+        "plan": preview["plan"],
+        "rank_progress": preview["rank_progress"],
+        "license": {
+            "issued_at_utc": preview["license"].get("issued_at_utc", ""),
+            "expires_at_utc": preview["license"].get("expires_at_utc", ""),
+        },
+        "device_usage": preview["device_usage"],
+        "service_status": preview["service_status"],
+        "release": preview["release"],
+        "limited_until_utc": preview.get("limited_until_utc", ""),
+    }
+    return {
+        "ok": True,
+        "workspace_schema_version": 1,
+        "message": "Customer workspace loaded without activating or changing a device seat.",
+        "summary": summary,
+        "checkup": checkup,
+        "action_center": {
+            "count": len(actions),
+            "counts": action_counts,
+            "items": actions,
+            "progress_storage": "session_only_not_uploaded",
+        },
+        "timeline": timeline,
+        "rank_tools": rank_tools,
+        "upgrade_options": upgrade_options,
+        "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
+        "quick_links": [
+            {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "update", "label": "SIGNED UPDATE", "path": "/update"},
+            {"id": "recovery", "label": "RECOVERY READINESS", "path": "/readiness"},
+            {"id": "status", "label": "SERVICE STATUS", "path": "/status"},
+            {"id": "privacy", "label": "PRIVACY", "path": "/privacy"},
+            {"id": "shop", "label": "RANK SHOP", "path": "/shop"},
+        ],
+        "does_not_activate": True,
+        "cannot_control_customer_pc": True,
+        "server_time_utc": utc_now(),
+        "privacy_notice": (
+            "Customer workspace responses exclude license keys, license ids, customer labels, email addresses, "
+            "owner notes, machine identifiers, activation receipts, payment data, paths, PINs, USB secrets, "
+            "file contents, and browser checklist progress."
+        ),
+    }
+
+
+def admin_customer_experience():
+    """Return aggregate customer-experience health without customer identities."""
+    dashboard = admin_dashboard_summary()
+    inventory = list_admin_license_records()
+    plan_counts = {plan["id"]: 0 for plan in PLAN_TIERS}
+    for record in inventory.get("items", []):
+        plan_id = canonical_plan_id(record.get("plan_id", ""))
+        if plan_id in plan_counts:
+            plan_counts[plan_id] += 1
+
+    clients = dashboard["client_health"]
+    licenses = dashboard["licenses"]
+    devices = dashboard["devices"]
+    support = dashboard["support_tickets"]
+    announcements = dashboard["announcements"]
+    release = dashboard["release"]
+    shop = dashboard["shop"]
+    service = dashboard["service_status"]
+    storage = dashboard["storage"]
+    active_clients = int(clients.get("active_devices", 0) or 0)
+    current_clients = int(clients.get("current_release_devices", 0) or 0)
+    adoption = round((current_clients / active_clients) * 100) if active_clients else 100
+    persistent_stores = sum(value == "persistent_configured" for value in storage.values())
+
+    actions = [
+        {
+            "id": "support-inbox",
+            "category": "Support",
+            "state": "action" if support.get("needs_action") else "good",
+            "title": "Review customer support queue",
+            "detail": f"{int(support.get('needs_action', 0) or 0)} ticket(s) currently need owner action.",
+        },
+        {
+            "id": "release-adoption",
+            "category": "Updates",
+            "state": "check" if adoption < 100 else "good",
+            "title": "Review signed-release adoption",
+            "detail": f"{adoption}% of reporting clients use the current signed desktop release.",
+        },
+        {
+            "id": "stale-clients",
+            "category": "Devices",
+            "state": "check" if clients.get("stale_24h") else "good",
+            "title": "Review stale customer sync",
+            "detail": f"{int(clients.get('stale_24h', 0) or 0)} anonymous client(s) have not synced in 24 hours.",
+        },
+        {
+            "id": "service-mode",
+            "category": "Service",
+            "state": "action" if service.get("mode") != "normal" else "good",
+            "title": "Confirm customer service status",
+            "detail": str(service.get("message", "No service message is available.")),
+        },
+        {
+            "id": "announcements",
+            "category": "Communication",
+            "state": "good" if announcements.get("active") else "check",
+            "title": "Keep customers informed",
+            "detail": f"{int(announcements.get('active', 0) or 0)} active rank-targeted announcement(s).",
+        },
+        {
+            "id": "shop-links",
+            "category": "Shop",
+            "state": "good" if shop.get("ready") else "check",
+            "title": "Check customer purchase routes",
+            "detail": f"{int(shop.get('configured', 0) or 0)} of {int(shop.get('total', 0) or 0)} hosted checkout links are configured.",
+        },
+        {
+            "id": "storage",
+            "category": "Reliability",
+            "state": "good" if persistent_stores == len(storage) else "action",
+            "title": "Protect customer service records",
+            "detail": f"{persistent_stores} of {len(storage)} service stores report persistent configuration.",
+        },
+        {
+            "id": "activity-integrity",
+            "category": "Audit",
+            "state": "good" if dashboard["api_activity"].get("integrity_valid") else "action",
+            "title": "Verify owner activity integrity",
+            "detail": str(dashboard["api_activity"].get("integrity_message", "No integrity result.")),
+        },
+    ]
+
+    rank_coverage = []
+    for plan in sorted(PLAN_TIERS, key=lambda item: item["rank"]):
+        rank_coverage.append(
+            {
+                "rank": plan["rank"],
+                "id": plan["id"],
+                "name": plan["name"],
+                "price_label": plan["price_label"],
+                "licenses": int(plan_counts.get(plan["id"], 0)),
+                "entitlement_count": len(plan_entitlements(plan["id"])),
+            }
+        )
+
+    customer_surfaces = [
+        {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "license", "label": "License Center", "path": "/customer", "purpose": "Detailed read-only license view", "ready": True},
+        {"id": "update", "label": "Update Center", "path": "/update", "purpose": "Signed release and local hash verification", "ready": bool(release.get("signed_release_ready"))},
+        {"id": "recovery", "label": "Recovery Readiness", "path": "/readiness", "purpose": "Anonymous fixed-field recovery planning", "ready": True},
+        {"id": "status", "label": "Service Status", "path": "/status", "purpose": "Public release and service status", "ready": True},
+        {"id": "shop", "label": "Rank Shop", "path": "/shop", "purpose": "Seven-rank catalog and hosted checkout routes", "ready": bool(shop.get("ready"))},
+        {"id": "privacy", "label": "Privacy", "path": "/privacy", "purpose": "Published customer data boundaries", "ready": True},
+    ]
+    return {
+        "ok": True,
+        "experience_schema_version": 1,
+        "metrics": {
+            "total_licenses": int(licenses.get("total", 0) or 0),
+            "active_licenses": int(licenses.get("active", 0) or 0),
+            "active_devices": int(devices.get("active", 0) or 0),
+            "device_capacity": int(devices.get("capacity", 0) or 0),
+            "release_adoption_percent": adoption,
+            "support_needs_action": int(support.get("needs_action", 0) or 0),
+            "active_announcements": int(announcements.get("active", 0) or 0),
+            "shop_links_live": int(shop.get("configured", 0) or 0),
+            "shop_links_total": int(shop.get("total", 0) or 0),
+        },
+        "actions": actions,
+        "rank_coverage": rank_coverage,
+        "customer_surfaces": customer_surfaces,
+        "service_status": service,
+        "release": release,
+        "storage_readiness": f"{persistent_stores} of {len(storage)} persistent",
+        "server_time_utc": utc_now(),
+        "privacy_notice": (
+            "This aggregate console excludes license keys, license ids, customer labels, email addresses, owner notes, "
+            "machine identifiers, receipts, report contents, file data, paths, PINs, and USB secrets."
         ),
     }
 
@@ -7271,6 +7542,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/customer":
             self.send_html(customer_license_center_html())
             return
+        if path == "/workspace":
+            self.send_html(customer_workspace_html(API_VERSION))
+            return
         if path == "/update":
             self.send_html(update_center_html())
             return
@@ -7294,6 +7568,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/owner/insights":
             self.send_html(owner_insights_html())
+            return
+        if path == "/owner/customers":
+            self.send_html(owner_customer_experience_html(API_VERSION))
             return
         if path == "/health":
             self.send_json(
@@ -7330,6 +7607,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "api_activity_integrity": list_admin_api_activity()["integrity"],
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
+                    "customer_workspace_enabled": True,
+                    "owner_customer_experience_enabled": True,
                     "anonymous_plan_advisor_enabled": True,
                     "shop_checkout_links_configured": shop_payload()["configured_count"],
                     "shop_card_data_collected_by_vaultlink": False,
@@ -7388,6 +7667,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer upgrade options and added-entitlement comparisons",
                         "license-gated rank-exclusive customer checklists and tool packs",
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
+                        "unified privacy-safe customer workspace with a session-only action checklist",
+                        "admin-only aggregate customer-experience and seven-rank coverage console",
                         "fixed-category customer support guides and local signed-update verification metadata",
                         "anonymous Windows version compatibility checks and local update package verification",
                         "anonymous fixed-field recovery-readiness scoring and action-plan export",
@@ -7448,6 +7729,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Customer checkups are informational and cannot inspect, execute, lock, unlock, or modify a customer PC.",
                         "Support Guide accepts no free-form report text, and browser update verification does not upload the selected file.",
                         "Customer timelines are read-only, and renewal calendar files are created locally without calendar-account access.",
+                        "Customer Workspace combines existing read-only checks and never stores the license key or checklist progress.",
+                        "The owner customer-experience console exposes aggregate counts only and never returns customer identity or license proof.",
                         "Update Center does not store entered versions, and selected ZIP files are hashed only in the browser.",
                         "Recovery Readiness accepts only seven booleans, stores nothing, and cannot inspect or certify a PC.",
                     ],
@@ -7640,6 +7923,21 @@ class ApiHandler(BaseHTTPRequestHandler):
                     status=HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
             return
+        if path == "/api/v1/admin/customer-experience":
+            try:
+                self.require_admin_token()
+                self.send_json(admin_customer_experience())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
         if (
             len(parts) == 6
             and parts[:4] == ["api", "v1", "admin", "licenses"]
@@ -7758,6 +8056,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/licenses/customer-checkup": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/support-guide": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/timeline": MAX_LICENSE_JSON_BODY_BYTES,
+            "/api/v1/licenses/customer-workspace": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/sync": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/deactivate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/revoke": MAX_LICENSE_JSON_BODY_BYTES,
@@ -7828,6 +8127,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/licenses/timeline":
                 self.send_json(customer_timeline(payload))
+                return
+            if path == "/api/v1/licenses/customer-workspace":
+                self.send_json(customer_workspace(payload))
                 return
             if path == "/api/v1/licenses/sync":
                 self.send_json(sync_license(payload))
