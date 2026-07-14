@@ -2,20 +2,20 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.13.3",
+  "version": "2026.07.13.4",
   "minimum_supported_version": "2026.07.12.9",
-  "published_at_utc": "2026-07-13T23:09:46Z",
-  "package_filename": "VaultLink-Windows-2026.07.13.3.zip",
+  "published_at_utc": "2026-07-14T14:33:25Z",
+  "package_filename": "VaultLink-Windows-2026.07.13.4.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "187eceb9a6346e9e498cc0bfd4c963bd257c8c6cc82af7b371b097bbd5279514",
-  "size_bytes": 145973,
+  "sha256": "7cb672db31a64b3ebe0bdcd1119779809eaca8fa7c0e02d5c032f8d297c2f6ce",
+  "size_bytes": 148605,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Vault Health Center adds read-only structure checks, recovery status, multi-key coverage, and safe scan cancellation.",
-    "Customers can export and compare aggregate health snapshots without filenames, paths, key IDs, secrets, or contents.",
+    "Vault Health Center adds local aggregate baselines, automatic drift warnings, attention filtering, and key-folder coverage.",
+    "Customers can copy, export, and compare safe health summaries without filenames, paths, key IDs, secrets, or contents.",
     "Private owner tools remain excluded from customer update packages.",
     "The signed update preserves keys, licenses, settings, vault data, audit logs, and locked files."
   ],
   "preserves_local_app_data": true,
-  "signature": "W4ldKvnhgUa2tdaJmmx49X2-uyjBOLbFEBqcoZSvuU9K7PgFk2feD_x5VTcK2fc50-13cEUM9gr5kMbnv1d6Ag"
+  "signature": "4kQmvptMQEFbFvQz0n3BhYQp6iJn5VRhExuu_nuXYoeZYlrSLieFCHhouJhz7rJAKjRUzHoa-TNwPaIjqTGuDQ"
 }
