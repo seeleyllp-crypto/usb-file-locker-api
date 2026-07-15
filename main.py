@@ -19,15 +19,17 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from customer_experience_pages import (
     customer_diagnostics_center_html,
     customer_incident_response_html,
+    customer_recovery_drills_html,
     customer_trust_center_html,
     customer_workspace_html,
     owner_customer_experience_html,
     owner_trust_center_html,
 )
+from recovery_drill_catalog import fixed_recovery_drills
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.29.0"
+API_VERSION = "0.30.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -127,6 +129,15 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "perm_unlock_workbench_relock_copy",
         "perm_unlock_workbench_relock_remove",
         "quick_lock_note",
+        "recovery_drill_center_open",
+        "recovery_drill_copy",
+        "recovery_drill_export",
+        "recovery_drill_history_export",
+        "recovery_drill_online_open",
+        "recovery_drill_progress",
+        "recovery_drill_result",
+        "recovery_drill_schedule",
+        "recovery_drill_windows_security",
         "recovery_self_test",
         "restore_app_data",
         "save_personal_vault",
@@ -203,6 +214,12 @@ class UnsupportedMediaType(ValueError):
 
 
 FEATURES = [
+    {
+        "id": "recovery-drill-center",
+        "title": "Recovery Drill Center",
+        "summary": "Practice sixteen fixed recovery and continuity drills, score ten local readiness checks, keep hash-chained local-only results, and export reviewed privacy-safe reports.",
+        "category": "starter",
+    },
     {
         "id": "incident-response-center",
         "title": "Incident Response Center",
@@ -333,6 +350,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Recovery Drill Center", "script": "recovery_drill_center.py", "purpose": "Practice eighty fixed recovery steps, score local readiness, schedule reviews, and keep privacy-safe hash-chained results locally."},
     {"name": "Incident Response Center", "script": "incident_response_center.py", "purpose": "Use fixed incident playbooks, local readiness checks, Windows Security shortcuts, and reviewed safe reports."},
     {"name": "Diagnostics Center", "script": "diagnostics_center.py", "purpose": "Run eighteen read-only local checks and export a privacy-safe troubleshooting report."},
     {"name": "Trust and Recovery Center", "script": "trust_recovery_center.py", "purpose": "Combine local Defender, audit-chain, USB-policy, license, update, and API trust status in a privacy-safe report."},
@@ -372,6 +390,7 @@ PLAN_TIERS = [
         "includes": [
             "Portable locking tools",
             "Quick lock notes",
+            "Recovery Drill Center",
             "Incident Response Center",
             "Diagnostics Center",
             "Trust and Recovery Center",
@@ -380,6 +399,7 @@ PLAN_TIERS = [
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "recovery-drill-center",
             "incident-response-center",
             "diagnostics-center",
             "trust-recovery-center",
@@ -1667,6 +1687,7 @@ def product_payload():
             "customer_hub.py",
             "diagnostics_center.py",
             "incident_response_center.py",
+            "recovery_drill_center.py",
             "trust_recovery_center.py",
         }
     )
@@ -1690,6 +1711,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/recovery-drills", "purpose": "Public fixed recovery and continuity exercises with current-tab-only progress"},
             {"method": "GET", "path": "/incident-response", "purpose": "Public fixed incident playbooks with session-only progress"},
             {"method": "GET", "path": "/diagnostics", "purpose": "Public fixed-step troubleshooting workspace with session-only progress"},
             {"method": "GET", "path": "/trust", "purpose": "Public trust, signed-release, privacy-boundary, and recovery center"},
@@ -1716,6 +1738,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
             {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
             {"method": "GET", "path": "/api/v1/incident-guide", "purpose": "Public twelve-playbook incident guide with seventy-two fixed safe steps"},
+            {"method": "GET", "path": "/api/v1/recovery-drills", "purpose": "Public sixteen-drill catalog with eighty fixed safe steps and no customer progress collection"},
             {"method": "GET", "path": "/api/v1/deploy", "purpose": "Railway deploy hints"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
@@ -2461,6 +2484,45 @@ def incident_guide_payload():
     }
 
 
+def recovery_drill_guide_payload():
+    """Return the fixed recovery catalog without receiving customer progress or history."""
+    release = windows_update_release_status()
+    drills = fixed_recovery_drills()
+    return {
+        "ok": True,
+        "recovery_drill_schema_version": 1,
+        "api_version": API_VERSION,
+        "service_status": service_status_payload(),
+        "signed_release": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+        },
+        "drills": drills,
+        "drill_count": len(drills),
+        "step_count": sum(len(drill["steps"]) for drill in drills),
+        "categories": sorted({drill["category"] for drill in drills}),
+        "accepts_free_text": False,
+        "accepts_files": False,
+        "accepts_progress": False,
+        "session_progress_storage": "current_browser_tab_only",
+        "desktop_history_storage": "local_hash_chained_coarse_results_only",
+        "customer_records_included": False,
+        "privacy_boundaries": [
+            "The public recovery API receives no license key, receipt, identity, machine identity, PIN, USB secret, path, filename, screenshot, process list, file content, local readiness result, drill progress, or history.",
+            "Browser progress stays only in the current tab and is not uploaded or saved in browser storage.",
+            "Desktop history stores only fixed drill IDs, timestamps, completion totals, readiness scores, and hash-chain fields in the current Windows user's LocalAppData.",
+            "Recovery drills cannot inspect, lock, unlock, scan, install, remove, quarantine, or remotely control a customer PC.",
+        ],
+        "limitations": [
+            "A completed drill is preparation, not proof that every backup, key, device, account, or future recovery attempt will succeed.",
+            "Ransomware exercises are tabletop guidance only; never run malware, suspicious code, destructive scripts, or file-encryption simulations for training.",
+            "Microsoft Defender, account providers, trusted adults, qualified responders, and storage-recovery professionals remain necessary for high-impact decisions.",
+        ],
+        "server_time_utc": utc_now(),
+    }
+
+
 def windows_update_payload():
     manifest, _package_path = load_windows_update_release()
     return {
@@ -2911,7 +2973,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/recovery-drills">DRILLS</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -2986,7 +3048,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3113,7 +3175,7 @@ def recovery_readiness_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Recovery Readiness</h1>
     <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
@@ -3541,7 +3603,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -4047,7 +4109,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5892,6 +5954,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "drills", "label": "RECOVERY DRILLS", "path": "/recovery-drills"},
             {"id": "incident", "label": "INCIDENT RESPONSE", "path": "/incident-response"},
             {"id": "diagnostics", "label": "DIAGNOSTICS", "path": "/diagnostics"},
             {"id": "trust", "label": "TRUST CENTER", "path": "/trust"},
@@ -6066,6 +6129,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "drills", "label": "Recovery Drills", "path": "/recovery-drills", "purpose": "Sixteen fixed exercises and current-tab-only customer progress", "ready": recovery_drill_guide_payload()["step_count"] == 80},
         {"id": "incident", "label": "Incident Response", "path": "/incident-response", "purpose": "Twelve fixed playbooks and session-only customer progress", "ready": incident_guide_payload()["step_count"] == 72},
         {"id": "diagnostics", "label": "Diagnostics Center", "path": "/diagnostics", "purpose": "Fixed-step troubleshooting and safe local reporting", "ready": diagnostics_guide_payload()["step_count"] == 40},
         {"id": "trust", "label": "Trust Center", "path": "/trust", "purpose": "Public service, update, privacy, and recovery posture", "ready": trust_center_payload()["score"]["label"] != "action"},
@@ -8467,6 +8531,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
             return
+        if path == "/recovery-drills":
+            self.send_html(customer_recovery_drills_html(API_VERSION))
+            return
         if path == "/incident-response":
             self.send_html(customer_incident_response_html(API_VERSION))
             return
@@ -8542,6 +8609,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
+                    "recovery_drill_center_enabled": True,
                     "incident_response_center_enabled": True,
                     "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
@@ -8589,6 +8657,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/incident-guide":
             self.send_json(incident_guide_payload())
             return
+        if path == "/api/v1/recovery-drills":
+            self.send_json(recovery_drill_guide_payload())
+            return
         if path == "/api/v1/security":
             self.send_json(
                 {
@@ -8623,6 +8694,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "anonymous Windows version compatibility checks and local update package verification",
                         "anonymous fixed-field recovery-readiness scoring and action-plan export",
                         "public fixed incident playbooks with current-tab-only progress and privacy-safe local export",
+                        "public fixed recovery drills with current-tab-only progress and local hash-chained desktop results",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",

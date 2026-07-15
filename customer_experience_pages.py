@@ -70,7 +70,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -357,7 +357,7 @@ def customer_trust_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Trust and recovery status</h1>
     <p class="lead">Live service, signed-release, storage, privacy-boundary, and recovery evidence. This public view contains no customer or license records.</p>
@@ -427,7 +427,7 @@ def customer_diagnostics_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/incident-response">INCIDENT</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Guided troubleshooting</h1>
     <p class="lead">Choose the visible problem and work through fixed, privacy-safe steps. Progress stays only in this browser tab; this page cannot inspect or control the PC.</p>
@@ -489,7 +489,7 @@ def customer_incident_response_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Incident Response</div><nav><a href="/workspace">WORKSPACE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Incident Response</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Respond without exposing secrets</h1>
     <p class="lead">Choose what happened and follow fixed safety steps. This page cannot inspect or control the PC, and progress disappears when the current tab closes or reloads.</p>
@@ -527,6 +527,79 @@ def customer_incident_response_html(api_version):
     async function copy(){const report=safeExport();const lines=[`VaultLink incident playbook: ${report.playbook_title}`,`Progress: ${report.completed_step_ids.length}/${report.total_steps}`,`API: ${report.api_version} | Service: ${report.service_mode} | Signed desktop: ${report.signed_desktop_version||"not published"}`,report.privacy_notice];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Privacy-safe incident summary copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
     function exportJson(){const report=safeExport();const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-browser-incident-progress.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe incident progress exported.","good");}
     $("playbook").addEventListener("change",event=>{state.playbook=event.target.value;renderPlaybook();});$("reset").addEventListener("click",reset);$("next").addEventListener("click",copyNext);$("copy").addEventListener("click",copy);$("print").addEventListener("click",()=>window.print());$("export").addEventListener("click",exportJson);load();
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def customer_recovery_drills_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Recovery Drills</title>
+  <style>
+    :root{--bg:#0d1014;--band:#151a20;--panel:#1b2229;--field:#090c10;--line:#37434e;--text:#f4f7f8;--muted:#aab5bf;--green:#66df89;--blue:#68bee9;--yellow:#ffd166;--red:#ff7b72}
+    *{box-sizing:border-box;letter-spacing:0}body{margin:0;min-width:320px;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",Arial,sans-serif}header,footer{background:#11161b;border-color:var(--line);border-style:solid;border-width:0 0 1px}header>div,main,footer>div{width:min(1180px,calc(100% - 32px));margin:auto}header>div{min-height:70px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{font-size:18px;font-weight:800}nav{display:flex;flex-wrap:wrap;gap:7px}nav a{min-height:36px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--line);border-radius:5px;color:var(--text);text-decoration:none;font-weight:750}
+    main{padding:28px 0 50px}h1{margin:0;font-size:30px}h2{margin:0;font-size:19px}h3{margin:0;font-size:15px}.lead,.status,.step p,.boundary p{color:var(--muted)}.lead{max-width:920px;margin:7px 0 0;font-size:15px}.notice{margin-top:14px;padding:12px 14px;border-left:4px solid var(--green);background:var(--band);color:var(--muted)}
+    .selectors{display:grid;grid-template-columns:190px minmax(260px,1fr);gap:9px;margin-top:18px;padding:15px;border:1px solid var(--line);background:var(--band)}label{display:block;margin-bottom:6px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}select{width:100%;height:42px;padding:0 11px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--text);font:inherit}.actions{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;margin-top:9px}button{min-height:42px;padding:0 10px;border:0;border-radius:5px;background:#29333d;color:var(--text);font-weight:800;cursor:pointer}button.primary{background:var(--green);color:#061109}button.export{background:var(--yellow);color:#171100}button:disabled{opacity:.5;cursor:not-allowed}.status{min-height:22px;margin-top:9px}.status.good{color:var(--green)}.status.bad{color:var(--red)}#workspace[hidden]{display:none}
+    .metrics{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));margin-top:13px;border:1px solid var(--line);background:var(--band)}.metric{min-width:0;padding:13px;border-right:1px solid var(--line)}.metric:last-child{border-right:0}.metric span{display:block;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.metric strong{display:block;margin-top:4px;font-size:16px;overflow-wrap:anywhere}
+    .section{margin-top:24px;padding-top:19px;border-top:1px solid var(--line)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:14px;margin-bottom:11px}.section-head p{max-width:680px;margin:0;color:var(--muted);text-align:right}.steps{display:grid;gap:9px}.step{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.step.done{border-color:var(--green)}.step input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--green)}.step p{margin:5px 0 0}.expected{color:var(--blue)!important}.eyebrow{color:var(--yellow);font-size:10px;font-weight:800;text-transform:uppercase}.success{margin-top:13px;padding:13px;border-left:4px solid var(--green);background:var(--band);color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px}.boundary{padding:14px;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:6px;background:var(--panel)}.boundary p{margin:5px 0 0}.boundary.limit{border-left-color:var(--yellow)}footer{border-width:1px 0 0}footer>div{padding:21px 0 27px;color:var(--muted)}
+    @media(max-width:1050px){.actions{grid-template-columns:repeat(4,1fr)}}@media(max-width:820px){.metrics{grid-template-columns:repeat(2,1fr)}.metric{border-bottom:1px solid var(--line)}}@media(max-width:620px){header>div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.selectors,.metrics,.actions{grid-template-columns:1fr}.metric{border-right:0}.step{grid-template-columns:28px minmax(0,1fr)}}
+    @media print{header,.selectors,.actions,.status,footer{display:none!important}body{background:#fff;color:#111}.step,.boundary,.success{break-inside:avoid;background:#fff;color:#111;border-color:#777}.lead,.step p,.boundary p,.section-head p,.success{color:#333!important}main{width:100%;padding:0}}
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Recovery Drills</div><nav><a href="/workspace">WORKSPACE</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <main>
+    <h1>Practice recovery before it matters</h1>
+    <p class="lead">Choose a fixed exercise, follow every step, and export only reviewed coarse progress. This page cannot inspect the PC, verify a real backup, or receive customer drill history.</p>
+    <div class="notice">Ransomware exercises are tabletop guidance only. Never run malware, suspicious code, destructive scripts, or file-encryption simulations for training.</div>
+    <section class="selectors">
+      <div><label for="category">Category</label><select id="category" disabled></select></div>
+      <div><label for="drill">Recovery drill</label><select id="drill" disabled></select></div>
+    </section>
+    <section class="actions">
+      <button id="reset" type="button" disabled>RESET</button>
+      <button id="next" class="primary" type="button" disabled>MARK NEXT</button>
+      <button id="all" type="button" disabled>MARK ALL</button>
+      <button id="random" type="button" disabled>RANDOM DRILL</button>
+      <button id="copyNext" type="button" disabled>COPY NEXT STEP</button>
+      <button id="copy" type="button" disabled>COPY SUMMARY</button>
+      <button id="print" type="button" disabled>PRINT</button>
+      <button id="export" class="export" type="button" disabled>EXPORT SAFE JSON</button>
+    </section>
+    <div id="status" class="status" role="status" aria-live="polite">Loading fixed recovery drills...</div>
+    <div id="workspace" hidden>
+      <div id="metrics" class="metrics"></div>
+      <section class="section"><div class="section-head"><div><div id="drillEyebrow" class="eyebrow">DRILL</div><h2 id="drillTitle"></h2></div><p id="drillSummary"></p></div><div id="steps" class="steps"></div><div id="success" class="success"></div></section>
+      <section class="section"><div class="section-head"><h2>Privacy Boundaries</h2><p>Progress exists only in the current tab unless the customer explicitly downloads a reviewed JSON file.</p></div><div id="boundaries" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Limitations</h2><p>A completed exercise is preparation, never proof that a future recovery will succeed.</p></div><div id="limitations" class="grid"></div></section>
+    </div>
+  </main>
+  <footer><div>API __API_VERSION__. This page does not use browser storage, customer accounts, license proof, uploads, or a progress submission API.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id);const state={payload:null,category:"ALL",drill:"",progress:new Map()};const value=input=>String(input??"");
+    function setStatus(message,tone=""){$("status").textContent=message;$("status").className=`status ${tone}`;}
+    function add(parent,tag,text,className=""){const node=document.createElement(tag);node.textContent=value(text);if(className)node.className=className;parent.append(node);return node;}
+    function metric(label,text){const node=document.createElement("div");node.className="metric";add(node,"span",label);add(node,"strong",text);return node;}
+    function drills(){return state.payload?.drills||[];}function selected(){return drills().find(item=>item.id===state.drill)||null;}function completed(id=state.drill){if(!state.progress.has(id))state.progress.set(id,new Set());return state.progress.get(id);}
+    function filtered(){return drills().filter(item=>state.category==="ALL"||item.category===state.category);}
+    function safeExport(){const drill=selected();const progress={};drills().forEach(item=>{const ids=item.steps.map(step=>step.id).filter(id=>completed(item.id).has(id));if(ids.length)progress[item.id]=ids;});return{schema_version:1,report_type:"VaultLink Privacy-Safe Browser Recovery Drill Progress",generated_at_utc:new Date().toISOString(),api_version:state.payload.api_version,service_mode:state.payload.service_status.mode,signed_desktop_version:state.payload.signed_release.version||"",selected_drill_id:drill?.id||"",selected_drill_title:drill?.title||"",progress,privacy_notice:"No license key, receipt, identity, password, PIN, USB secret, path, filename, screenshot, process list, file content, local check result, or free-form note is included."};}
+    function renderMetrics(){const drill=selected();const done=(drill?.steps||[]).filter(step=>completed().has(step.id)).length;const root=$("metrics");root.replaceChildren();[["API",state.payload.api_version],["Service",state.payload.service_status.mode],["Signed desktop",state.payload.signed_release.version||"Not published"],["Drills",state.payload.drill_count],["Fixed steps",state.payload.step_count],["Current progress",`${done} / ${(drill?.steps||[]).length}`]].forEach(row=>root.append(metric(...row)));}
+    function renderDrill(){const drill=selected();if(!drill)return;$("drillTitle").textContent=drill.title;$("drillSummary").textContent=drill.summary;$("drillEyebrow").textContent=`${drill.category} | ${drill.id.replaceAll("-"," ")}`;const root=$("steps");root.replaceChildren();drill.steps.forEach((step,index)=>{const row=document.createElement("article");row.className=`step ${completed().has(step.id)?"done":""}`;const box=document.createElement("input");box.type="checkbox";box.checked=completed().has(step.id);box.setAttribute("aria-label",`Complete ${step.title}`);box.addEventListener("change",()=>{box.checked?completed().add(step.id):completed().delete(step.id);renderDrill();});const body=document.createElement("div");add(body,"div",`STEP ${index+1}`,"eyebrow");add(body,"h3",step.title);add(body,"p",step.action);add(body,"p",`Expected: ${step.expected}`,"expected");row.append(box,body);root.append(row);});$("success").textContent=`SUCCESS TARGET: ${drill.success}`;renderMetrics();setStatus(`${drill.title}: ${drill.steps.filter(step=>completed().has(step.id)).length} of ${drill.steps.length} steps complete.`,"good");}
+    function renderDrillOptions(){const options=filtered();if(!options.some(item=>item.id===state.drill))state.drill=options[0]?.id||"";const select=$("drill");select.replaceChildren();options.forEach(item=>{const option=document.createElement("option");option.value=item.id;option.textContent=item.title;select.append(option);});select.value=state.drill;renderDrill();}
+    function render(data){state.payload=data;state.drill=data.drills[0]?.id||"";state.progress.clear();const categories=["ALL",...new Set(data.drills.map(item=>item.category))];const category=$("category");category.replaceChildren();categories.forEach(text=>{const option=document.createElement("option");option.value=text;option.textContent=text;category.append(option);});category.value=state.category;category.disabled=false;$("drill").disabled=false;["reset","next","all","random","copyNext","copy","print","export"].forEach(id=>$(id).disabled=false);const boundaries=$("boundaries");boundaries.replaceChildren();data.privacy_boundaries.forEach((text,index)=>{const item=document.createElement("article");item.className="boundary";add(item,"div",`BOUNDARY ${index+1}`,"eyebrow");add(item,"p",text);boundaries.append(item);});const limits=$("limitations");limits.replaceChildren();data.limitations.forEach((text,index)=>{const item=document.createElement("article");item.className="boundary limit";add(item,"div",`LIMITATION ${index+1}`,"eyebrow");add(item,"p",text);limits.append(item);});$("workspace").hidden=false;renderDrillOptions();}
+    async function load(){try{const response=await fetch("/api/v1/recovery-drills",{headers:{"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Recovery drills could not be loaded.");render(data);}catch(error){setStatus(error.message||"Recovery drills could not be loaded.","bad");}}
+    function reset(){completed().clear();renderDrill();}function markNext(){const drill=selected();const step=drill?.steps.find(item=>!completed().has(item.id));if(step)completed().add(step.id);renderDrill();}function markAll(){(selected()?.steps||[]).forEach(step=>completed().add(step.id));renderDrill();}
+    function randomDrill(){const options=filtered();if(!options.length)return;const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);state.drill=options[bytes[0]%options.length].id;$("drill").value=state.drill;renderDrill();}
+    async function copyNext(){const drill=selected();const step=drill?.steps.find(item=>!completed().has(item.id));if(!step){setStatus("Every step in this drill is marked complete.","good");return;}const lines=[`VaultLink next recovery step: ${step.title}`,step.action,`Expected: ${step.expected}`,"Do not include passwords, PINs, keys, private files, or personal details in support messages."];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Next fixed recovery step copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
+    async function copySummary(){const report=safeExport();const selectedProgress=report.progress[report.selected_drill_id]||[];const lines=[`VaultLink recovery drill: ${report.selected_drill_title}`,`Progress: ${selectedProgress.length}/${selected()?.steps.length||0}`,`API: ${report.api_version} | Service: ${report.service_mode} | Signed desktop: ${report.signed_desktop_version||"not published"}`,report.privacy_notice];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Privacy-safe drill summary copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
+    function exportJson(){const report=safeExport();const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-browser-recovery-drills.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe browser drill progress exported.","good");}
+    $("category").addEventListener("change",event=>{state.category=event.target.value;renderDrillOptions();});$("drill").addEventListener("change",event=>{state.drill=event.target.value;renderDrill();});$("reset").addEventListener("click",reset);$("next").addEventListener("click",markNext);$("all").addEventListener("click",markAll);$("random").addEventListener("click",randomDrill);$("copyNext").addEventListener("click",copyNext);$("copy").addEventListener("click",copySummary);$("print").addEventListener("click",()=>window.print());$("export").addEventListener("click",exportJson);load();
   </script>
 </body>
 </html>'''

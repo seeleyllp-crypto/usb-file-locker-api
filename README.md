@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Recovery Drill Center at `/recovery-drills` with sixteen fixed drills, eighty unique steps, five categories, current-tab-only progress, random selection, fixed-step copy, print, and privacy-safe local export
 - A public Incident Response Center at `/incident-response` with twelve fixed playbooks, seventy-two concrete steps, current-tab-only progress, copy-next-step and print controls, and privacy-safe local export
 - A public Diagnostics Center at `/diagnostics` with eight fixed problem categories, forty concrete steps, session-only checklist progress, and privacy-safe local export
 - A public Trust Center at `/trust` with a privacy-safe 100-point score for service configuration, signed releases, persistent storage, recovery boundaries, and security limitations
@@ -49,6 +50,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
+- Public recovery drills accept no free text or files, collect no customer progress, and never run malware, suspicious code, destructive scripts, or file-encryption simulations
 - Bug reports never attach local files or logs automatically, and raw machine ids are not stored
 - Announcements cannot run commands, access customer files, or change customer settings
 - Service status is informational and cannot remotely control or disable customer PCs
@@ -97,6 +99,7 @@ Then open:
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
 - `http://127.0.0.1:8000/workspace`
+- `http://127.0.0.1:8000/recovery-drills`
 - `http://127.0.0.1:8000/incident-response`
 - `http://127.0.0.1:8000/diagnostics`
 - `http://127.0.0.1:8000/update`
@@ -124,6 +127,16 @@ Then open:
 - The safe browser export contains only public API/service/release metadata, the selected category id, and completed fixed step ids.
 - The desktop companion performs eighteen local read-only checks and creates a separately reviewed privacy-safe report. The public API never receives that report automatically.
 - Diagnostics does not accept free text, files, license proof, machine identity, PINs, USB secrets, paths, filenames, vault data, or file contents.
+
+## Recovery Drill Center
+
+- `GET /recovery-drills` opens the public fixed-drill practice workspace.
+- `GET /api/v1/recovery-drills` returns sixteen drills and exactly eighty unique steps across backup, continuity, evidence, recovery, and security.
+- Checklist completion stays only in the current browser tab. The page uses no browser storage, uploads no progress, and accepts no free-form text or files.
+- Customers can filter drills, mark the next or every step, select a drill with cryptographic randomness, copy the next fixed step, print, and export reviewed privacy-safe JSON.
+- The desktop companion adds ten coarse local checks totaling 100 points, five local review intervals, a next-due date, and hash-chained complete or partial result history.
+- Browser and desktop reports exclude license proof, customer or machine identity, receipts, passwords, PINs, USB secrets, paths, filenames, screenshots, process lists, private file contents, local diagnostic details, and free-form notes.
+- Ransomware exercises are tabletop guidance only. VaultLink never runs malware, suspicious code, destructive scripts, or file-encryption simulations for training.
 
 ## Incident Response Center
 

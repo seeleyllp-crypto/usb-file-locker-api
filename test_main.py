@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 9)
+        self.assertEqual(len(workspace["quick_links"]), 10)
+        self.assertTrue(any(item["path"] == "/recovery-drills" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/incident-response" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/diagnostics" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/trust" for item in workspace["quick_links"]))
@@ -713,7 +714,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 10)
+        self.assertEqual(len(experience["customer_surfaces"]), 11)
+        self.assertTrue(any(item["path"] == "/recovery-drills" for item in experience["customer_surfaces"]))
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
         self.assertGreaterEqual(experience["experience_score"]["score"], 0)
@@ -723,7 +725,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 10)
+        self.assertEqual(experience["surface_summary"]["total"], 11)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -946,7 +948,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/incident-guide")
         self.assertEqual(status, 200)
         self.assertEqual(guide["incident_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.29.0")
+        self.assertEqual(guide["api_version"], "0.30.0")
         self.assertEqual(guide["playbook_count"], 12)
         self.assertEqual(guide["step_count"], 72)
         self.assertEqual(len(guide["playbooks"]), 12)
@@ -1014,6 +1016,103 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/incident-response" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/incident-guide" for item in docs["routes"]))
+
+    def test_public_recovery_drills_are_fixed_private_and_current_tab_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "DRILL-PRIVATE-CUSTOMER-4418",
+                "customer_email": "drill-4418@example.test",
+                "license_note": "DRILL-PRIVATE-NOTE-4418",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/recovery-drills")
+        self.assertEqual(status, 200)
+        self.assertEqual(guide["recovery_drill_schema_version"], 1)
+        self.assertEqual(guide["api_version"], "0.30.0")
+        self.assertEqual(guide["drill_count"], 16)
+        self.assertEqual(guide["step_count"], 80)
+        self.assertEqual(len(guide["drills"]), 16)
+        self.assertTrue(all(len(drill["steps"]) == 5 for drill in guide["drills"]))
+        self.assertEqual(guide["categories"], ["Backup", "Continuity", "Evidence", "Recovery", "Security"])
+        self.assertEqual(
+            {drill["id"] for drill in guide["drills"]},
+            {
+                "key-recovery",
+                "unlock-roundtrip",
+                "app-data-backup",
+                "locked-file-backup",
+                "device-replacement",
+                "update-rollback",
+                "offline-continuity",
+                "family-handoff",
+                "owner-succession",
+                "business-outage",
+                "account-recovery",
+                "phishing-response",
+                "ransomware-isolation",
+                "device-loss",
+                "audit-integrity",
+                "privacy-safe-support",
+            },
+        )
+        self.assertFalse(guide["accepts_free_text"])
+        self.assertFalse(guide["accepts_files"])
+        self.assertFalse(guide["accepts_progress"])
+        self.assertFalse(guide["customer_records_included"])
+        self.assertEqual(guide["session_progress_storage"], "current_browser_tab_only")
+        self.assertEqual(guide["desktop_history_storage"], "local_hash_chained_coarse_results_only")
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "DRILL-PRIVATE-CUSTOMER-4418",
+            "drill-4418@example.test",
+            "DRILL-PRIVATE-NOTE-4418",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/recovery-drills")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Recovery Drills", page_text)
+        self.assertIn("/api/v1/recovery-drills", page_text)
+        self.assertIn("Practice recovery before it matters", page_text)
+        self.assertIn("MARK NEXT", page_text)
+        self.assertIn("MARK ALL", page_text)
+        self.assertIn("RANDOM DRILL", page_text)
+        self.assertIn("COPY NEXT STEP", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["recovery_drill_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("recovery_drill_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("recovery-drill-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/recovery-drills" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/recovery-drills" for item in docs["routes"]))
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")
