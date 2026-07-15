@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 13)
+        self.assertEqual(len(workspace["quick_links"]), 14)
+        self.assertTrue(any(item["path"] == "/retention" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/backup-verification" for item in workspace["quick_links"]))
@@ -717,7 +718,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 14)
+        self.assertEqual(len(experience["customer_surfaces"]), 15)
+        self.assertTrue(any(item["path"] == "/retention" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/backup-verification" for item in experience["customer_surfaces"]))
@@ -731,7 +733,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 14)
+        self.assertEqual(experience["surface_summary"]["total"], 15)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -1320,6 +1322,136 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/recovery-kit" for item in docs["routes"]))
+
+    def test_public_retention_is_fixed_private_and_current_tab_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "RETENTION-PRIVATE-CUSTOMER-6621",
+                "customer_email": "retention-6621@example.test",
+                "license_note": "RETENTION-PRIVATE-NOTE-6621",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/retention-guide")
+        self.assertEqual(status, 200)
+        self.assertTrue(guide["ok"])
+        self.assertEqual(guide["retention_schema_version"], 1)
+        self.assertEqual(guide["api_version"], api.API_VERSION)
+        self.assertEqual(guide["area_count"], 8)
+        self.assertEqual(guide["policy_count"], 5)
+        self.assertEqual(guide["practice_count"], 10)
+        self.assertEqual(guide["cleanup_step_count"], 5)
+        self.assertEqual(len(guide["areas"]), 8)
+        self.assertEqual(len(guide["policies"]), 5)
+        self.assertEqual(len(guide["practices"]), 10)
+        self.assertEqual(len(guide["cleanup_flow"]), 5)
+        self.assertEqual(len({item["id"] for item in guide["areas"]}), 8)
+        self.assertEqual(len({item["id"] for item in guide["practices"]}), 10)
+        self.assertEqual(
+            {item["id"] for item in guide["policies"]},
+            {"cleanup-eligible", "preserve", "source-center-only", "owner-only", "not-inventoried"},
+        )
+        self.assertEqual(guide["browser_receipt_field_count"], 11)
+        self.assertEqual(
+            set(guide["browser_receipt_fields"]),
+            {
+                "schema_version",
+                "report_type",
+                "generated_at_utc",
+                "api_version",
+                "service_mode",
+                "signed_desktop_version",
+                "selected_policy",
+                "reviewed_practice_ids",
+                "reviewed_count",
+                "practice_count",
+                "privacy_notice",
+            },
+        )
+        for field in (
+            "accepts_free_text",
+            "accepts_files",
+            "accepts_paths",
+            "accepts_inventory",
+            "accepts_progress",
+            "accepts_cleanup_commands",
+            "accepts_local_results",
+            "remote_cleanup_allowed",
+            "customer_records_included",
+        ):
+            self.assertFalse(guide[field])
+        self.assertEqual(guide["progress_storage"], "current_browser_tab_only")
+        self.assertEqual(len(guide["privacy_boundaries"]), 4)
+        self.assertEqual(len(guide["limitations"]), 3)
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "RETENTION-PRIVATE-CUSTOMER-6621",
+            "retention-6621@example.test",
+            "RETENTION-PRIVATE-NOTE-6621",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/retention")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Storage & Retention", page_text)
+        self.assertIn("/api/v1/retention-guide", page_text)
+        self.assertIn("REVIEW NEXT", page_text)
+        self.assertIn("REVIEW ALL", page_text)
+        self.assertIn("COPY PLAN", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("vaultlink-browser-retention-review.json", page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+        self.assertNotIn('type="file"', page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["storage_retention_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("storage_retention_center.py", product["desktop_scripts"])
+        status, features = self.call("/api/v1/features")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["id"] == "storage-retention-center" for item in features["items"]))
+        status, companions = self.call("/api/v1/companions")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["script"] == "storage_retention_center.py" for item in companions["items"]))
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("storage-retention-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/retention" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/retention-guide" for item in docs["routes"]))
+        self.assertTrue(
+            {
+                "retention_center_open",
+                "retention_center_refresh",
+                "retention_temp_cleanup",
+                "retention_receipt_save",
+                "retention_summary_copy",
+                "retention_export_json",
+                "retention_export_text",
+                "retention_online_open",
+            }.issubset(api.ALLOWED_AUDIT_ACTIONS)
+        )
 
     def test_public_data_control_is_fixed_private_and_current_tab_only(self):
         manifest, _package = self.publish_test_update()

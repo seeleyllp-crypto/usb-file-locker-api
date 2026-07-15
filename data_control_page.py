@@ -15,7 +15,7 @@ def customer_data_control_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Data Control</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/privacy">PRIVACY</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Data Control</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/privacy">PRIVACY</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Know what exists and where it stays</h1>
     <p class="lead">Review VaultLink's fixed data classes, protection boundaries, retention rules, and customer controls without sending an inventory, path, file, account, or local result.</p>

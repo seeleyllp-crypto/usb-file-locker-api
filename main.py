@@ -32,10 +32,12 @@ from customer_experience_pages import (
 from recovery_drill_catalog import fixed_recovery_drills
 from recovery_kit_catalog import fixed_emergency_runbooks, fixed_recovery_kit_profiles, fixed_recovery_kit_sections
 from recovery_kit_page import customer_recovery_kit_html
+from retention_catalog import fixed_cleanup_flow, fixed_retention_areas, fixed_retention_practices
+from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.33.0"
+API_VERSION = "0.34.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -167,6 +169,14 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "recovery_drill_schedule",
         "recovery_drill_windows_security",
         "recovery_self_test",
+        "retention_center_open",
+        "retention_center_refresh",
+        "retention_export_json",
+        "retention_export_text",
+        "retention_online_open",
+        "retention_receipt_save",
+        "retention_summary_copy",
+        "retention_temp_cleanup",
         "restore_app_data",
         "save_personal_vault",
         "scan_personal_files",
@@ -242,6 +252,12 @@ class UnsupportedMediaType(ValueError):
 
 
 FEATURES = [
+    {
+        "id": "storage-retention-center",
+        "title": "Storage & Retention Center",
+        "summary": "Review eight fixed storage areas, verify ten protection controls, preview only the exact VaultLink temp workspace, and clean expired temporary copies with typed confirmation and hash-chained coarse receipts.",
+        "category": "starter",
+    },
     {
         "id": "data-control-center",
         "title": "Local Data Control Center",
@@ -396,6 +412,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Storage & Retention Center", "script": "storage_retention_center.py", "purpose": "Review eight fixed storage areas and safely clean only expired entries in VaultLink's exact temporary workspace after a fresh bounded preview and typed confirmation."},
     {"name": "Local Data Control Center", "script": "local_data_control_center.py", "purpose": "Map fixed VaultLink data boundaries, verify eleven protection controls, and export reviewed coarse privacy receipts without arbitrary file discovery."},
     {"name": "Recovery Kit Builder", "script": "recovery_kit_builder.py", "purpose": "Build a fixed privacy-safe emergency card, score local readiness, export a calendar reminder, and keep hash-chained coarse snapshots."},
     {"name": "Backup Verification Center", "script": "backup_verification_center.py", "purpose": "Verify recognized app-data backups, score twelve fixed checks, compare privacy-safe checkpoints, and follow a fixed restore order."},
@@ -424,6 +441,7 @@ SECURITY_NOTES = [
     "Owner license keys and private notes are encrypted at rest and available only through admin-token routes.",
     "Audit exports are reduced to privacy-safe fields, require an active licensed machine, and use short-lived signed download links.",
     "Ranks are software and service package descriptions, not HIPAA certification, legal approval, guaranteed protection, or proof of professional review.",
+    "The Storage & Retention Center can clean only the exact local VaultLink temporary workspace; it rejects links and never accepts remote cleanup commands or customer storage inventories.",
 ]
 
 
@@ -437,6 +455,7 @@ PLAN_TIERS = [
         "best_for": "One Windows PC and basic locking instructions",
         "rank": 1,
         "includes": [
+            "Storage & Retention Center",
             "Local Data Control Center",
             "Recovery Kit Builder",
             "Backup Verification Center",
@@ -451,6 +470,7 @@ PLAN_TIERS = [
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "storage-retention-center",
             "data-control-center",
             "recovery-kit-builder",
             "backup-verification-center",
@@ -1741,6 +1761,7 @@ def product_payload():
             "quick_lock_note.py",
             "customer_hub.py",
             "diagnostics_center.py",
+            "storage_retention_center.py",
             "local_data_control_center.py",
             "incident_response_center.py",
             "recovery_drill_center.py",
@@ -1769,6 +1790,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/retention", "purpose": "Public fixed storage map, retention practices, cleanup boundaries, and current-tab-only review receipt"},
             {"method": "GET", "path": "/data-control", "purpose": "Public fixed data map, protection boundaries, retention guidance, and current-tab-only review receipt"},
             {"method": "GET", "path": "/recovery-kit", "purpose": "Public fixed emergency kit, first-hour runbooks, calendar reminder, and current-tab-only progress"},
             {"method": "GET", "path": "/backup-verification", "purpose": "Public fixed backup plans, restore objectives, and current-tab-only progress"},
@@ -1797,6 +1819,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
+            {"method": "GET", "path": "/api/v1/retention-guide", "purpose": "Public eight-area retention catalog and ten fixed practices with no local inventory or cleanup control"},
             {"method": "GET", "path": "/api/v1/data-map", "purpose": "Public fourteen-class data map with no customer inventory or progress collection"},
             {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
             {"method": "GET", "path": "/api/v1/incident-guide", "purpose": "Public twelve-playbook incident guide with seventy-two fixed safe steps"},
@@ -2192,6 +2215,78 @@ def trust_center_payload():
             "A valid signed update proves package integrity and publisher-key possession, not that software is free of every possible defect.",
         ],
         "safe_to_export": True,
+        "customer_records_included": False,
+        "server_time_utc": utc_now(),
+    }
+
+
+def retention_guide_payload():
+    """Return fixed storage policy without receiving local inventory or cleanup state."""
+    areas = fixed_retention_areas()
+    practices = fixed_retention_practices()
+    cleanup_flow = fixed_cleanup_flow()
+    release = windows_update_release_status()
+    policies = [
+        {"id": "cleanup-eligible", "label": "Cleanup eligible"},
+        {"id": "preserve", "label": "Preserve"},
+        {"id": "source-center-only", "label": "Source center only"},
+        {"id": "owner-only", "label": "Owner only"},
+        {"id": "not-inventoried", "label": "Not inventoried"},
+    ]
+    receipt_fields = [
+        "schema_version",
+        "report_type",
+        "generated_at_utc",
+        "api_version",
+        "service_mode",
+        "signed_desktop_version",
+        "selected_policy",
+        "reviewed_practice_ids",
+        "reviewed_count",
+        "practice_count",
+        "privacy_notice",
+    ]
+    return {
+        "ok": True,
+        "retention_schema_version": 1,
+        "api_version": API_VERSION,
+        "service_status": service_status_payload(),
+        "signed_release": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+            "published_at_utc": str(release.get("published_at_utc", "")),
+        },
+        "areas": areas,
+        "area_count": len(areas),
+        "policies": policies,
+        "policy_count": len(policies),
+        "practices": practices,
+        "practice_count": len(practices),
+        "cleanup_flow": cleanup_flow,
+        "cleanup_step_count": len(cleanup_flow),
+        "browser_receipt_fields": receipt_fields,
+        "browser_receipt_field_count": len(receipt_fields),
+        "accepts_free_text": False,
+        "accepts_files": False,
+        "accepts_paths": False,
+        "accepts_inventory": False,
+        "accepts_progress": False,
+        "accepts_cleanup_commands": False,
+        "accepts_local_results": False,
+        "remote_cleanup_allowed": False,
+        "progress_storage": "current_browser_tab_only",
+        "privacy_boundaries": [
+            "The public retention API receives no license key, receipt, identity, machine identifier, PIN, USB secret, path, filename, file content, local inventory, age, size, or cleanup result.",
+            "Browser review state stays only in the current tab and is not uploaded or written to browser storage.",
+            "Only the desktop app can preview the exact VaultLink temporary workspace, and it rejects links, junctions, metadata errors, and previews above 5,000 entries.",
+            "Cleanup requires a fresh preview, explicit yes/no approval, exact CLEAN TEMP text, and immediate boundary and age revalidation.",
+        ],
+        "limitations": [
+            "Retention guidance is not secure erasure, forensic destruction, antivirus scanning, certification, legal advice, or a recovery guarantee.",
+            "The browser cannot inspect, clean, delete, move, inventory, or control anything on a customer PC.",
+            "Audit, recovery, vault, license, owner, update rollback, locked, backup, and external customer data are outside retention cleanup.",
+        ],
         "customer_records_included": False,
         "server_time_utc": utc_now(),
     }
@@ -3188,7 +3283,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/data-control">DATA</a> &nbsp; <a href="/recovery-kit">KIT</a> &nbsp; <a href="/backup-verification">BACKUPS</a> &nbsp; <a href="/recovery-drills">DRILLS</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/retention">RETENTION</a> &nbsp; <a href="/data-control">DATA</a> &nbsp; <a href="/recovery-kit">KIT</a> &nbsp; <a href="/backup-verification">BACKUPS</a> &nbsp; <a href="/recovery-drills">DRILLS</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -3263,7 +3358,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3390,7 +3485,7 @@ def recovery_readiness_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Recovery Readiness</h1>
     <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
@@ -3818,7 +3913,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -4324,7 +4419,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -6169,6 +6264,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "retention", "label": "STORAGE & RETENTION", "path": "/retention"},
             {"id": "data", "label": "DATA CONTROL", "path": "/data-control"},
             {"id": "kit", "label": "RECOVERY KIT", "path": "/recovery-kit"},
             {"id": "backup", "label": "BACKUP VERIFICATION", "path": "/backup-verification"},
@@ -6347,6 +6443,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "retention", "label": "Storage & Retention", "path": "/retention", "purpose": "Eight fixed storage areas, ten retention practices, and current-tab-only review", "ready": retention_guide_payload()["practice_count"] == 10},
         {"id": "data", "label": "Data Control", "path": "/data-control", "purpose": "Fourteen fixed data classes, protection boundaries, retention, and current-tab-only review", "ready": data_control_map_payload()["class_count"] == 14},
         {"id": "kit", "label": "Recovery Kit", "path": "/recovery-kit", "purpose": "Five fixed profiles, fifty kit items, and five first-hour runbooks", "ready": recovery_kit_guide_payload()["item_count"] == 50},
         {"id": "backup", "label": "Backup Verification", "path": "/backup-verification", "purpose": "Twelve fixed plans, restore objectives, and current-tab-only progress", "ready": backup_verification_guide_payload()["step_count"] == 60},
@@ -8752,6 +8849,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
             return
+        if path == "/retention":
+            self.send_html(customer_retention_html(API_VERSION))
+            return
         if path == "/data-control":
             self.send_html(customer_data_control_html(API_VERSION))
             return
@@ -8839,6 +8939,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
+                    "storage_retention_center_enabled": True,
                     "data_control_center_enabled": True,
                     "recovery_kit_builder_enabled": True,
                     "backup_verification_center_enabled": True,
@@ -8884,6 +8985,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/trust-center":
             self.send_json(trust_center_payload())
             return
+        if path == "/api/v1/retention-guide":
+            self.send_json(retention_guide_payload())
+            return
         if path == "/api/v1/data-map":
             self.send_json(data_control_map_payload())
             return
@@ -8928,6 +9032,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "license-gated rank-exclusive customer checklists and tool packs",
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "unified privacy-safe customer workspace with a session-only action checklist",
+                        "public fixed storage and retention guidance with current-tab-only review and no remote cleanup capability",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
                         "public fixed-step diagnostics with session-only checklist progress and privacy-safe local export",
                         "public trust, signed-release, storage, privacy-boundary, and recovery posture",
@@ -8946,6 +9051,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "remote PIN capture",
                         "remote file reads",
                         "remote vault secret retrieval",
+                        "remote storage inventory or cleanup",
                         "automatic file or local-log attachment to support tickets",
                         "card-number collection or payment-secret storage",
                     ],
