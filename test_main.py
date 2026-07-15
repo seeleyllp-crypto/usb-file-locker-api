@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 8)
+        self.assertEqual(len(workspace["quick_links"]), 9)
+        self.assertTrue(any(item["path"] == "/incident-response" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/diagnostics" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/trust" for item in workspace["quick_links"]))
         self.assertEqual(len(workspace["support_categories"]), 6)
@@ -712,7 +713,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 9)
+        self.assertEqual(len(experience["customer_surfaces"]), 10)
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
         self.assertGreaterEqual(experience["experience_score"]["score"], 0)
@@ -722,7 +723,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 9)
+        self.assertEqual(experience["surface_summary"]["total"], 10)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -926,6 +927,93 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/diagnostics" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/diagnostics-guide" for item in docs["routes"]))
+
+    def test_public_incident_guide_is_fixed_private_and_session_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "INCIDENT-PRIVATE-CUSTOMER-9321",
+                "customer_email": "incident-9321@example.test",
+                "license_note": "INCIDENT-PRIVATE-NOTE-9321",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/incident-guide")
+        self.assertEqual(status, 200)
+        self.assertEqual(guide["incident_schema_version"], 1)
+        self.assertEqual(guide["api_version"], "0.29.0")
+        self.assertEqual(guide["playbook_count"], 12)
+        self.assertEqual(guide["step_count"], 72)
+        self.assertEqual(len(guide["playbooks"]), 12)
+        self.assertTrue(all(len(playbook["steps"]) == 6 for playbook in guide["playbooks"]))
+        self.assertEqual(
+            {playbook["id"] for playbook in guide["playbooks"]},
+            {
+                "defender-alert",
+                "account-risk",
+                "lost-usb",
+                "unlock-failure",
+                "unknown-behavior",
+                "update-integrity",
+                "device-loss",
+                "phishing-message",
+                "ransomware-warning",
+                "exposed-secret",
+                "browser-change",
+                "backup-failure",
+            },
+        )
+        self.assertFalse(guide["accepts_free_text"])
+        self.assertFalse(guide["accepts_files"])
+        self.assertFalse(guide["customer_records_included"])
+        self.assertEqual(guide["session_progress_storage"], "current_browser_tab_only")
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "INCIDENT-PRIVATE-CUSTOMER-9321",
+            "incident-9321@example.test",
+            "INCIDENT-PRIVATE-NOTE-9321",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/incident-response")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Incident Response", page_text)
+        self.assertIn("/api/v1/incident-guide", page_text)
+        self.assertIn("Respond without exposing secrets", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("COPY NEXT STEP", page_text)
+        self.assertIn("PRINT CHECKLIST", page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["incident_response_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("incident_response_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("incident-response-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/incident-response" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/incident-guide" for item in docs["routes"]))
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")

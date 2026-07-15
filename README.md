@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Incident Response Center at `/incident-response` with twelve fixed playbooks, seventy-two concrete steps, current-tab-only progress, copy-next-step and print controls, and privacy-safe local export
 - A public Diagnostics Center at `/diagnostics` with eight fixed problem categories, forty concrete steps, session-only checklist progress, and privacy-safe local export
 - A public Trust Center at `/trust` with a privacy-safe 100-point score for service configuration, signed releases, persistent storage, recovery boundaries, and security limitations
 - An owner-only Trust Operations console at `/owner/trust` with a 100-point operational score, aggregate security gates, concrete owner actions, and safe JSON export
@@ -96,6 +97,7 @@ Then open:
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
 - `http://127.0.0.1:8000/workspace`
+- `http://127.0.0.1:8000/incident-response`
 - `http://127.0.0.1:8000/diagnostics`
 - `http://127.0.0.1:8000/update`
 - `http://127.0.0.1:8000/readiness`
@@ -122,6 +124,15 @@ Then open:
 - The safe browser export contains only public API/service/release metadata, the selected category id, and completed fixed step ids.
 - The desktop companion performs eighteen local read-only checks and creates a separately reviewed privacy-safe report. The public API never receives that report automatically.
 - Diagnostics does not accept free text, files, license proof, machine identity, PINs, USB secrets, paths, filenames, vault data, or file contents.
+
+## Incident Response Center
+
+- `GET /incident-response` opens the public fixed-playbook response workspace.
+- `GET /api/v1/incident-guide` returns twelve playbooks and exactly seventy-two steps for Defender alerts, possible account theft, a lost master USB, unlock failures, unknown PC behavior, update integrity problems, device loss, phishing, ransomware warnings, exposed secrets, browser changes, and backup failures.
+- Checklist completion stays only in the current browser tab. The page uses neither `localStorage` nor `sessionStorage`, uploads no progress, and accepts no free-form incident text or files.
+- The safe browser export contains only public API/service/release metadata, the selected fixed playbook id, and completed fixed step ids.
+- The desktop companion adds eight coarse local readiness checks totaling 100 points and trusted shortcuts to Windows Security and existing VaultLink tools. It never quarantines, deletes, uploads, scans, or remotely controls a PC.
+- Incident output excludes license proof, customer or machine identity, passwords, PINs, USB secrets, paths, filenames, screenshots, process lists, private file contents, and customer records.
 
 ## Shop
 

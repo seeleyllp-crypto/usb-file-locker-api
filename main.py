@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from customer_experience_pages import (
     customer_diagnostics_center_html,
+    customer_incident_response_html,
     customer_trust_center_html,
     customer_workspace_html,
     owner_customer_experience_html,
@@ -26,7 +27,7 @@ from customer_experience_pages import (
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.28.0"
+API_VERSION = "0.29.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -75,6 +76,12 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "diagnostics_center_export",
         "diagnostics_center_open",
         "diagnostics_center_run",
+        "incident_center_copy",
+        "incident_center_export",
+        "incident_center_open",
+        "incident_center_refresh",
+        "incident_playbook_progress",
+        "incident_windows_security_open",
         "customer_hub_refresh",
         "customer_hub_verify",
         "customer_status_open",
@@ -196,6 +203,12 @@ class UnsupportedMediaType(ValueError):
 
 
 FEATURES = [
+    {
+        "id": "incident-response-center",
+        "title": "Incident Response Center",
+        "summary": "Use twelve fixed safety playbooks, local readiness checks, trusted Windows tools, and reviewed privacy-safe exports without remote PC control.",
+        "category": "starter",
+    },
     {
         "id": "diagnostics-center",
         "title": "Diagnostics Center",
@@ -320,6 +333,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Incident Response Center", "script": "incident_response_center.py", "purpose": "Use fixed incident playbooks, local readiness checks, Windows Security shortcuts, and reviewed safe reports."},
     {"name": "Diagnostics Center", "script": "diagnostics_center.py", "purpose": "Run eighteen read-only local checks and export a privacy-safe troubleshooting report."},
     {"name": "Trust and Recovery Center", "script": "trust_recovery_center.py", "purpose": "Combine local Defender, audit-chain, USB-policy, license, update, and API trust status in a privacy-safe report."},
     {"name": "Customer Workspace", "script": "customer_hub.py", "purpose": "Load the saved license into a privacy-safe customer action center and safe export."},
@@ -358,6 +372,7 @@ PLAN_TIERS = [
         "includes": [
             "Portable locking tools",
             "Quick lock notes",
+            "Incident Response Center",
             "Diagnostics Center",
             "Trust and Recovery Center",
             "Microsoft Defender package scan",
@@ -365,6 +380,7 @@ PLAN_TIERS = [
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "incident-response-center",
             "diagnostics-center",
             "trust-recovery-center",
             "portable-locking",
@@ -1650,6 +1666,7 @@ def product_payload():
             "quick_lock_note.py",
             "customer_hub.py",
             "diagnostics_center.py",
+            "incident_response_center.py",
             "trust_recovery_center.py",
         }
     )
@@ -1673,6 +1690,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/incident-response", "purpose": "Public fixed incident playbooks with session-only progress"},
             {"method": "GET", "path": "/diagnostics", "purpose": "Public fixed-step troubleshooting workspace with session-only progress"},
             {"method": "GET", "path": "/trust", "purpose": "Public trust, signed-release, privacy-boundary, and recovery center"},
             {"method": "GET", "path": "/status", "purpose": "Public customer service and signed-release status"},
@@ -1697,6 +1715,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
             {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
+            {"method": "GET", "path": "/api/v1/incident-guide", "purpose": "Public twelve-playbook incident guide with seventy-two fixed safe steps"},
             {"method": "GET", "path": "/api/v1/deploy", "purpose": "Railway deploy hints"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
@@ -2233,6 +2252,215 @@ def diagnostics_guide_payload():
     }
 
 
+def incident_guide_payload():
+    """Return fixed incident playbooks without receiving customer data."""
+    release = windows_update_release_status()
+
+    def step(identifier, title, action, expected):
+        return {"id": identifier, "title": title, "action": action, "expected": expected}
+
+    playbooks = [
+        {
+            "id": "defender-alert",
+            "title": "Microsoft Defender alert",
+            "summary": "Handle a Defender detection without rerunning, sharing, or manually deleting the suspicious item.",
+            "steps": [
+                step("alert-stop-repeat", "Do not run it again", "Close the related app and do not reopen, copy, or send the detected item.", "The item stays untouched while Windows Security handles it."),
+                step("alert-history", "Read Protection History", "Record only the visible detection name, severity, action, and approximate time.", "Useful evidence exists without private file contents or full paths."),
+                step("alert-update", "Update security intelligence", "Use Windows Security to check for current Microsoft Defender protection updates.", "The signature date is current before another scan."),
+                step("alert-scan", "Run the recommended scan", "Run Quick scan, then Full or Defender Offline scan only when Windows Security recommends it.", "Windows Security finishes and displays its own result."),
+                step("alert-accounts", "Protect important accounts", "If theft is possible, use another trusted device to change passwords and review sign-ins.", "New passwords are not entered on the potentially affected PC."),
+                step("alert-escalate", "Escalate safely", "Ask a trusted adult or qualified technician to review unresolved alerts and a reviewed safe report.", "No key, PIN, private file, or malware sample is sent to support."),
+            ],
+            "escalation": "Keep the detected item quarantined. Seek qualified help for repeated alerts, disabled protection, or possible account theft.",
+        },
+        {
+            "id": "account-risk",
+            "title": "Possible account theft",
+            "summary": "Secure online accounts from a different trusted device and preserve a minimal safe timeline.",
+            "steps": [
+                step("account-trusted-device", "Move to a trusted device", "Stop entering passwords on the possibly affected PC and use another updated device.", "Password changes happen away from the possibly affected PC."),
+                step("account-passwords", "Change important passwords", "Start with email, password manager, banking, Steam, Discord, and reused passwords.", "Each important account has a unique new password."),
+                step("account-sessions", "Sign out other sessions", "Use each provider security page to remove unknown sessions and remembered devices.", "Only recognized devices remain signed in."),
+                step("account-mfa", "Review recovery and MFA", "Check recovery email, phone, passkeys, authenticators, and backup codes for unknown changes.", "Recovery methods belong only to the account owner."),
+                step("account-email", "Review email rules", "Check forwarding, filters, sent mail, and deleted mail for changes you did not make.", "No unknown forwarding or mailbox rule remains."),
+                step("account-timeline", "Save a safe timeline", "Record provider name, approximate time, and actions without passwords, codes, or tokens.", "A support-safe timeline is ready if more help is needed."),
+            ],
+            "escalation": "Contact the provider and a trusted adult immediately for financial loss, identity theft, or an account you cannot recover.",
+        },
+        {
+            "id": "lost-usb",
+            "title": "Lost or stolen master USB",
+            "summary": "Protect existing locked files and recover with the matching backup key instead of making a replacement key.",
+            "steps": [
+                step("usb-preserve", "Preserve every locked file", "Do not rename, edit, delete, or overwrite existing .locked files.", "Original encrypted files remain unchanged."),
+                step("usb-backup", "Locate the matching backup key", "Find the protected backup created from the original master key.", "The backup belongs to the original key, not a newly generated key."),
+                step("usb-compare", "Compare the backup locally", "Use Key Inspector or Compare Backup Key without sharing the key file or secret.", "The app confirms the key matches locally."),
+                step("usb-recover", "Test one disposable recovery copy", "Unlock a copied non-private item first and verify it before bulk recovery.", "The copied item unlocks correctly with the backup key and PIN."),
+                step("usb-policy", "Retire the missing owner USB", "After recovery, update owner USB policy to the intended replacement removable drive.", "The missing drive no longer satisfies owner-only controls."),
+                step("usb-new-backup", "Create and verify a new backup", "Store a verified backup separately from the PC and daily-use USB.", "A second tested recovery copy exists in a protected location."),
+            ],
+            "escalation": "A new key cannot unlock data encrypted by a lost key. Preserve all copies and seek qualified help if no matching backup exists.",
+        },
+        {
+            "id": "unlock-failure",
+            "title": "Locked file will not unlock",
+            "summary": "Troubleshoot without changing the encrypted original or guessing with replacement keys.",
+            "steps": [
+                step("unlock-preserve", "Keep the original unchanged", "Work from a copy and leave the original .locked file in place.", "An unchanged recovery source remains available."),
+                step("unlock-key", "Reconnect the original key", "Load the same master key used when the file was locked and check it locally.", "The selected key is readable and has the expected key ID."),
+                step("unlock-pin", "Check the optional PIN", "Use the exact original PIN or leave it blank only if no PIN was used.", "The PIN choice matches the original lock operation."),
+                step("unlock-health", "Run Vault Health Center", "Perform read-only structure and compatibility checks on a copy.", "The app reports whether the container structure is readable."),
+                step("unlock-test", "Run a disposable round trip", "Lock and unlock a new non-private test file with the loaded key and intended PIN.", "The current key and PIN workflow succeeds on disposable data."),
+                step("unlock-report", "Export a safe report", "Export Diagnostics or Vault Health totals and review them before asking for support.", "The report has no filename, path, key, PIN, or file contents."),
+            ],
+            "escalation": "Never delete or overwrite the only encrypted copy. Recovery requires the original matching key and optional PIN.",
+        },
+        {
+            "id": "unknown-behavior",
+            "title": "Unknown popups or PC behavior",
+            "summary": "Reduce risk, use Windows Security, and avoid destructive guesses about normal applications.",
+            "steps": [
+                step("behavior-close", "Close the unknown window", "Do not approve prompts, enter passwords, or click links in an unexpected window.", "The prompt closes without granting access."),
+                step("behavior-network", "Disconnect only during active access", "If unauthorized control or transfers are active, disconnect Wi-Fi or Ethernet while preserving PC state.", "Ongoing network access is interrupted without deleting evidence."),
+                step("behavior-security", "Open Windows Security", "Review Protection History, update signatures, and run the recommended scan.", "Microsoft Defender supplies the detection result."),
+                step("behavior-startup", "Review startup apps", "Note unfamiliar startup entries in Settings or Task Manager; do not delete solely because they are unfamiliar.", "Unknown entries are documented without damaging normal apps."),
+                step("behavior-updates", "Install trusted updates", "Update Windows and known software through signed built-in updaters or official sources.", "Windows and known apps are current."),
+                step("behavior-report", "Create a reviewed safe report", "Run Diagnostics Center and review the coarse results before export.", "No key, password, path, screenshot, or private content uploads automatically."),
+            ],
+            "escalation": "Use qualified help for persistent remote-control signs, disabled security tools, repeated detections, or financial risk.",
+        },
+        {
+            "id": "update-integrity",
+            "title": "Update or integrity problem",
+            "summary": "Recover the transparent app folder while preserving keys, licenses, settings, audit logs, and locked data.",
+            "steps": [
+                step("update-close", "Close duplicate app copies", "Leave only the intended VaultLink folder open before retrying.", "No older app holds files needed by the updater."),
+                step("update-preserve", "Preserve LocalAppData", "Do not delete the USBFileLocker app-data folder, keys, settings, logs, or locked files.", "Customer data stays available to the repaired app."),
+                step("update-center", "Use Update Center", "Check the signed release through the configured VaultLink API.", "The release version and signing identity are visible."),
+                step("update-verify", "Require both verification checks", "Install only when the Ed25519 signature and package SHA-256 verify.", "The updater accepts the exact signed package."),
+                step("update-readiness", "Check space and clock", "Keep 500 MB free and enable automatic Windows date, time, and time zone.", "Diagnostics reports normal storage and service-time checks."),
+                step("update-rollback", "Use the rollback copy", "If a verified update fails, restore only app files from the updater backup.", "App data remains untouched while prior app files return."),
+            ],
+            "escalation": "Do not bypass Defender or signature warnings. Send the visible error and reviewed safe diagnostics to the owner.",
+        },
+        {
+            "id": "device-loss",
+            "title": "Lost PC or major data loss",
+            "summary": "Secure accounts and recover from separately stored keys and backups without exposing secrets online.",
+            "steps": [
+                step("device-account", "Secure the Windows account", "Use official Microsoft account device and sign-in pages from a trusted device.", "Unknown sign-ins are removed and the password changes if needed."),
+                step("device-seat", "Deactivate the lost license seat", "Use Customer Center to remove the lost anonymous device seat.", "The lost installation stops receiving licensed premium access."),
+                step("device-online", "Rotate important online accounts", "Change passwords and review sessions for accounts available on the lost PC.", "Only recognized devices and recovery methods remain."),
+                step("device-copies", "Locate separate recovery copies", "Gather the matching key backup, app-data backup, and independent locked-file copies.", "Recovery materials come from protected separate locations."),
+                step("device-restore", "Restore on a trusted replacement PC", "Install the transparent signed app, verify Defender, then test one disposable recovery copy.", "The replacement passes a safe recovery test before bulk work."),
+                step("device-timeline", "Document a safe timeline", "Record approximate times, provider actions, and recovery results without secrets.", "A minimal reviewed record is available for support or insurance."),
+            ],
+            "escalation": "Contact law enforcement, providers, financial institutions, or a qualified professional when theft or identity exposure is involved.",
+        },
+        {
+            "id": "phishing-message",
+            "title": "Suspicious email, text, or link",
+            "summary": "Contain a possible phishing attempt without opening attachments, signing in through the message, or forwarding private content.",
+            "steps": [
+                step("phishing-stop", "Stop interacting with the message", "Do not click links, open attachments, reply, call listed numbers, or enter information.", "The suspicious message receives no additional interaction."),
+                step("phishing-close", "Close the page or attachment", "Close the message and any page it opened without downloading or running anything else.", "The suspicious content is no longer open."),
+                step("phishing-provider", "Use the provider directly", "Open the official app or type the known official address yourself to check the claimed alert.", "Any real account notice is reviewed outside the suspicious message."),
+                step("phishing-credentials", "Protect exposed credentials", "If a password or code was entered, use another trusted device to change it and end unknown sessions.", "The exposed credential is replaced and unknown sessions are removed."),
+                step("phishing-report", "Report through trusted controls", "Use the provider's built-in report-phishing control.", "The provider receives the original report without forwarding it to other people."),
+                step("phishing-scan", "Check downloads safely", "If anything downloaded or ran, leave it closed and use Microsoft Defender to scan and review Protection History.", "Windows Security supplies the scan result."),
+            ],
+            "escalation": "Contact the real provider, a trusted adult, or a qualified professional for money loss, identity exposure, or an account you cannot recover.",
+        },
+        {
+            "id": "ransomware-warning",
+            "title": "Ransomware warning or changed files",
+            "summary": "Limit further damage, preserve evidence, and use trusted recovery paths without paying, rerunning, or renaming affected files.",
+            "steps": [
+                step("ransomware-isolate", "Disconnect the affected PC", "Disconnect Wi-Fi and Ethernet if files are actively changing or a ransom message is visible.", "The affected PC no longer reaches network shares or cloud sync."),
+                step("ransomware-stop", "Do not pay or rerun anything", "Do not contact payment addresses, run alleged decryptors, or reopen the suspected program.", "No payment or additional untrusted code is introduced."),
+                step("ransomware-preserve", "Preserve affected files", "Do not rename, edit, delete, or overwrite encrypted files, notes, or the only backup copies.", "Original evidence and recovery candidates remain unchanged."),
+                step("ransomware-security", "Use Windows Security", "Review Protection History and follow Microsoft Defender recommendations, including Offline scan when offered.", "Windows Security completes its recommended response."),
+                step("ransomware-backups", "Protect separate backups", "Keep disconnected backups and matching VaultLink keys offline until the affected PC is reviewed.", "Known-good recovery material is not exposed to the affected PC."),
+                step("ransomware-help", "Get qualified recovery help", "Use a trusted adult, organization administrator, insurer, law enforcement contact, or qualified responder as appropriate.", "Recovery decisions are reviewed before restoring or reconnecting the PC."),
+            ],
+            "escalation": "Treat active encryption, financial demands, or sensitive records as urgent. Do not reconnect or restore until a qualified responder says it is safe.",
+        },
+        {
+            "id": "exposed-secret",
+            "title": "Password, PIN, or key was exposed",
+            "summary": "Replace exposed online credentials and protect VaultLink recovery material without copying secrets into reports or support messages.",
+            "steps": [
+                step("secret-stop", "Stop sharing the secret", "Do not paste it into chat, email, screenshots, bug reports, or the incident export.", "No new copy of the secret is intentionally shared."),
+                step("secret-scope", "Identify the secret type", "Classify it only as password, one-time code, recovery code, PIN, API token, or VaultLink key without recording the value.", "The correct replacement process can be chosen without storing the secret."),
+                step("secret-rotate", "Replace online credentials", "From a trusted device, change exposed passwords or tokens and revoke unknown sessions or app access.", "The exposed online credential no longer grants access."),
+                step("secret-mfa", "Review account recovery", "Check MFA, passkeys, backup codes, recovery email, and recovery phone for unauthorized changes.", "Only approved recovery methods remain."),
+                step("secret-vault", "Handle VaultLink keys separately", "If a master-key file was copied, preserve locked data and use a verified re-lock migration plan.", "Encrypted originals remain available while future access is moved carefully."),
+                step("secret-monitor", "Watch for follow-on activity", "Review provider security alerts, sign-ins, and financial activity without entering details into VaultLink.", "Unexpected activity is reported directly to the relevant provider."),
+            ],
+            "escalation": "Contact the provider and a trusted adult immediately for financial, identity, school, work, or healthcare exposure. VaultLink cannot remotely rotate secrets.",
+        },
+        {
+            "id": "browser-change",
+            "title": "Suspicious browser change",
+            "summary": "Review unexpected extensions, redirects, notifications, and search changes without deleting normal browser data by guesswork.",
+            "steps": [
+                step("browser-close", "Close suspicious tabs", "Close unexpected login, support, prize, warning, or download tabs without approving prompts.", "The suspicious page is no longer active."),
+                step("browser-extensions", "Review installed extensions", "Open the browser extension page and disable unfamiliar items while recording only displayed names.", "Unrecognized extensions stop running without exposing browsing data."),
+                step("browser-notifications", "Review notification permission", "Remove notification access for sites you do not recognize in browser privacy settings.", "Unknown sites can no longer send browser notifications."),
+                step("browser-search", "Restore browser settings", "Use built-in settings to review startup pages, search provider, downloads, and proxy settings.", "Expected browser settings are restored through normal controls."),
+                step("browser-security", "Run Windows Security checks", "Update Microsoft Defender and run the recommended scan if a download or installer may have run.", "Windows Security supplies the local result."),
+                step("browser-account", "Review browser sync", "From the official account security page, remove unknown synced devices and review recent sign-ins.", "Only recognized devices remain connected to browser sync."),
+            ],
+            "escalation": "Use qualified help when redirects return, settings cannot be restored, extensions reinstall, or account and financial activity is affected.",
+        },
+        {
+            "id": "backup-failure",
+            "title": "Backup or restore failure",
+            "summary": "Protect the only good copies, verify key compatibility, and test recovery on disposable data before bulk restoration.",
+            "steps": [
+                step("backup-stop", "Stop overwriting backups", "Pause backup or sync jobs that may replace known-good copies with damaged or incomplete data.", "Existing recovery copies remain unchanged."),
+                step("backup-inventory", "Count recovery sources", "Identify separate app-data backups, locked-file copies, and matching key backups without listing names or paths.", "You know how many independent recovery sources exist."),
+                step("backup-health", "Check storage health", "Use Windows drive error checking and Vault Health read-only checks before writing to the recovery drive.", "Basic storage and container checks finish without changing originals."),
+                step("backup-key", "Verify the matching key", "Use Key Inspector or Compare Backup Key locally and never upload the key file.", "The recovery key matches the expected key ID and secret."),
+                step("backup-test", "Restore one disposable copy", "Copy one non-private test item separately and verify its full lock-unlock round trip.", "The tested copy opens correctly before any bulk restore."),
+                step("backup-record", "Record a recovery result", "Save only coarse totals, dates, and pass or fail status in the reviewed safe report.", "The record has no filenames, paths, keys, PINs, or contents."),
+            ],
+            "escalation": "Stop when drives disconnect, make unusual sounds, report hardware errors, or contain the only copy. Use qualified recovery help before further writes.",
+        },
+    ]
+    return {
+        "ok": True,
+        "incident_schema_version": 1,
+        "api_version": API_VERSION,
+        "service_status": service_status_payload(),
+        "signed_release": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+        },
+        "playbooks": playbooks,
+        "playbook_count": len(playbooks),
+        "step_count": sum(len(playbook["steps"]) for playbook in playbooks),
+        "accepts_free_text": False,
+        "accepts_files": False,
+        "session_progress_storage": "current_browser_tab_only",
+        "customer_records_included": False,
+        "privacy_boundaries": [
+            "The public incident API receives no license key, receipt, identity, PIN, USB secret, path, filename, screenshot, process list, or file content.",
+            "Checklist progress stays only in the current tab and is not uploaded or saved in browser storage.",
+            "The desktop readiness report contains coarse checks and public metadata only; the customer reviews it before export.",
+            "Remote incident guidance cannot inspect, quarantine, delete, unlock, scan, install, remove, or control a customer PC.",
+        ],
+        "limitations": [
+            "Incident guidance is not malware removal, certification, legal advice, emergency service, or a guarantee of recovery.",
+            "The API cannot confirm local Defender state, key custody, account compromise, backup quality, or successful recovery.",
+            "Microsoft Defender, account providers, trusted adults, and qualified human review remain necessary for high-impact decisions.",
+        ],
+        "server_time_utc": utc_now(),
+    }
+
+
 def windows_update_payload():
     manifest, _package_path = load_windows_update_release()
     return {
@@ -2683,7 +2911,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -3819,7 +4047,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5664,6 +5892,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "incident", "label": "INCIDENT RESPONSE", "path": "/incident-response"},
             {"id": "diagnostics", "label": "DIAGNOSTICS", "path": "/diagnostics"},
             {"id": "trust", "label": "TRUST CENTER", "path": "/trust"},
             {"id": "update", "label": "SIGNED UPDATE", "path": "/update"},
@@ -5837,6 +6066,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "incident", "label": "Incident Response", "path": "/incident-response", "purpose": "Twelve fixed playbooks and session-only customer progress", "ready": incident_guide_payload()["step_count"] == 72},
         {"id": "diagnostics", "label": "Diagnostics Center", "path": "/diagnostics", "purpose": "Fixed-step troubleshooting and safe local reporting", "ready": diagnostics_guide_payload()["step_count"] == 40},
         {"id": "trust", "label": "Trust Center", "path": "/trust", "purpose": "Public service, update, privacy, and recovery posture", "ready": trust_center_payload()["score"]["label"] != "action"},
         {"id": "license", "label": "License Center", "path": "/customer", "purpose": "Detailed read-only license view", "ready": True},
@@ -8237,6 +8467,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
             return
+        if path == "/incident-response":
+            self.send_html(customer_incident_response_html(API_VERSION))
+            return
         if path == "/diagnostics":
             self.send_html(customer_diagnostics_center_html(API_VERSION))
             return
@@ -8309,6 +8542,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
+                    "incident_response_center_enabled": True,
                     "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
                     "public_trust_center_enabled": True,
@@ -8352,6 +8586,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/diagnostics-guide":
             self.send_json(diagnostics_guide_payload())
             return
+        if path == "/api/v1/incident-guide":
+            self.send_json(incident_guide_payload())
+            return
         if path == "/api/v1/security":
             self.send_json(
                 {
@@ -8385,6 +8622,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "fixed-category customer support guides and local signed-update verification metadata",
                         "anonymous Windows version compatibility checks and local update package verification",
                         "anonymous fixed-field recovery-readiness scoring and action-plan export",
+                        "public fixed incident playbooks with current-tab-only progress and privacy-safe local export",
                     ],
                     "banned_remote_actions": [
                         "remote unlock",

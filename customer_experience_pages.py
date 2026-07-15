@@ -70,7 +70,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -357,7 +357,7 @@ def customer_trust_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Trust and recovery status</h1>
     <p class="lead">Live service, signed-release, storage, privacy-boundary, and recovery evidence. This public view contains no customer or license records.</p>
@@ -427,7 +427,7 @@ def customer_diagnostics_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/incident-response">INCIDENT</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Guided troubleshooting</h1>
     <p class="lead">Choose the visible problem and work through fixed, privacy-safe steps. Progress stays only in this browser tab; this page cannot inspect or control the PC.</p>
@@ -461,6 +461,72 @@ def customer_diagnostics_center_html(api_version):
     async function copy(){const report=safeExport();const lines=[`VaultLink diagnostics: ${report.category_title}`,`Progress: ${report.completed_step_ids.length}/${report.total_steps}`,`API: ${report.api_version} | Service: ${report.service_mode} | Signed desktop: ${report.signed_desktop_version||"not published"}`,report.privacy_notice];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Privacy-safe diagnostic summary copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
     function exportJson(){const report=safeExport();const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-browser-diagnostics-progress.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe browser diagnostic progress exported.","good");}
     $("category").addEventListener("change",event=>{state.category=event.target.value;renderCategory();});$("reset").addEventListener("click",reset);$("copy").addEventListener("click",copy);$("export").addEventListener("click",exportJson);load();
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def customer_incident_response_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Incident Response</title>
+  <style>
+    :root { --bg:#0d1014; --band:#151a20; --panel:#1b2229; --field:#090c10; --line:#37434e; --text:#f4f7f8; --muted:#aab5bf; --green:#66df89; --blue:#68bee9; --yellow:#ffd166; --red:#ff7b72; }
+    * { box-sizing:border-box; letter-spacing:0; } body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    header,footer { background:#11161b; border-color:var(--line); border-style:solid; border-width:0 0 1px; } header>div,main,footer>div { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header>div { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:16px; }.brand{font-size:18px;font-weight:800}nav{display:flex;flex-wrap:wrap;gap:7px}nav a{min-height:36px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--line);border-radius:5px;color:var(--text);text-decoration:none;font-weight:750}
+    main{padding:28px 0 50px}h1{margin:0;font-size:30px}h2{margin:0;font-size:19px}h3{margin:0;font-size:15px}.lead,.status,.muted,.step p,.boundary p{color:var(--muted)}.lead{max-width:900px;margin:7px 0 0;font-size:15px}.warning{margin-top:14px;padding:12px 14px;border-left:4px solid var(--yellow);background:var(--band);color:var(--muted)}
+    .controls{display:grid;grid-template-columns:minmax(230px,1fr) repeat(5,auto);gap:9px;align-items:end;margin-top:18px;padding:17px;border:1px solid var(--line);background:var(--band)}label{display:block;margin-bottom:6px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}select{width:100%;height:42px;padding:0 11px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--text);font:inherit}button{min-height:42px;padding:0 12px;border:0;border-radius:5px;background:#29333d;color:var(--text);font-weight:800;cursor:pointer}button.primary{background:var(--yellow);color:#171100}button:disabled{opacity:.5;cursor:not-allowed}.status{min-height:22px;margin-top:9px}.status.good{color:var(--green)}.status.bad{color:var(--red)}#workspace[hidden]{display:none}
+    .metrics{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));margin-top:13px;border:1px solid var(--line);background:var(--band)}.metric{min-width:0;padding:13px;border-right:1px solid var(--line)}.metric:last-child{border-right:0}.metric span{display:block;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.metric strong{display:block;margin-top:4px;font-size:17px;overflow-wrap:anywhere}
+    .section{margin-top:24px;padding-top:19px;border-top:1px solid var(--line)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:14px;margin-bottom:11px}.section-head p{max-width:680px;margin:0;color:var(--muted);text-align:right}.steps{display:grid;gap:9px}.step{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.step.done{border-color:var(--green)}.step input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--green)}.step p{margin:5px 0 0}.expected{color:var(--blue)!important}.eyebrow{color:var(--yellow);font-size:10px;font-weight:800;text-transform:uppercase}.notice{margin-top:13px;padding:13px;border-left:4px solid var(--yellow);background:var(--band);color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px}.boundary{padding:14px;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:6px;background:var(--panel)}.boundary p{margin:5px 0 0}.boundary.limit{border-left-color:var(--yellow)}footer{border-width:1px 0 0}footer>div{padding:21px 0 27px;color:var(--muted)}
+    @media(max-width:1050px){.controls{grid-template-columns:1fr 1fr 1fr}.controls>div{grid-column:1/-1}}@media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}.metric{border-bottom:1px solid var(--line)}}@media(max-width:620px){header>div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.controls,.metrics{grid-template-columns:1fr}.controls>div{grid-column:auto}.metric{border-right:0}.step{grid-template-columns:28px minmax(0,1fr)}}
+    @media print{header,.controls,.status,footer{display:none!important}body{background:#fff;color:#111}.step,.boundary,.notice{break-inside:avoid;background:#fff;color:#111;border-color:#777}.lead,.step p,.boundary p,.section-head p,.notice{color:#333!important}main{width:100%;padding:0}}
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Incident Response</div><nav><a href="/workspace">WORKSPACE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <main>
+    <h1>Respond without exposing secrets</h1>
+    <p class="lead">Choose what happened and follow fixed safety steps. This page cannot inspect or control the PC, and progress disappears when the current tab closes or reloads.</p>
+    <div class="warning">For immediate danger, financial theft, identity theft, or suspected unauthorized control, stop entering passwords on the affected PC and involve a trusted adult or qualified professional.</div>
+    <section class="controls">
+      <div><label for="playbook">Incident playbook</label><select id="playbook" disabled></select></div>
+      <button id="reset" type="button" disabled>RESET CHECKLIST</button>
+      <button id="next" type="button" disabled>COPY NEXT STEP</button>
+      <button id="copy" type="button" disabled>COPY SAFE SUMMARY</button>
+      <button id="print" type="button" disabled>PRINT CHECKLIST</button>
+      <button id="export" class="primary" type="button" disabled>EXPORT SAFE JSON</button>
+    </section>
+    <div id="status" class="status" role="status" aria-live="polite">Loading fixed incident playbooks...</div>
+    <div id="workspace" hidden>
+      <div id="metrics" class="metrics"></div>
+      <section class="section"><div class="section-head"><div><div id="playbookEyebrow" class="eyebrow">PLAYBOOK</div><h2 id="playbookTitle"></h2></div><p id="playbookSummary"></p></div><div id="steps" class="steps"></div><div id="escalation" class="notice"></div></section>
+      <section class="section"><div class="section-head"><h2>Privacy Boundaries</h2><p>No free-text report, license proof, screenshot, process list, file upload, or machine inspection is used.</p></div><div id="boundaries" class="grid"></div></section>
+      <section class="section"><div class="section-head"><h2>Limitations</h2><p>Use the playbooks as a safe starting point, never as proof that an incident is resolved.</p></div><div id="limitations" class="grid"></div></section>
+    </div>
+  </main>
+  <footer><div>API __API_VERSION__. Checklist progress stays only in the current tab's page memory and is never submitted to VaultLink.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id);const state={payload:null,playbook:"",completed:new Set()};const value=input=>String(input??"");
+    function setStatus(message,tone=""){$("status").textContent=message;$("status").className=`status ${tone}`;}
+    function add(parent,tag,text,className=""){const node=document.createElement(tag);node.textContent=value(text);if(className)node.className=className;parent.append(node);return node;}
+    function metric(label,text){const node=document.createElement("div");node.className="metric";add(node,"span",label);add(node,"strong",text);return node;}
+    function selectedPlaybook(){return(state.payload?.playbooks||[]).find(item=>item.id===state.playbook)||null;}
+    function safeExport(){const playbook=selectedPlaybook();return{schema_version:1,report_type:"VaultLink Privacy-Safe Browser Incident Progress",generated_at_utc:new Date().toISOString(),api_version:state.payload.api_version,service_mode:state.payload.service_status.mode,signed_desktop_version:state.payload.signed_release.version||"",playbook_id:playbook?.id||"",playbook_title:playbook?.title||"",completed_step_ids:(playbook?.steps||[]).map(step=>step.id).filter(id=>state.completed.has(id)),total_steps:(playbook?.steps||[]).length,privacy_notice:"No license key, receipt, identity, password, PIN, USB secret, path, filename, screenshot, process list, file content, or free-form incident text is included."};}
+    function renderMetrics(){const playbook=selectedPlaybook();const steps=playbook?.steps||[];const done=steps.filter(step=>state.completed.has(step.id)).length;const root=$("metrics");root.replaceChildren();[["API",state.payload.api_version],["Service",state.payload.service_status.mode],["Signed desktop",state.payload.signed_release.version||"Not published"],["Playbooks",state.payload.playbook_count],["Current progress",`${done} / ${steps.length}`]].forEach(row=>root.append(metric(...row)));}
+    function renderPlaybook(){const playbook=selectedPlaybook();if(!playbook)return;$("playbookTitle").textContent=playbook.title;$("playbookSummary").textContent=playbook.summary;$("playbookEyebrow").textContent=playbook.id.replaceAll("-"," ");const root=$("steps");root.replaceChildren();playbook.steps.forEach((step,index)=>{const row=document.createElement("article");row.className=`step ${state.completed.has(step.id)?"done":""}`;const box=document.createElement("input");box.type="checkbox";box.checked=state.completed.has(step.id);box.setAttribute("aria-label",`Complete ${step.title}`);box.addEventListener("change",()=>{box.checked?state.completed.add(step.id):state.completed.delete(step.id);renderPlaybook();});const body=document.createElement("div");add(body,"div",`STEP ${index+1}`,"eyebrow");add(body,"h3",step.title);add(body,"p",step.action);add(body,"p",`Expected: ${step.expected}`,"expected");row.append(box,body);root.append(row);});$("escalation").textContent=`ESCALATION: ${playbook.escalation}`;renderMetrics();setStatus(`${playbook.title}: ${playbook.steps.filter(step=>state.completed.has(step.id)).length} of ${playbook.steps.length} steps complete.`,"good");}
+    function render(data){state.payload=data;state.playbook=data.playbooks[0]?.id||"";state.completed.clear();const select=$("playbook");select.replaceChildren();data.playbooks.forEach(playbook=>{const option=document.createElement("option");option.value=playbook.id;option.textContent=playbook.title;select.append(option);});select.value=state.playbook;select.disabled=false;["reset","next","copy","print","export"].forEach(id=>$(id).disabled=false);const boundaries=$("boundaries");boundaries.replaceChildren();data.privacy_boundaries.forEach((text,index)=>{const item=document.createElement("article");item.className="boundary";add(item,"div",`BOUNDARY ${index+1}`,"eyebrow");add(item,"p",text);boundaries.append(item);});const limits=$("limitations");limits.replaceChildren();data.limitations.forEach((text,index)=>{const item=document.createElement("article");item.className="boundary limit";add(item,"div",`LIMITATION ${index+1}`,"eyebrow");add(item,"p",text);limits.append(item);});$("workspace").hidden=false;renderPlaybook();}
+    async function load(){try{const response=await fetch("/api/v1/incident-guide",{headers:{"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Incident guide could not be loaded.");render(data);}catch(error){setStatus(error.message||"Incident guide could not be loaded.","bad");}}
+    function reset(){const playbook=selectedPlaybook();(playbook?.steps||[]).forEach(step=>state.completed.delete(step.id));renderPlaybook();}
+    async function copyNext(){const playbook=selectedPlaybook();const step=(playbook?.steps||[]).find(item=>!state.completed.has(item.id));if(!step){setStatus("Every step in this playbook is marked complete.","good");return;}const lines=[`VaultLink next safe step: ${step.title}`,step.action,`Expected: ${step.expected}`,"Do not include passwords, PINs, keys, private files, or personal details in support messages."];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Next fixed safety step copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
+    async function copy(){const report=safeExport();const lines=[`VaultLink incident playbook: ${report.playbook_title}`,`Progress: ${report.completed_step_ids.length}/${report.total_steps}`,`API: ${report.api_version} | Service: ${report.service_mode} | Signed desktop: ${report.signed_desktop_version||"not published"}`,report.privacy_notice];try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Privacy-safe incident summary copied.","good");}catch(_error){setStatus("Clipboard access was blocked by the browser.","bad");}}
+    function exportJson(){const report=safeExport();const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-browser-incident-progress.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe incident progress exported.","good");}
+    $("playbook").addEventListener("change",event=>{state.playbook=event.target.value;renderPlaybook();});$("reset").addEventListener("click",reset);$("next").addEventListener("click",copyNext);$("copy").addEventListener("click",copy);$("print").addEventListener("click",()=>window.print());$("export").addEventListener("click",exportJson);load();
   </script>
 </body>
 </html>'''
