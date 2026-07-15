@@ -21,7 +21,7 @@ def customer_backup_verification_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Backup Verification</div><nav><a href="/workspace">WORKSPACE</a><a href="/recovery-kit">KIT</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Backup Verification</div><nav><a href="/workspace">WORKSPACE</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Know what restores first</h1>
     <p class="lead">Build a fixed restore order, choose a recovery-time objective, and review backup steps without sending VaultLink a path, file, account, or progress record.</p>

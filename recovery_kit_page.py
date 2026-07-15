@@ -20,7 +20,7 @@ def customer_recovery_kit_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Kit</div><nav><a href="/workspace">WORKSPACE</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Kit</div><nav><a href="/workspace">WORKSPACE</a><a href="/data-control">DATA</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Prepare before the first hour</h1>
     <p class="lead">Build a fixed emergency recovery card, rehearse a safe order, and schedule the next review without entering a name, contact, secret, path, file, or private note.</p>

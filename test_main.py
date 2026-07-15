@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 12)
+        self.assertEqual(len(workspace["quick_links"]), 13)
+        self.assertTrue(any(item["path"] == "/data-control" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/backup-verification" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/recovery-drills" for item in workspace["quick_links"]))
@@ -716,7 +717,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 13)
+        self.assertEqual(len(experience["customer_surfaces"]), 14)
+        self.assertTrue(any(item["path"] == "/data-control" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/backup-verification" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/recovery-drills" for item in experience["customer_surfaces"]))
@@ -729,7 +731,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 13)
+        self.assertEqual(experience["surface_summary"]["total"], 14)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -952,7 +954,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/incident-guide")
         self.assertEqual(status, 200)
         self.assertEqual(guide["incident_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.32.0")
+        self.assertEqual(guide["api_version"], api.API_VERSION)
         self.assertEqual(guide["playbook_count"], 12)
         self.assertEqual(guide["step_count"], 72)
         self.assertEqual(len(guide["playbooks"]), 12)
@@ -1039,7 +1041,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/recovery-drills")
         self.assertEqual(status, 200)
         self.assertEqual(guide["recovery_drill_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.32.0")
+        self.assertEqual(guide["api_version"], api.API_VERSION)
         self.assertEqual(guide["drill_count"], 16)
         self.assertEqual(guide["step_count"], 80)
         self.assertEqual(len(guide["drills"]), 16)
@@ -1136,7 +1138,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/backup-verification")
         self.assertEqual(status, 200)
         self.assertEqual(guide["backup_verification_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.32.0")
+        self.assertEqual(guide["api_version"], api.API_VERSION)
         self.assertEqual(guide["plan_count"], 12)
         self.assertEqual(guide["step_count"], 60)
         self.assertEqual(len(guide["plans"]), 12)
@@ -1240,7 +1242,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/recovery-kit")
         self.assertEqual(status, 200)
         self.assertEqual(guide["recovery_kit_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.32.0")
+        self.assertEqual(guide["api_version"], api.API_VERSION)
         self.assertEqual(guide["profile_count"], 5)
         self.assertEqual(guide["section_count"], 10)
         self.assertEqual(guide["item_count"], 50)
@@ -1318,6 +1320,98 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/recovery-kit" for item in docs["routes"]))
+
+    def test_public_data_control_is_fixed_private_and_current_tab_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "DATA-PRIVATE-CUSTOMER-7781",
+                "customer_email": "data-7781@example.test",
+                "license_note": "DATA-PRIVATE-NOTE-7781",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, data_map = self.call("/api/v1/data-map")
+        self.assertEqual(status, 200)
+        self.assertTrue(data_map["ok"])
+        self.assertEqual(data_map["data_control_schema_version"], 1)
+        self.assertEqual(data_map["api_version"], api.API_VERSION)
+        self.assertEqual(data_map["scope_count"], 5)
+        self.assertEqual(data_map["class_count"], 14)
+        self.assertEqual(data_map["flow_step_count"], 6)
+        self.assertEqual(len(data_map["scopes"]), 5)
+        self.assertEqual(len(data_map["data_classes"]), 14)
+        self.assertEqual(len(data_map["flow_steps"]), 6)
+        self.assertEqual(len({item["id"] for item in data_map["scopes"]}), 5)
+        self.assertEqual(len({item["id"] for item in data_map["data_classes"]}), 14)
+        self.assertTrue(
+            all(item["scope_id"] in {scope["id"] for scope in data_map["scopes"]} for item in data_map["data_classes"])
+        )
+        self.assertEqual(len(data_map["receipt_schema_fields"]), 11)
+        for field in (
+            "accepts_free_text",
+            "accepts_files",
+            "accepts_paths",
+            "accepts_inventory",
+            "accepts_progress",
+            "accepts_contacts",
+            "customer_records_included",
+        ):
+            self.assertFalse(data_map[field])
+        self.assertEqual(data_map["session_progress_storage"], "current_browser_tab_only")
+        self.assertEqual(data_map["desktop_inventory_boundary"], "exact_known_vaultlink_app_data_metadata_only")
+        self.assertGreaterEqual(len(data_map["privacy_boundaries"]), 4)
+        self.assertGreaterEqual(len(data_map["limitations"]), 3)
+        self.assertTrue(data_map["signed_release"]["ready"])
+        self.assertEqual(data_map["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(data_map)
+        for private_value in (
+            "DATA-PRIVATE-CUSTOMER-7781",
+            "data-7781@example.test",
+            "DATA-PRIVATE-NOTE-7781",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/data-control")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Data Control", page_text)
+        self.assertIn("/api/v1/data-map", page_text)
+        self.assertIn("REVIEW NEXT", page_text)
+        self.assertIn("REVIEW VISIBLE", page_text)
+        self.assertIn("COPY RECEIPT", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("vaultlink-browser-data-map-receipt.json", page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+        self.assertNotIn('type="file"', page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["data_control_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("local_data_control_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("data-control-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/data-control" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/data-map" for item in docs["routes"]))
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")

@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Data Control workspace at `/data-control` with fourteen fixed data classes, five scopes, six data-flow stages, retention guidance, current-tab-only review progress, print, and privacy-safe local export
 - A public Recovery Kit workspace at `/recovery-kit` with five fixed profiles, ten preparation sections, fifty fixed items, five emergency runbooks, current-tab-only progress, calendar reminders, print, and privacy-safe local export
 - A public Backup Verification workspace at `/backup-verification` with twelve fixed plans, sixty restore-order steps, nine categories, five restore-time objectives, one-to-five copy targets, current-tab-only progress, and privacy-safe local export
 - A public Recovery Drill Center at `/recovery-drills` with sixteen fixed drills, eighty unique steps, five categories, current-tab-only progress, random selection, fixed-step copy, print, and privacy-safe local export
@@ -52,6 +53,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
+- Public Data Control accepts no inventory, free text, contacts, customer progress, files, paths, local results, license proof, keys, PINs, filenames, or file contents; it stores no review state in browser storage
 - Public recovery kits accept no free text, files, paths, filenames, keys, PINs, customer records, local results, or progress uploads; suspected-malware guidance is defensive and tabletop only
 - Public backup verification accepts no free text, files, paths, filenames, keys, PINs, file contents, customer records, or progress uploads; ransomware guidance is tabletop only and never runs malware or destructive simulations
 - Public recovery drills accept no free text or files, collect no customer progress, and never run malware, suspicious code, destructive scripts, or file-encryption simulations
@@ -64,6 +66,14 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - LIMITED status never remotely locks a PC, deletes files, runs commands, or disables unlock/recovery access
 - Draft legal pages are not legal advice and require adult business-owner approval before commercial use
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
+
+## Data Control 0.33
+
+`GET /api/v1/data-map` returns exactly five fixed scopes, fourteen fixed data classes, and six fixed data-flow stages. It is a public catalog endpoint, not a submission endpoint. It receives no request body and returns no customer, license, device, support, audit-export, or owner record.
+
+`GET /data-control` renders the catalog as a responsive customer workspace. Review state lives only in the current page's JavaScript memory and disappears on reload. Copy, print, and JSON export happen in the browser. The downloaded receipt has eleven fixed fields and contains only public service metadata plus reviewed fixed class IDs.
+
+The separate Windows Local Data Control Center may read coarse presence, count, size, and age bands from exact known VaultLink app-data sources. It never sends those local results to this API and never searches Downloads, Documents, removable drives, locked-container locations, arbitrary backup folders, browser history, or process lists.
 
 ## Railway setup
 
