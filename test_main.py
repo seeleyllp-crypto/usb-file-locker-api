@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 7)
+        self.assertEqual(len(workspace["quick_links"]), 8)
+        self.assertTrue(any(item["path"] == "/diagnostics" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/trust" for item in workspace["quick_links"]))
         self.assertEqual(len(workspace["support_categories"]), 6)
         self.assertGreaterEqual(workspace["workspace_score"]["score"], 0)
@@ -711,7 +712,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 8)
+        self.assertEqual(len(experience["customer_surfaces"]), 9)
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
         self.assertGreaterEqual(experience["experience_score"]["score"], 0)
@@ -721,7 +722,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 8)
+        self.assertEqual(experience["surface_summary"]["total"], 9)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -842,6 +843,89 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         starter = next(item for item in plans["items"] if item["id"] == "starter")
         self.assertIn("trust-recovery-center", starter["entitlements"])
+
+    def test_public_diagnostics_guide_is_fixed_private_and_session_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "DIAGNOSTICS-PRIVATE-CUSTOMER-8821",
+                "customer_email": "diagnostics-8821@example.test",
+                "license_note": "DIAGNOSTICS-PRIVATE-NOTE-8821",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/diagnostics-guide")
+        self.assertEqual(status, 200)
+        self.assertEqual(guide["diagnostics_schema_version"], 1)
+        self.assertEqual(guide["category_count"], 8)
+        self.assertEqual(guide["step_count"], 40)
+        self.assertEqual(len(guide["categories"]), 8)
+        self.assertTrue(all(len(category["steps"]) == 5 for category in guide["categories"]))
+        self.assertEqual(
+            {category["id"] for category in guide["categories"]},
+            {
+                "app-start",
+                "usb-key",
+                "unlock",
+                "licensing",
+                "updates",
+                "performance",
+                "audit-security",
+                "backup-recovery",
+            },
+        )
+        self.assertFalse(guide["accepts_free_text"])
+        self.assertFalse(guide["accepts_files"])
+        self.assertEqual(guide["session_progress_storage"], "current_browser_tab_only")
+        self.assertFalse(guide["customer_records_included"])
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "DIAGNOSTICS-PRIVATE-CUSTOMER-8821",
+            "diagnostics-8821@example.test",
+            "DIAGNOSTICS-PRIVATE-NOTE-8821",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/diagnostics")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Diagnostics Center", page_text)
+        self.assertIn("/api/v1/diagnostics-guide", page_text)
+        self.assertIn("Guided troubleshooting", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("this browser tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        status, _headers, favicon = self.call_bytes("/favicon.ico")
+        self.assertEqual(status, 204)
+        self.assertEqual(favicon, b"")
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["diagnostics_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("diagnostics_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("diagnostics-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/diagnostics" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/diagnostics-guide" for item in docs["routes"]))
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")

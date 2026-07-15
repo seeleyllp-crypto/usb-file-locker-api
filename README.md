@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Diagnostics Center at `/diagnostics` with eight fixed problem categories, forty concrete steps, session-only checklist progress, and privacy-safe local export
 - A public Trust Center at `/trust` with a privacy-safe 100-point score for service configuration, signed releases, persistent storage, recovery boundaries, and security limitations
 - An owner-only Trust Operations console at `/owner/trust` with a 100-point operational score, aggregate security gates, concrete owner actions, and safe JSON export
 - An encrypted customer Bug Inbox with owner status actions, private notes, replies, and deletion
@@ -46,6 +47,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not move the Windows desktop security logic onto the public internet
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
+- Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
 - Bug reports never attach local files or logs automatically, and raw machine ids are not stored
 - Announcements cannot run commands, access customer files, or change customer settings
 - Service status is informational and cannot remotely control or disable customer PCs
@@ -94,6 +96,7 @@ Then open:
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
 - `http://127.0.0.1:8000/workspace`
+- `http://127.0.0.1:8000/diagnostics`
 - `http://127.0.0.1:8000/update`
 - `http://127.0.0.1:8000/readiness`
 - `http://127.0.0.1:8000/trust`
@@ -110,6 +113,15 @@ Then open:
 - `GET /api/v1/admin/trust-center` returns exactly fourteen weighted operational checks totaling 100 points plus aggregate actions and category summaries.
 - Trust responses never return license keys, customer labels, receipts, private notes, machine identity, paths, PINs, USB secrets, filenames, or file contents.
 - These scores are operational readiness indicators, not certification, legal advice, guaranteed protection, or a replacement for independent security review.
+
+## Diagnostics Center
+
+- `GET /diagnostics` opens the public guided troubleshooting app.
+- `GET /api/v1/diagnostics-guide` returns eight fixed categories and exactly forty steps for app startup, USB keys, unlock failures, licensing, signed updates, performance, audit warnings, and backup preparation.
+- Checklist completion stays in the current browser tab. The page uses neither `localStorage` nor `sessionStorage`, and it uploads no progress.
+- The safe browser export contains only public API/service/release metadata, the selected category id, and completed fixed step ids.
+- The desktop companion performs eighteen local read-only checks and creates a separately reviewed privacy-safe report. The public API never receives that report automatically.
+- Diagnostics does not accept free text, files, license proof, machine identity, PINs, USB secrets, paths, filenames, vault data, or file contents.
 
 ## Shop
 

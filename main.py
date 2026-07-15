@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from customer_experience_pages import (
+    customer_diagnostics_center_html,
     customer_trust_center_html,
     customer_workspace_html,
     owner_customer_experience_html,
@@ -25,7 +26,7 @@ from customer_experience_pages import (
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.27.0"
+API_VERSION = "0.28.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -70,6 +71,10 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "compare_backup_key",
         "configuration_change",
         "customer_center_verify",
+        "diagnostics_center_copy",
+        "diagnostics_center_export",
+        "diagnostics_center_open",
+        "diagnostics_center_run",
         "customer_hub_refresh",
         "customer_hub_verify",
         "customer_status_open",
@@ -192,6 +197,12 @@ class UnsupportedMediaType(ValueError):
 
 FEATURES = [
     {
+        "id": "diagnostics-center",
+        "title": "Diagnostics Center",
+        "summary": "Run privacy-safe read-only runtime, storage, Defender, audit, USB, licensing, update, and recovery checks with concrete next steps.",
+        "category": "starter",
+    },
+    {
         "id": "trust-recovery-center",
         "title": "Trust and Recovery Center",
         "summary": "Review privacy-safe local and online trust checks, signed-release evidence, recovery guidance, and service boundaries without uploading files or secrets.",
@@ -309,6 +320,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Diagnostics Center", "script": "diagnostics_center.py", "purpose": "Run eighteen read-only local checks and export a privacy-safe troubleshooting report."},
     {"name": "Trust and Recovery Center", "script": "trust_recovery_center.py", "purpose": "Combine local Defender, audit-chain, USB-policy, license, update, and API trust status in a privacy-safe report."},
     {"name": "Customer Workspace", "script": "customer_hub.py", "purpose": "Load the saved license into a privacy-safe customer action center and safe export."},
     {"name": "Privacy Safety Hub", "script": "privacy_safety_hub.py", "purpose": "Launch dashboard for the toolkit."},
@@ -346,12 +358,14 @@ PLAN_TIERS = [
         "includes": [
             "Portable locking tools",
             "Quick lock notes",
+            "Diagnostics Center",
             "Trust and Recovery Center",
             "Microsoft Defender package scan",
             "Signed purchase verification",
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "diagnostics-center",
             "trust-recovery-center",
             "portable-locking",
             "quick-lock-note",
@@ -1635,6 +1649,7 @@ def product_payload():
             "key_inspector.py",
             "quick_lock_note.py",
             "customer_hub.py",
+            "diagnostics_center.py",
             "trust_recovery_center.py",
         }
     )
@@ -1658,6 +1673,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/diagnostics", "purpose": "Public fixed-step troubleshooting workspace with session-only progress"},
             {"method": "GET", "path": "/trust", "purpose": "Public trust, signed-release, privacy-boundary, and recovery center"},
             {"method": "GET", "path": "/status", "purpose": "Public customer service and signed-release status"},
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
@@ -1680,6 +1696,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
+            {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
             {"method": "GET", "path": "/api/v1/deploy", "purpose": "Railway deploy hints"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
@@ -2069,6 +2086,148 @@ def trust_center_payload():
             "A valid signed update proves package integrity and publisher-key possession, not that software is free of every possible defect.",
         ],
         "safe_to_export": True,
+        "customer_records_included": False,
+        "server_time_utc": utc_now(),
+    }
+
+
+def diagnostics_guide_payload():
+    """Return fixed troubleshooting guidance without receiving customer data."""
+    release = windows_update_release_status()
+    categories = [
+        {
+            "id": "app-start",
+            "title": "App will not open",
+            "summary": "Check the transparent app folder, Python runtime, dependencies, duplicate processes, and Windows permissions.",
+            "steps": [
+                {"id": "start-complete-folder", "title": "Use the complete app folder", "action": "Keep every signed app file and Run launcher together in one normal folder.", "expected": "The launcher can find Ensure Dependencies.cmd and the selected Python script."},
+                {"id": "start-dependencies", "title": "Run dependency setup", "action": "Open Ensure Dependencies.cmd while online and let its Python and cryptography checks finish.", "expected": "The setup reports a supported Python runtime and a successful cryptography import."},
+                {"id": "start-duplicates", "title": "Close duplicate app copies", "action": "Close older VaultLink windows before opening the intended signed folder again.", "expected": "Only the intended app version remains open."},
+                {"id": "start-permissions", "title": "Check normal Windows access", "action": "Confirm the current Windows user can read the app folder and write its own LocalAppData.", "expected": "Diagnostics reports normal app-data access without requiring administrator rights."},
+                {"id": "start-report", "title": "Run local diagnostics", "action": "Open Diagnostics Center and export its privacy-safe report after reviewing it.", "expected": "The report identifies a failed runtime or storage check without including paths or secrets."},
+            ],
+            "escalation": "Send the reviewed privacy-safe diagnostic summary and the exact visible error text to the owner. Do not attach keys, PINs, receipts, or private files.",
+        },
+        {
+            "id": "usb-key",
+            "title": "USB key is not recognized",
+            "summary": "Protect old locked files by locating the original key instead of creating a replacement.",
+            "steps": [
+                {"id": "usb-original", "title": "Reconnect the original USB", "action": "Use the same removable USB and master key that created the locked item.", "expected": "Windows assigns the drive and the existing master key file remains readable."},
+                {"id": "usb-no-replacement", "title": "Do not replace the key", "action": "Do not create a new master key for files locked with a missing key.", "expected": "The original locked copy and recovery options remain unchanged."},
+                {"id": "usb-load", "title": "Load the existing key", "action": "Choose LOAD USB KEY in the desktop app and select the existing master key.", "expected": "The app reports the key loaded without changing it."},
+                {"id": "usb-policy", "title": "Verify owner USB policy", "action": "Use VERIFY OWNER USB to confirm the removable-drive policy matches.", "expected": "The owner policy accepts the currently connected removable USB."},
+                {"id": "usb-inspector", "title": "Use Key Inspector", "action": "Open Key Inspector for a local read-only key and drive check.", "expected": "The inspector explains key readability and policy matching without uploading key material."},
+            ],
+            "escalation": "If the original USB is lost, preserve all .locked copies and every possible key backup. VaultLink cannot derive or remotely recover the missing secret.",
+        },
+        {
+            "id": "unlock",
+            "title": "A file will not unlock",
+            "summary": "Work from a copy and verify the original key, exact optional PIN, lock format, and output location.",
+            "steps": [
+                {"id": "unlock-copy", "title": "Protect the locked original", "action": "Make a second copy of the .locked item before troubleshooting.", "expected": "An unchanged recovery copy remains available if another attempt fails."},
+                {"id": "unlock-key-pin", "title": "Use the exact key and PIN", "action": "Load the original master key and type the optional PIN exactly, including capitalization.", "expected": "Authenticated decryption succeeds only with the original secret combination."},
+                {"id": "unlock-format", "title": "Check the lock format", "action": "Use CHECK LOCK FORMAT or Vault Health Center before changing the file.", "expected": "The app identifies portable, legacy, or unreadable structure without decrypting contents."},
+                {"id": "unlock-output", "title": "Choose a writable output folder", "action": "Use UNLOCK TO FOLDER and select a normal folder with sufficient free space.", "expected": "The output can be written without replacing the .locked source."},
+                {"id": "unlock-test", "title": "Run a disposable recovery test", "action": "Test the same key and PIN workflow on disposable non-private data.", "expected": "A fresh lock and unlock round trip succeeds before retrying important data."},
+            ],
+            "escalation": "Preserve the failed item and safe report. Never upload file contents, the master key, or the PIN to the API or a support ticket.",
+        },
+        {
+            "id": "licensing",
+            "title": "License or rank is not updating",
+            "summary": "Check time, public service state, the saved license, anonymous seats, and owner support without exposing the key.",
+            "steps": [
+                {"id": "license-clock", "title": "Synchronize Windows time", "action": "Enable automatic date, time, and time-zone settings in Windows.", "expected": "The local clock is within five minutes of the public service time."},
+                {"id": "license-status", "title": "Check public service status", "action": "Open Customer Status and confirm licensing is not under maintenance.", "expected": "The public service mode and message are visible without a license key."},
+                {"id": "license-refresh", "title": "Refresh License Center", "action": "Open License Center and verify the saved key from the licensed PC.", "expected": "The API returns a current active, limited, expired, or revoked decision."},
+                {"id": "license-seats", "title": "Review anonymous seats", "action": "Check the active and maximum seat counts before activating another PC.", "expected": "An available anonymous device seat exists or an old seat is removed by the owner."},
+                {"id": "license-support", "title": "Use Bug Center safely", "action": "Send the category, visible error, and safe diagnostic summary after reviewing them.", "expected": "The owner receives useful text without keys, receipts, machine identity, or files."},
+            ],
+            "escalation": "The owner can manage license state and anonymous seats but cannot remotely disable local unlock or recovery.",
+        },
+        {
+            "id": "updates",
+            "title": "Signed update will not install",
+            "summary": "Check duplicate apps, disk space, the published manifest, package integrity, and rollback backup.",
+            "steps": [
+                {"id": "update-close", "title": "Close duplicate app windows", "action": "Close every older VaultLink window before starting the verified installer.", "expected": "No running app holds a file that the updater needs to replace."},
+                {"id": "update-center", "title": "Use Update Center", "action": "Fetch the published release only through the signed Update Center workflow.", "expected": "The Ed25519 manifest identifies the expected version and package."},
+                {"id": "update-space", "title": "Check working space", "action": "Keep at least 500 MB free for the package, extraction, and rollback copy.", "expected": "The diagnostics storage check passes before installation."},
+                {"id": "update-integrity", "title": "Verify signature and hash", "action": "Require both the Ed25519 signature and SHA-256 package digest to pass.", "expected": "The downloaded ZIP exactly matches the signed manifest."},
+                {"id": "update-backup", "title": "Keep the rollback backup", "action": "Do not remove the updater backup until the new app opens and recovery tools work.", "expected": "App files can be restored while LocalAppData keys, settings, and logs remain preserved."},
+            ],
+            "escalation": "Do not bypass Defender or signature warnings. Preserve the package name and safe verification result for owner review.",
+        },
+        {
+            "id": "performance",
+            "title": "The PC or app is slow",
+            "summary": "Reduce duplicate work, identify the responsible process, use bounded scans, and keep Defender enabled.",
+            "steps": [
+                {"id": "performance-duplicates", "title": "Close duplicate VaultLink apps", "action": "Keep one copy of each needed app open and stop unused background windows.", "expected": "Duplicate Python processes no longer repeat the same scan or watcher."},
+                {"id": "performance-task-manager", "title": "Check Task Manager", "action": "Sort Task Manager by CPU, memory, and disk while the slowdown happens.", "expected": "The responsible process and resource type are identified before anything is removed."},
+                {"id": "performance-defender", "title": "Run Microsoft Defender", "action": "Update Defender and run a scan if an unknown process is consuming resources.", "expected": "Windows Defender supplies the malware verdict instead of filename guessing."},
+                {"id": "performance-bounded", "title": "Use bounded scans", "action": "Cancel broad file scans when they are no longer needed and scan one intended folder at a time.", "expected": "VaultLink stops after the current item and resource use falls."},
+                {"id": "performance-restart", "title": "Restart after saving work", "action": "Save work and restart Windows if a stopped process left memory or handles behind.", "expected": "The PC returns to normal idle usage before VaultLink is reopened."},
+            ],
+            "escalation": "Report the process name and coarse CPU, memory, and disk observations. Do not send memory dumps, private file lists, or credentials.",
+        },
+        {
+            "id": "audit-security",
+            "title": "Audit or security warning",
+            "summary": "Preserve evidence, verify the hash chain, export only approved fields, scan with Defender, and review false-positive risk.",
+            "steps": [
+                {"id": "audit-preserve", "title": "Preserve the audit folder", "action": "Do not edit or delete audit records while investigating an integrity warning.", "expected": "The original chain remains available for verification."},
+                {"id": "audit-verify", "title": "Verify the chain", "action": "Use Audit Log Viewer to locate the first failed sequence or signature check.", "expected": "The viewer reports a valid chain or a specific anonymous event ID."},
+                {"id": "audit-export", "title": "Export approved fields only", "action": "Use the privacy-safe JSON export and inspect it before sharing.", "expected": "No filenames, paths, client names, keys, PINs, receipts, or file contents are included."},
+                {"id": "audit-defender", "title": "Use Defender for malware verdicts", "action": "Scan the relevant signed app folder or installer with Microsoft Defender.", "expected": "A current Defender detection name or no-threat result is recorded."},
+                {"id": "audit-review", "title": "Review evidence before removal", "action": "Treat High or Critical labels as review priorities, not automatic proof of malware.", "expected": "False positives are separated from confirmed detections before removal."},
+            ],
+            "escalation": "Send anonymous event IDs, timestamps, action names, results, and the exact Defender detection name. Never send raw private logs or file contents.",
+        },
+        {
+            "id": "backup-recovery",
+            "title": "Backup or recovery preparation",
+            "summary": "Keep separate copies, verify the key, back up app data, practice on disposable data, and document custody safely.",
+            "steps": [
+                {"id": "backup-locked-copy", "title": "Keep an unchanged locked copy", "action": "Store a second copy of important .locked items before maintenance or recovery.", "expected": "At least one original encrypted copy remains untouched."},
+                {"id": "backup-key-copy", "title": "Back up the master key separately", "action": "Use the built-in key backup and store it away from the primary PC and locked files.", "expected": "The copied key verifies against the loaded key without exposing its bytes."},
+                {"id": "backup-app-data", "title": "Back up app data", "action": "Create an app-data backup containing settings and audit state but no master USB key files.", "expected": "The backup completes and records a successful privacy-safe audit event."},
+                {"id": "backup-drill", "title": "Practice with disposable data", "action": "Complete a lock and unlock round trip using non-private disposable content.", "expected": "The original key and optional PIN recover the test copy successfully."},
+                {"id": "backup-custody", "title": "Document custody without secrets", "action": "Record where recovery materials are stored without writing the PIN beside the USB key.", "expected": "A trusted adult or business owner understands the recovery process without receiving secrets unnecessarily."},
+            ],
+            "escalation": "If a backup fails, preserve every existing key and locked copy, stop destructive changes, and obtain qualified help before retrying important data.",
+        },
+    ]
+    return {
+        "ok": True,
+        "diagnostics_schema_version": 1,
+        "api_version": API_VERSION,
+        "service_status": service_status_payload(),
+        "signed_release": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+            "published_at_utc": str(release.get("published_at_utc", "")),
+        },
+        "categories": categories,
+        "category_count": len(categories),
+        "step_count": sum(len(category["steps"]) for category in categories),
+        "accepts_free_text": False,
+        "accepts_files": False,
+        "session_progress_storage": "current_browser_tab_only",
+        "privacy_boundaries": [
+            "The public diagnostics API receives no license key, receipt, machine identity, PIN, USB secret, path, filename, or file content.",
+            "Browser checklist progress stays only in the current tab and is not uploaded or saved in browser storage.",
+            "The desktop safe report contains coarse checks and public metadata only; the customer reviews it before export.",
+            "Remote diagnostics cannot inspect, lock, unlock, scan, install, remove, or execute anything on a customer PC.",
+        ],
+        "limitations": [
+            "Troubleshooting guidance is not an antivirus scan, certification, legal advice, or guarantee.",
+            "The API cannot confirm local key custody, backup quality, Defender state, or successful recovery.",
+            "Microsoft Defender and qualified human review remain necessary for malware and high-impact security decisions.",
+        ],
         "customer_records_included": False,
         "server_time_utc": utc_now(),
     }
@@ -2524,7 +2683,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -2599,7 +2758,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -2726,7 +2885,7 @@ def recovery_readiness_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Recovery Readiness</h1>
     <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
@@ -2840,7 +2999,7 @@ def legal_document_html(document):
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/trust">TRUST</a><a href="/status">STATUS</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/status">STATUS</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="draft">DRAFT FOR ADULT AND LEGAL REVIEW</div>
     <h1>{html_escape(title)}</h1>
@@ -3154,7 +3313,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3660,7 +3819,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5505,6 +5664,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "diagnostics", "label": "DIAGNOSTICS", "path": "/diagnostics"},
             {"id": "trust", "label": "TRUST CENTER", "path": "/trust"},
             {"id": "update", "label": "SIGNED UPDATE", "path": "/update"},
             {"id": "recovery", "label": "RECOVERY READINESS", "path": "/readiness"},
@@ -5677,6 +5837,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "diagnostics", "label": "Diagnostics Center", "path": "/diagnostics", "purpose": "Fixed-step troubleshooting and safe local reporting", "ready": diagnostics_guide_payload()["step_count"] == 40},
         {"id": "trust", "label": "Trust Center", "path": "/trust", "purpose": "Public service, update, privacy, and recovery posture", "ready": trust_center_payload()["score"]["label"] != "action"},
         {"id": "license", "label": "License Center", "path": "/customer", "purpose": "Detailed read-only license view", "ready": True},
         {"id": "update", "label": "Update Center", "path": "/update", "purpose": "Signed release and local hash verification", "ready": bool(release.get("signed_release_ready"))},
@@ -8057,6 +8218,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
+        if path == "/favicon.ico":
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            return
         if path == "/":
             self.send_html(homepage_html())
             return
@@ -8068,6 +8236,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
+            return
+        if path == "/diagnostics":
+            self.send_html(customer_diagnostics_center_html(API_VERSION))
             return
         if path == "/trust":
             self.send_html(customer_trust_center_html(API_VERSION))
@@ -8138,6 +8309,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
+                    "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
                     "public_trust_center_enabled": True,
                     "owner_trust_center_enabled": True,
@@ -8177,6 +8349,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/trust-center":
             self.send_json(trust_center_payload())
             return
+        if path == "/api/v1/diagnostics-guide":
+            self.send_json(diagnostics_guide_payload())
+            return
         if path == "/api/v1/security":
             self.send_json(
                 {
@@ -8204,6 +8379,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "unified privacy-safe customer workspace with a session-only action checklist",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
+                        "public fixed-step diagnostics with session-only checklist progress and privacy-safe local export",
                         "public trust, signed-release, storage, privacy-boundary, and recovery posture",
                         "admin-only aggregate trust gate with release, audit, storage, and service actions",
                         "fixed-category customer support guides and local signed-update verification metadata",
