@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Recovery Kit workspace at `/recovery-kit` with five fixed profiles, ten preparation sections, fifty fixed items, five emergency runbooks, current-tab-only progress, calendar reminders, print, and privacy-safe local export
 - A public Backup Verification workspace at `/backup-verification` with twelve fixed plans, sixty restore-order steps, nine categories, five restore-time objectives, one-to-five copy targets, current-tab-only progress, and privacy-safe local export
 - A public Recovery Drill Center at `/recovery-drills` with sixteen fixed drills, eighty unique steps, five categories, current-tab-only progress, random selection, fixed-step copy, print, and privacy-safe local export
 - A public Incident Response Center at `/incident-response` with twelve fixed playbooks, seventy-two concrete steps, current-tab-only progress, copy-next-step and print controls, and privacy-safe local export
@@ -51,6 +52,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
+- Public recovery kits accept no free text, files, paths, filenames, keys, PINs, customer records, local results, or progress uploads; suspected-malware guidance is defensive and tabletop only
 - Public backup verification accepts no free text, files, paths, filenames, keys, PINs, file contents, customer records, or progress uploads; ransomware guidance is tabletop only and never runs malware or destructive simulations
 - Public recovery drills accept no free text or files, collect no customer progress, and never run malware, suspicious code, destructive scripts, or file-encryption simulations
 - Bug reports never attach local files or logs automatically, and raw machine ids are not stored
@@ -101,6 +103,7 @@ Then open:
 - `http://127.0.0.1:8000/shop`
 - `http://127.0.0.1:8000/customer`
 - `http://127.0.0.1:8000/workspace`
+- `http://127.0.0.1:8000/recovery-kit`
 - `http://127.0.0.1:8000/backup-verification`
 - `http://127.0.0.1:8000/recovery-drills`
 - `http://127.0.0.1:8000/incident-response`
@@ -130,6 +133,16 @@ Then open:
 - The safe browser export contains only public API/service/release metadata, the selected category id, and completed fixed step ids.
 - The desktop companion performs eighteen local read-only checks and creates a separately reviewed privacy-safe report. The public API never receives that report automatically.
 - Diagnostics does not accept free text, files, license proof, machine identity, PINs, USB secrets, paths, filenames, vault data, or file contents.
+
+## Recovery Kit
+
+- `GET /recovery-kit` opens the public fixed-profile preparation workspace.
+- `GET /api/v1/recovery-kit` returns five profiles, ten sections, exactly fifty preparation items across eight categories, five emergency runbooks with exactly thirty ordered steps, and five fixed review intervals.
+- Browser completion stays only in the current tab. The page uses no browser storage, uploads no progress, and accepts no free-form text, files, paths, or local results.
+- Customers can select a profile and section, mark the next item or a whole section, choose a section with cryptographic randomness, copy a fixed runbook or privacy-safe summary, print, export safe JSON, and create an `.ics` review reminder.
+- The desktop companion adds ten coarse local checks totaling 100 points plus exact-schema tamper-evident snapshots that compare fixed completed IDs and readiness scores.
+- Browser and desktop output exclude names, contacts, license proof, receipts, keys, PINs, paths, filenames, file contents, screenshots, process lists, private diagnostics, and free-form notes.
+- Suspected-malware guidance is defensive and tabletop only. VaultLink does not run malware, suspicious code, destructive scripts, or file-encryption simulations.
 
 ## Backup Verification Center
 
