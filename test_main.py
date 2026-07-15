@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 10)
+        self.assertEqual(len(workspace["quick_links"]), 11)
+        self.assertTrue(any(item["path"] == "/backup-verification" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/recovery-drills" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/incident-response" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/diagnostics" for item in workspace["quick_links"]))
@@ -714,7 +715,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 11)
+        self.assertEqual(len(experience["customer_surfaces"]), 12)
+        self.assertTrue(any(item["path"] == "/backup-verification" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/recovery-drills" for item in experience["customer_surfaces"]))
         self.assertEqual(len(experience["actions"]), 8)
         self.assertEqual(experience["metrics"]["total_licenses"], 1)
@@ -725,7 +727,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 11)
+        self.assertEqual(experience["surface_summary"]["total"], 12)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -948,7 +950,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/incident-guide")
         self.assertEqual(status, 200)
         self.assertEqual(guide["incident_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.30.0")
+        self.assertEqual(guide["api_version"], "0.31.0")
         self.assertEqual(guide["playbook_count"], 12)
         self.assertEqual(guide["step_count"], 72)
         self.assertEqual(len(guide["playbooks"]), 12)
@@ -1035,7 +1037,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/recovery-drills")
         self.assertEqual(status, 200)
         self.assertEqual(guide["recovery_drill_schema_version"], 1)
-        self.assertEqual(guide["api_version"], "0.30.0")
+        self.assertEqual(guide["api_version"], "0.31.0")
         self.assertEqual(guide["drill_count"], 16)
         self.assertEqual(guide["step_count"], 80)
         self.assertEqual(len(guide["drills"]), 16)
@@ -1113,6 +1115,110 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/recovery-drills" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/recovery-drills" for item in docs["routes"]))
+
+    def test_public_backup_verification_is_fixed_private_and_current_tab_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "BACKUP-PRIVATE-CUSTOMER-7741",
+                "customer_email": "backup-7741@example.test",
+                "license_note": "BACKUP-PRIVATE-NOTE-7741",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/backup-verification")
+        self.assertEqual(status, 200)
+        self.assertEqual(guide["backup_verification_schema_version"], 1)
+        self.assertEqual(guide["api_version"], "0.31.0")
+        self.assertEqual(guide["plan_count"], 12)
+        self.assertEqual(guide["step_count"], 60)
+        self.assertEqual(len(guide["plans"]), 12)
+        self.assertTrue(all(len(plan["steps"]) == 5 for plan in guide["plans"]))
+        self.assertEqual(
+            guide["categories"],
+            ["App Data", "Application", "Business", "Devices", "Keys", "Locked Data", "People", "Recovery", "Security"],
+        )
+        self.assertEqual(
+            {plan["id"] for plan in guide["plans"]},
+            {
+                "master-key-copies",
+                "optional-pin-custody",
+                "locked-file-copies",
+                "app-data-backup",
+                "audit-evidence",
+                "signed-app-rollback",
+                "new-device-recovery",
+                "lost-device-continuity",
+                "family-handoff",
+                "small-office-continuity",
+                "ransomware-safe-backups",
+                "full-restore-rehearsal",
+            },
+        )
+        self.assertEqual(
+            [item["id"] for item in guide["restore_objectives"]],
+            ["15-minutes", "1-hour", "4-hours", "1-day", "3-days"],
+        )
+        self.assertEqual(guide["copy_targets"], [1, 2, 3, 4, 5])
+        self.assertFalse(guide["accepts_free_text"])
+        self.assertFalse(guide["accepts_files"])
+        self.assertFalse(guide["accepts_paths"])
+        self.assertFalse(guide["accepts_progress"])
+        self.assertFalse(guide["customer_records_included"])
+        self.assertEqual(guide["session_progress_storage"], "current_browser_tab_only")
+        self.assertEqual(guide["desktop_checkpoint_storage"], "local_hash_chained_fixed_ids_and_coarse_totals_only")
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "BACKUP-PRIVATE-CUSTOMER-7741",
+            "backup-7741@example.test",
+            "BACKUP-PRIVATE-NOTE-7741",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/backup-verification")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Backup Verification", page_text)
+        self.assertIn("/api/v1/backup-verification", page_text)
+        self.assertIn("Know what restores first", page_text)
+        self.assertIn("MARK NEXT", page_text)
+        self.assertIn("MARK ALL", page_text)
+        self.assertIn("RANDOM PLAN", page_text)
+        self.assertIn("COPY RESTORE ORDER", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn('lines.join("\\n")', page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+        self.assertNotIn('type="file"', page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["backup_verification_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("backup_verification_center.py", product["desktop_scripts"])
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("backup-verification-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/backup-verification" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/backup-verification" for item in docs["routes"]))
 
     def test_owner_command_center_has_exactly_fifty_private_safe_insights(self):
         status, denied = self.call("/api/v1/admin/insights")
