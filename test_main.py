@@ -1343,15 +1343,35 @@ class VaultLinkApiTests(unittest.TestCase):
         status, guide = self.call("/api/v1/maintenance-guide")
         self.assertEqual(status, 200)
         self.assertTrue(guide["ok"])
-        self.assertEqual(guide["maintenance_schema_version"], 1)
+        self.assertEqual(guide["maintenance_schema_version"], 2)
         self.assertEqual(guide["api_version"], api.API_VERSION)
         self.assertEqual(guide["category_count"], 8)
         self.assertEqual(guide["task_count"], 32)
         self.assertEqual(guide["routine_count"], 6)
+        self.assertEqual(guide["planning_horizon_count"], 4)
         self.assertEqual(guide["cadence_days"], [7, 14, 30, 60, 90])
         self.assertEqual(len(guide["categories"]), 8)
         self.assertEqual(len(guide["tasks"]), 32)
         self.assertEqual(len(guide["routines"]), 6)
+        self.assertEqual(
+            guide["planning_horizons"],
+            [
+                {"id": "all", "label": "All cadence", "maximum_cadence_days": 0},
+                {"id": "weekly", "label": "Weekly focus", "maximum_cadence_days": 7},
+                {"id": "monthly", "label": "Thirty-day focus", "maximum_cadence_days": 30},
+                {"id": "quarterly", "label": "Ninety-day focus", "maximum_cadence_days": 90},
+            ],
+        )
+        self.assertEqual(
+            guide["schedule_scoring"],
+            {
+                "purpose": "reminder_coverage_only",
+                "weights": {"current": 100, "due-soon": 65, "overdue": 15, "not-started": 0},
+                "minimum": 0,
+                "maximum": 100,
+                "security_health_claim": False,
+            },
+        )
         self.assertEqual(len({item["id"] for item in guide["categories"]}), 8)
         self.assertEqual(len({item["id"] for item in guide["tasks"]}), 32)
         self.assertEqual(len({item["id"] for item in guide["routines"]}), 6)
@@ -1364,7 +1384,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(all(set(item["task_ids"]).issubset(task_ids) for item in guide["routines"]))
         full = next(item for item in guide["routines"] if item["id"] == "full-maintenance")
         self.assertEqual(set(full["task_ids"]), task_ids)
-        self.assertEqual(guide["browser_receipt_field_count"], 12)
+        self.assertEqual(guide["browser_receipt_field_count"], 16)
         self.assertEqual(
             set(guide["browser_receipt_fields"]),
             {
@@ -1376,9 +1396,13 @@ class VaultLinkApiTests(unittest.TestCase):
                 "signed_desktop_version",
                 "selected_category_id",
                 "selected_routine_id",
+                "selected_horizon_id",
                 "reviewed_task_ids",
                 "reviewed_count",
                 "task_count",
+                "review_percent",
+                "reviewed_category_count",
+                "reviewed_routine_count",
                 "privacy_notice",
             },
         )
@@ -1390,6 +1414,8 @@ class VaultLinkApiTests(unittest.TestCase):
             "accepts_local_results",
             "accepts_completion_history",
             "accepts_reminders",
+            "accepts_snapshots",
+            "accepts_schedule_scores",
             "accepts_maintenance_commands",
             "remote_maintenance_allowed",
             "customer_records_included",
@@ -1397,7 +1423,7 @@ class VaultLinkApiTests(unittest.TestCase):
             self.assertFalse(guide[field])
         self.assertEqual(guide["progress_storage"], "current_browser_tab_only")
         self.assertEqual(len(guide["privacy_boundaries"]), 4)
-        self.assertEqual(len(guide["limitations"]), 3)
+        self.assertEqual(len(guide["limitations"]), 4)
         self.assertTrue(guide["signed_release"]["ready"])
         self.assertEqual(guide["signed_release"]["version"], manifest["version"])
         serialized = json.dumps(guide)
@@ -1419,10 +1445,15 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("VaultLink Security Maintenance", page_text)
         self.assertIn("/api/v1/maintenance-guide", page_text)
         self.assertIn("REVIEW NEXT", page_text)
+        self.assertIn("REVIEW PRIORITY 5", page_text)
         self.assertIn("REVIEW ROUTINE", page_text)
-        self.assertIn("REVIEW ALL", page_text)
+        self.assertIn("REVIEW VISIBLE", page_text)
         self.assertIn("CALENDAR", page_text)
         self.assertIn("EXPORT JSON", page_text)
+        self.assertIn('id="horizon"', page_text)
+        self.assertIn('id="categoryCoverage"', page_text)
+        self.assertIn('id="routineCoverage"', page_text)
+        self.assertIn('id="priorityQueue"', page_text)
         self.assertIn("vaultlink-browser-maintenance-review.json", page_text)
         self.assertIn("vaultlink-maintenance-plan.ics", page_text)
         self.assertIn("current tab", page_text)
@@ -1464,6 +1495,9 @@ class VaultLinkApiTests(unittest.TestCase):
                 "maintenance_online_open",
                 "maintenance_report_export",
                 "maintenance_trusted_tool_open",
+                "maintenance_snapshot_save",
+                "maintenance_snapshot_compare",
+                "maintenance_archive_export",
             }.issubset(api.ALLOWED_AUDIT_ACTIONS)
         )
 

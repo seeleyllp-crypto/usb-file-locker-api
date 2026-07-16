@@ -12,7 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
-- A public Security Maintenance workspace at `/maintenance` with eight fixed categories, thirty-two fixed tasks, six routines, current-tab-only review, calendar reminders, print, and privacy-safe local export
+- A public Security Maintenance workspace at `/maintenance` with eight fixed categories, thirty-two fixed tasks, six routines, four cadence horizons, priority review, coverage bars, calendar reminders, print, and privacy-safe local export
 - A public Storage & Retention workspace at `/retention` with eight fixed areas, five policy bands, ten fixed practices, a five-step cleanup boundary, current-tab-only review, print, and privacy-safe local export
 - A public Data Control workspace at `/data-control` with fourteen fixed data classes, five scopes, six data-flow stages, retention guidance, current-tab-only review progress, print, and privacy-safe local export
 - A public Recovery Kit workspace at `/recovery-kit` with five fixed profiles, ten preparation sections, fifty fixed items, five emergency runbooks, current-tab-only progress, calendar reminders, print, and privacy-safe local export
@@ -55,7 +55,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
-- Public Security Maintenance accepts no progress, local result, completion history, reminder, maintenance command, identity, free text, file, or path; it cannot inspect, scan, update, schedule, launch, complete, or control anything on a customer PC
+- Public Security Maintenance accepts no progress, schedule score, snapshot, local result, completion history, reminder, maintenance command, identity, free text, file, or path; it cannot inspect, scan, update, schedule, launch, complete, or control anything on a customer PC
 - Public Data Control accepts no inventory, free text, contacts, customer progress, files, paths, local results, license proof, keys, PINs, filenames, or file contents; it stores no review state in browser storage
 - Public Storage & Retention accepts no inventory, progress, cleanup command, local result, free text, file, or path; it cannot inspect or delete anything on a customer PC and stores no review state in browser storage
 - Public recovery kits accept no free text, files, paths, filenames, keys, PINs, customer records, local results, or progress uploads; suspected-malware guidance is defensive and tabletop only
@@ -70,6 +70,12 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - LIMITED status never remotely locks a PC, deletes files, runs commands, or disables unlock/recovery access
 - Draft legal pages are not legal advice and require adult business-owner approval before commercial use
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
+
+## Security Maintenance 0.36
+
+`GET /api/v1/maintenance-guide` now also returns four fixed cadence horizons and the public reminder-coverage weight definition. `GET /maintenance` adds priority ordering, a five-item priority review action, category and routine coverage bars, and a sixteen-field privacy-safe receipt. Every calculation remains in the current tab and disappears on reload.
+
+The separate Windows center adds fixed attention, 7-day, 30-day, and 90-day planning windows, a priority queue, coarse hash-chained snapshots, comparison, and a verified non-destructive archive export. Schedule scores measure reminder coverage only. They are not antivirus, backup, key, recovery, compliance, or security-health results. The API accepts no progress, schedule score, snapshot, history, reminder, local result, file, path, or maintenance command.
 
 ## Security Maintenance 0.35
 

@@ -34,7 +34,9 @@ from recovery_kit_catalog import fixed_emergency_runbooks, fixed_recovery_kit_pr
 from recovery_kit_page import customer_recovery_kit_html
 from maintenance_catalog import (
     CADENCE_DAYS,
+    SCHEDULE_SCORE_WEIGHTS,
     fixed_maintenance_categories,
+    fixed_planning_horizons,
     fixed_maintenance_routines,
     fixed_maintenance_tasks,
 )
@@ -44,7 +46,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.35.0"
+API_VERSION = "0.36.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -158,12 +160,15 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "locked_file_browser_scan",
         "login",
         "maintenance_calendar_export",
+        "maintenance_archive_export",
         "maintenance_center_open",
         "maintenance_center_refresh",
         "maintenance_history_export",
         "maintenance_online_open",
         "maintenance_report_export",
         "maintenance_routine_complete",
+        "maintenance_snapshot_compare",
+        "maintenance_snapshot_save",
         "maintenance_summary_copy",
         "maintenance_task_complete",
         "maintenance_task_reopen",
@@ -273,7 +278,7 @@ FEATURES = [
     {
         "id": "security-maintenance-center",
         "title": "Security Maintenance Center",
-        "summary": "Schedule thirty-two fixed defensive tasks, use six routines, keep append-only hash-chained local completion history, and export reviewed privacy-safe reports and calendar reminders.",
+        "summary": "Schedule thirty-two fixed defensive tasks, use six routines, review 7/30/90-day planning, compare hash-chained local snapshots, and export verified privacy-safe archives.",
         "category": "starter",
     },
     {
@@ -436,7 +441,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
-    {"name": "Security Maintenance Center", "script": "security_maintenance_center.py", "purpose": "Track thirty-two fixed defensive tasks, task-specific due dates, six routines, and privacy-safe hash-chained local completion history."},
+    {"name": "Security Maintenance Center", "script": "security_maintenance_center.py", "purpose": "Track thirty-two fixed defensive tasks, task-specific due dates, six routines, schedule coverage, priority planning, snapshots, and privacy-safe hash-chained local history."},
     {"name": "Storage & Retention Center", "script": "storage_retention_center.py", "purpose": "Review eight fixed storage areas and safely clean only expired entries in VaultLink's exact temporary workspace after a fresh bounded preview and typed confirmation."},
     {"name": "Local Data Control Center", "script": "local_data_control_center.py", "purpose": "Map fixed VaultLink data boundaries, verify eleven protection controls, and export reviewed coarse privacy receipts without arbitrary file discovery."},
     {"name": "Recovery Kit Builder", "script": "recovery_kit_builder.py", "purpose": "Build a fixed privacy-safe emergency card, score local readiness, export a calendar reminder, and keep hash-chained coarse snapshots."},
@@ -468,6 +473,7 @@ SECURITY_NOTES = [
     "Ranks are software and service package descriptions, not HIPAA certification, legal approval, guaranteed protection, or proof of professional review.",
     "The Storage & Retention Center can clean only the exact local VaultLink temporary workspace; it rejects links and never accepts remote cleanup commands or customer storage inventories.",
     "The Security Maintenance Center stores fixed task completion and reopen events locally; the public guide receives no progress, local result, reminder, or history.",
+    "Security Maintenance schedule scores and snapshot comparisons measure reminder coverage only and are not antivirus, backup, key, recovery, compliance, or security-health results.",
 ]
 
 
@@ -1819,7 +1825,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
-            {"method": "GET", "path": "/maintenance", "purpose": "Public thirty-two-task security maintenance planner with six routines and current-tab-only review"},
+            {"method": "GET", "path": "/maintenance", "purpose": "Public thirty-two-task maintenance planner with priority sorting, four cadence horizons, coverage dashboard, and current-tab-only review"},
             {"method": "GET", "path": "/retention", "purpose": "Public fixed storage map, retention practices, cleanup boundaries, and current-tab-only review receipt"},
             {"method": "GET", "path": "/data-control", "purpose": "Public fixed data map, protection boundaries, retention guidance, and current-tab-only review receipt"},
             {"method": "GET", "path": "/recovery-kit", "purpose": "Public fixed emergency kit, first-hour runbooks, calendar reminder, and current-tab-only progress"},
@@ -1849,7 +1855,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
-            {"method": "GET", "path": "/api/v1/maintenance-guide", "purpose": "Public eight-category, thirty-two-task, six-routine maintenance catalog with no customer progress collection"},
+            {"method": "GET", "path": "/api/v1/maintenance-guide", "purpose": "Public eight-category, thirty-two-task, six-routine, four-horizon maintenance catalog with no customer progress collection"},
             {"method": "GET", "path": "/api/v1/retention-guide", "purpose": "Public eight-area retention catalog and ten fixed practices with no local inventory or cleanup control"},
             {"method": "GET", "path": "/api/v1/data-map", "purpose": "Public fourteen-class data map with no customer inventory or progress collection"},
             {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
@@ -2256,6 +2262,7 @@ def maintenance_guide_payload():
     categories = fixed_maintenance_categories()
     tasks = fixed_maintenance_tasks()
     routines = fixed_maintenance_routines()
+    planning_horizons = fixed_planning_horizons()
     release = windows_update_release_status()
     receipt_fields = [
         "schema_version",
@@ -2266,14 +2273,18 @@ def maintenance_guide_payload():
         "signed_desktop_version",
         "selected_category_id",
         "selected_routine_id",
+        "selected_horizon_id",
         "reviewed_task_ids",
         "reviewed_count",
         "task_count",
+        "review_percent",
+        "reviewed_category_count",
+        "reviewed_routine_count",
         "privacy_notice",
     ]
     return {
         "ok": True,
-        "maintenance_schema_version": 1,
+        "maintenance_schema_version": 2,
         "api_version": API_VERSION,
         "service_status": service_status_payload(),
         "signed_release": {
@@ -2289,6 +2300,15 @@ def maintenance_guide_payload():
         "routines": routines,
         "routine_count": len(routines),
         "cadence_days": list(CADENCE_DAYS),
+        "planning_horizons": planning_horizons,
+        "planning_horizon_count": len(planning_horizons),
+        "schedule_scoring": {
+            "purpose": "reminder_coverage_only",
+            "weights": dict(SCHEDULE_SCORE_WEIGHTS),
+            "minimum": 0,
+            "maximum": 100,
+            "security_health_claim": False,
+        },
         "browser_receipt_fields": receipt_fields,
         "browser_receipt_field_count": len(receipt_fields),
         "accepts_free_text": False,
@@ -2298,17 +2318,20 @@ def maintenance_guide_payload():
         "accepts_local_results": False,
         "accepts_completion_history": False,
         "accepts_reminders": False,
+        "accepts_snapshots": False,
+        "accepts_schedule_scores": False,
         "accepts_maintenance_commands": False,
         "remote_maintenance_allowed": False,
         "progress_storage": "current_browser_tab_only",
         "privacy_boundaries": [
             "The public maintenance API receives no license key, receipt, identity, machine identifier, key, PIN, USB secret, path, filename, file content, local result, completion time, reminder, or history.",
             "Browser review state stays only in the current tab and is not uploaded or written to browser storage.",
-            "Desktop completion history stays local and contains only fixed task IDs, fixed cadence, completion or reopen state, UTC time, anonymous event ID, and hash-chain fields.",
+            "Desktop completion history and coarse schedule snapshots stay local and contain only fixed IDs, fixed cadence, coarse counts, state, UTC time, anonymous event IDs, and hash-chain fields.",
             "Trusted-tool launches are desktop-only and limited to fixed Windows pages, fixed VaultLink scripts, the fixed app folder, and fixed public pages.",
         ],
         "limitations": [
             "A reviewed or completed task is a reminder record, not proof that Windows, Defender, a backup, a key, an update, or recovery is healthy.",
+            "Browser review percentages and desktop schedule scores measure reminder coverage only; they are not security-health, compliance, antivirus, backup, or recovery scores.",
             "The browser cannot inspect, scan, update, launch, schedule, complete, or control anything on a customer PC.",
             "VaultLink does not replace Microsoft Defender, Windows Update, independent backups, professional incident response, legal advice, or compliance review.",
         ],
@@ -6541,7 +6564,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
-        {"id": "maintenance", "label": "Security Maintenance", "path": "/maintenance", "purpose": "Thirty-two fixed tasks, six routines, and current-tab-only review", "ready": maintenance_guide_payload()["task_count"] == 32},
+        {"id": "maintenance", "label": "Security Maintenance", "path": "/maintenance", "purpose": "Thirty-two fixed tasks, six routines, four cadence horizons, priority review, and current-tab-only coverage", "ready": maintenance_guide_payload()["task_count"] == 32},
         {"id": "retention", "label": "Storage & Retention", "path": "/retention", "purpose": "Eight fixed storage areas, ten retention practices, and current-tab-only review", "ready": retention_guide_payload()["practice_count"] == 10},
         {"id": "data", "label": "Data Control", "path": "/data-control", "purpose": "Fourteen fixed data classes, protection boundaries, retention, and current-tab-only review", "ready": data_control_map_payload()["class_count"] == 14},
         {"id": "kit", "label": "Recovery Kit", "path": "/recovery-kit", "purpose": "Five fixed profiles, fifty kit items, and five first-hour runbooks", "ready": recovery_kit_guide_payload()["item_count"] == 50},

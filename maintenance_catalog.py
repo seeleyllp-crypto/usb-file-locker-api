@@ -2,6 +2,18 @@ import json
 
 
 CADENCE_DAYS = (7, 14, 30, 60, 90)
+PLANNING_HORIZONS = [
+    {"id": "all", "label": "All cadence", "maximum_cadence_days": 0},
+    {"id": "weekly", "label": "Weekly focus", "maximum_cadence_days": 7},
+    {"id": "monthly", "label": "Thirty-day focus", "maximum_cadence_days": 30},
+    {"id": "quarterly", "label": "Ninety-day focus", "maximum_cadence_days": 90},
+]
+SCHEDULE_SCORE_WEIGHTS = {
+    "current": 100,
+    "due-soon": 65,
+    "overdue": 15,
+    "not-started": 0,
+}
 
 MAINTENANCE_CATEGORIES = [
     {
@@ -407,6 +419,10 @@ def fixed_maintenance_routines():
     return json.loads(json.dumps(MAINTENANCE_ROUTINES))
 
 
+def fixed_planning_horizons():
+    return json.loads(json.dumps(PLANNING_HORIZONS))
+
+
 _category_ids = {item["id"] for item in MAINTENANCE_CATEGORIES}
 _task_ids = {item["id"] for item in MAINTENANCE_TASKS}
 _routine_ids = {item["id"] for item in MAINTENANCE_ROUTINES}
@@ -428,3 +444,7 @@ if any(
     raise RuntimeError("Maintenance routines must reference unique fixed tasks.")
 if set(MAINTENANCE_ROUTINES[-1]["task_ids"]) != _task_ids:
     raise RuntimeError("The full maintenance routine must contain every fixed task.")
+if len(PLANNING_HORIZONS) != 4 or len({item["id"] for item in PLANNING_HORIZONS}) != 4:
+    raise RuntimeError("Maintenance planning horizons must contain four unique fixed rows.")
+if set(SCHEDULE_SCORE_WEIGHTS) != {"current", "due-soon", "overdue", "not-started"}:
+    raise RuntimeError("Maintenance schedule scoring must cover every fixed desktop task state.")
