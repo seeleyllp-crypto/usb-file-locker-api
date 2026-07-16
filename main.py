@@ -47,7 +47,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.38.0"
+API_VERSION = "0.39.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1842,7 +1842,7 @@ def docs_payload():
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
             {"method": "GET", "path": "/owner/trust", "purpose": "Owner-only trust, release, storage, audit, and service operations gate"},
-            {"method": "GET", "path": "/owner/operations", "purpose": "Owner-only maintenance cockpit with briefing, current-tab change watch, review planner, evidence receipt, and 40 fixed checks"},
+            {"method": "GET", "path": "/owner/operations", "purpose": "Owner-only maintenance cockpit with approval gates, decision queue, current-tab review session, briefing, change watch, planner, evidence receipt, and 40 fixed checks"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1892,7 +1892,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "GET", "path": "/api/v1/admin/customer-experience", "purpose": "Admin-only aggregate customer experience, rank, release, and support health"},
             {"method": "GET", "path": "/api/v1/admin/trust-center", "purpose": "Admin-only trust gate with concrete operational actions"},
-            {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only briefing, severity, domain, watch, review-window, shortcut, and fixed 40-check operations report"},
+            {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only approval-gate, decision-queue, review-lane, briefing, watch, planner, and fixed 40-check operations report"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -4538,7 +4538,7 @@ def owner_portal_html():
     <section>
       <h2>Owner Maintenance Operations</h2>
       <div class="latest">
-        <div class="status">Run the fixed 40-check owner readiness contract, review a prioritized runbook, inspect release and storage matrices, and export privacy-safe JSON or CSV.</div>
+        <div class="status">Run the fixed 40-check owner readiness contract, review six approval gates and a prioritized decision queue, inspect release and storage matrices, and export privacy-safe evidence.</div>
         <a href="/owner/operations" style="display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:4px;background:var(--green);color:#06120a;text-decoration:none;font-weight:800;">OPEN OPERATIONS</a>
       </div>
     </section>
@@ -8982,9 +8982,92 @@ def admin_maintenance_operations():
         {"id": "shop", "label": "Rank Shop", "path": "/shop", "purpose": "Seven-rank catalog and hosted checkout readiness"},
         {"id": "terms", "label": "Draft Terms", "path": "/terms", "purpose": "Adult-owner and qualified legal review status"},
     ]
+    due_minutes_by_priority = {"critical": 15, "high": 60, "medium": 1440, "low": 10080}
+    due_label_by_priority = {
+        "critical": "Review within 15 minutes",
+        "high": "Review within 60 minutes",
+        "medium": "Review within 24 hours",
+        "low": "Review within 7 days",
+    }
+    decision_queue = []
+    for sequence, item in enumerate(runbook, start=1):
+        lane_ids = ["all-actions"]
+        if item["priority"] in {"critical", "high"}:
+            lane_ids.append("urgent")
+        if item["category"] in {"Signed Releases", "Service & Surfaces"}:
+            lane_ids.append("release-service")
+        if item["category"] in {"Licensing & Seats", "Support & Messaging"}:
+            lane_ids.append("customer-support")
+        if item["category"] in {"Audit & Incident Review", "Commerce & Governance"}:
+            lane_ids.append("evidence-governance")
+        decision_queue.append(
+            {
+                **item,
+                "sequence": sequence,
+                "suggested_review_minutes": due_minutes_by_priority[item["priority"]],
+                "suggested_review_window": due_label_by_priority[item["priority"]],
+                "lane_ids": lane_ids,
+            }
+        )
+    review_lane_definitions = [
+        ("all-actions", "All owner actions", "Every failed fixed check in priority order."),
+        ("urgent", "Urgent review", "Critical and high-priority owner actions."),
+        ("release-service", "Release and service", "Signed delivery and customer-surface actions."),
+        ("customer-support", "Customers and support", "Licensing, seats, renewal, support, and messaging actions."),
+        ("evidence-governance", "Evidence and governance", "Audit, incident, commerce, payment-boundary, and legal-review actions."),
+    ]
+    review_lanes = [
+        {
+            "id": identifier,
+            "label": label,
+            "purpose": purpose,
+            "action_count": sum(identifier in item["lane_ids"] for item in decision_queue),
+        }
+        for identifier, label, purpose in review_lane_definitions
+    ]
+    gate_definitions = [
+        ("owner-access", "Owner Access Gate", "Owner authentication, signing secrets, private encryption, and header-only token handling.", ("Access & Secrets",), "/owner/trust", "OPEN TRUST OPERATIONS"),
+        ("service-continuity", "Service Continuity Gate", "Persistent storage, recovery continuity, public service, and customer-surface readiness.", ("Storage & Recovery", "Service & Surfaces"), "/owner/trust", "OPEN TRUST OPERATIONS"),
+        ("signed-delivery", "Signed Delivery Gate", "Published package availability, signature, size, digest, and app-data preservation.", ("Signed Releases",), "/update", "OPEN UPDATE CENTER"),
+        ("customer-operations", "Customer Operations Gate", "Licensing, seats, renewals, support, announcements, and public messaging.", ("Licensing & Seats", "Support & Messaging"), "/owner/customers", "OPEN CUSTOMER EXPERIENCE"),
+        ("evidence-integrity", "Evidence Integrity Gate", "Audit-chain integrity, severe-report review, retention, and remote collection boundaries.", ("Audit & Incident Review",), "/owner", "OPEN AUDIT OPERATIONS"),
+        ("commerce-governance", "Commerce & Governance Gate", "Rank catalog, hosted checkout, card-data boundary, draft legal review, and remote-control boundary.", ("Commerce & Governance",), "/shop", "OPEN SHOP STATUS"),
+    ]
+    approval_gates = []
+    for identifier, label, purpose, gate_categories, path, path_label in gate_definitions:
+        gate_checks = [item for item in checks if item["category"] in gate_categories]
+        failed_checks = [item for item in gate_checks if not item["passed"]]
+        blocking_checks = [item for item in failed_checks if item["priority"] == "critical"]
+        high_checks = [item for item in failed_checks if item["priority"] == "high"]
+        outcome = "blocked" if blocking_checks else "review" if failed_checks else "clear"
+        next_check = failed_checks[0] if failed_checks else None
+        approval_gates.append(
+            {
+                "id": identifier,
+                "label": label,
+                "purpose": purpose,
+                "categories": list(gate_categories),
+                "passed": len(gate_checks) - len(failed_checks),
+                "total": len(gate_checks),
+                "score": round(((len(gate_checks) - len(failed_checks)) / len(gate_checks)) * 100),
+                "action_count": len(failed_checks),
+                "blocking_action_count": len(blocking_checks),
+                "high_action_count": len(high_checks),
+                "outcome": outcome,
+                "state": "action" if blocking_checks else "attention" if failed_checks else "good",
+                "check_ids": [item["id"] for item in gate_checks],
+                "action_ids": [item["id"] for item in failed_checks],
+                "next_action_id": next_check["id"] if next_check else "",
+                "next_action": next_check["action"] if next_check else "No gate action is currently required.",
+                "owner_path": path,
+                "owner_path_label": path_label,
+            }
+        )
+    if sum(item["total"] for item in approval_gates) != len(checks):
+        raise RuntimeError("Owner approval gates must cover every fixed check exactly once.")
     return {
         "ok": True,
-        "operations_schema_version": 2,
+        "operations_schema_version": 3,
         "api_version": API_VERSION,
         "check_count": len(checks),
         "checks": checks,
@@ -9015,6 +9098,9 @@ def admin_maintenance_operations():
             "release_version": str(release.get("version", "")),
         },
         "runbook": runbook,
+        "decision_queue": decision_queue,
+        "review_lanes": review_lanes,
+        "approval_gates": approval_gates,
         "watch_metrics": watch_metrics,
         "review_windows": review_windows,
         "owner_shortcuts": owner_shortcuts,
@@ -9058,7 +9144,8 @@ def admin_maintenance_operations():
             "No license key, license id, customer identity, owner note, receipt, or machine identifier is returned.",
             "No file content, full path, PIN, USB secret, customer audit contents, or customer maintenance history is returned.",
             "The owner console cannot lock, unlock, execute, scan, delete, quarantine, or retrieve data from a customer PC.",
-            "JSON and CSV exports are created locally by the browser from this already privacy-safe response.",
+            "Text, JSON, CSV, calendar, handoff, and SHA-256 receipt exports are created locally by the browser from this already privacy-safe response.",
+            "Review-session completion, lane selection, search, filters, planner state, and change baselines stay only in the current browser tab.",
         ],
         "limitations": [
             "A passing server check cannot test a customer's backups, USB custody, PIN memory, local malware state, or successful recovery.",
@@ -9072,10 +9159,15 @@ def admin_maintenance_operations():
             "watch_metric_count": len(watch_metrics),
             "review_window_count": len(review_windows),
             "owner_shortcut_count": len(owner_shortcuts),
+            "approval_gate_count": len(approval_gates),
+            "review_lane_count": len(review_lanes),
+            "decision_queue_source": "failed_checks_only",
             "change_tracking": "current_tab_only",
             "review_plan_state": "current_tab_only",
+            "review_session_state": "current_tab_only",
             "auto_refresh_default": False,
             "evidence_hash": "browser_generated_sha256",
+            "handoff_export": "browser_generated_fixed_fields",
             "accepts_free_text": False,
             "accepts_files": False,
             "accepts_customer_progress": False,
@@ -9508,10 +9600,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
                     "owner_maintenance_operations_enabled": True,
-                    "owner_operations_schema_version": 2,
+                    "owner_operations_schema_version": 3,
                     "owner_operations_change_watch_enabled": True,
                     "owner_operations_review_planner_enabled": True,
                     "owner_operations_evidence_receipt_enabled": True,
+                    "owner_operations_approval_gates_enabled": True,
+                    "owner_operations_review_session_enabled": True,
+                    "owner_operations_handoff_export_enabled": True,
                     "public_trust_center_enabled": True,
                     "owner_trust_center_enabled": True,
                     "anonymous_plan_advisor_enabled": True,
@@ -9603,7 +9698,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "public fixed security maintenance guidance with current-tab-only review and no remote task completion or PC control",
                         "public fixed storage and retention guidance with current-tab-only review and no remote cleanup capability",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
-                        "admin-only fixed 40-check maintenance operations cockpit with privacy-safe JSON and CSV export",
+                        "admin-only fixed 40-check maintenance operations cockpit with six approval gates, a current-tab review session, and privacy-safe evidence exports",
                         "public fixed-step diagnostics with session-only checklist progress and privacy-safe local export",
                         "public trust, signed-release, storage, privacy-boundary, and recovery posture",
                         "admin-only aggregate trust gate with release, audit, storage, and service actions",
@@ -9659,6 +9754,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "The maintenance operations cockpit exposes only aggregate checks, fixed actions, public surface states, and signed-release evidence.",
                         "Owner maintenance exports exclude customer records, customer maintenance history, license proof, device identity, files, paths, PINs, and USB secrets.",
                         "Change baselines, auto-refresh choice, review-plan selection, and calendar start time exist only in the current browser tab.",
+                        "Approval gates divide the fixed checks exactly once; the decision queue contains only failed fixed checks.",
+                        "Review-session marks, lane selection, and handoff generation exist only in the current tab and are not proof that an action was completed.",
                         "The browser evidence receipt hashes a fixed privacy-safe payload with SHA-256 and never includes the admin token.",
                     ],
                     "shop_controls": [

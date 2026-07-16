@@ -59,6 +59,9 @@ def owner_maintenance_operations_html(api_version):
     .fact strong { display:block; margin-top:4px; overflow-wrap:anywhere; }
     .filters { display:grid; grid-template-columns:minmax(220px,1fr) minmax(170px,.45fr) minmax(150px,.4fr) auto; gap:9px; align-items:end; }
     .planner { display:grid; grid-template-columns:minmax(220px,.8fr) minmax(220px,.7fr) auto auto; gap:9px; align-items:end; }
+    .session-controls { display:grid; grid-template-columns:minmax(240px,1fr) repeat(4,auto); gap:9px; align-items:end; }
+    .session-summary { display:grid; grid-template-columns:minmax(260px,1fr) minmax(220px,.6fr); gap:9px; margin:10px 0; }
+    .session-summary .card { min-height:100%; }
     .summary-strip { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:10px; color:var(--muted); }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:9px; }
     .checks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -82,17 +85,22 @@ def owner_maintenance_operations_html(api_version):
     .category-head strong { color:var(--text); }
     .plan-steps { margin:10px 0 0; padding-left:19px; color:var(--muted); }
     .plan-steps li { margin:5px 0; }
+    .review-card.reviewed { border-left-color:var(--green); opacity:.78; }
+    .review-card.focused { outline:2px solid var(--blue); outline-offset:2px; }
+    .review-toggle { display:flex; align-items:flex-start; gap:10px; margin-bottom:8px; }
+    .review-toggle input { flex:0 0 18px; margin:2px 0 0; }
+    .review-toggle label { margin:0; color:var(--text); font-size:14px; line-height:1.35; text-transform:none; cursor:pointer; }
     .empty { padding:25px 15px; border:1px dashed var(--line); color:var(--muted); text-align:center; }
     footer { border-width:1px 0 0; }
     footer > div { padding:21px 0 28px; color:var(--muted); }
-    @media(max-width:1080px){.metrics{grid-template-columns:repeat(4,1fr)}.planner{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:780px){header>div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.auth,.filters,.planner,.briefing{grid-template-columns:1fr}.checks{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}button{width:100%}.toggle{width:100%;justify-content:center}.action-link{width:100%}}
+    @media(max-width:1080px){.metrics{grid-template-columns:repeat(4,1fr)}.planner,.session-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:780px){header>div,.section-head{align-items:flex-start;flex-direction:column;padding:14px 0}.section-head p{text-align:left}.auth,.filters,.planner,.briefing,.session-controls,.session-summary{grid-template-columns:1fr}.checks{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}button{width:100%}.toggle{width:100%;justify-content:center}.action-link{width:100%}}
     @media(max-width:460px){.brand{align-items:flex-start;flex-direction:column;gap:2px}.metrics,.briefing-facts{grid-template-columns:1fr}.metric{border-right:0;border-bottom:1px solid var(--line)}}
     @media print { header,.auth,.toolbar,.filters,.planner button,.action-link,footer { display:none!important; } body { background:#fff; color:#111; } main { width:100%; padding:0; } .card,.metric,.briefing-main,.fact { break-inside:avoid; background:#fff; border-color:#999; color:#111; } .card p,.section-head p,.briefing-main p,.fact span,.metric span,.summary-strip { color:#444; } }
   </style>
 </head>
 <body>
-  <header><div><div class="brand"><strong>Owner Maintenance Operations</strong><span>briefing, watch, planner, and 40 fixed readiness checks</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/insights">INSIGHTS</a><a href="/owner/customers">CUSTOMERS</a><a href="/owner/trust">TRUST</a></nav></div></header>
+  <header><div><div class="brand"><strong>Owner Maintenance Operations</strong><span>gates, decision queue, review session, and 40 fixed readiness checks</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/insights">INSIGHTS</a><a href="/owner/customers">CUSTOMERS</a><a href="/owner/trust">TRUST</a></nav></div></header>
   <main>
     <h1>Owner operations cockpit</h1>
     <p class="lead">A privacy-safe maintenance board for owner access, secrets, storage, signed releases, customer surfaces, licensing, support, audit review, commerce, and governance.</p>
@@ -119,6 +127,24 @@ def owner_maintenance_operations_html(api_version):
         <div class="section-head"><h2>Daily Owner Briefing</h2><p>A compact current-state summary with no customer identity or secret fields.</p></div>
         <div class="briefing"><div id="briefingMain" class="briefing-main"></div><div id="briefingFacts" class="briefing-facts"></div></div>
         <div id="severity" class="grid" style="margin-top:9px"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>Approval Gates</h2><p>Six non-overlapping gates divide all 40 fixed checks exactly once.</p></div>
+        <div id="approvalGates" class="grid"></div>
+      </section>
+
+      <section class="section" id="review-session">
+        <div class="section-head"><h2>Owner Review Session</h2><p>Review marks stay only in this tab and do not resolve or complete the underlying action.</p></div>
+        <div class="session-controls">
+          <div><label for="reviewLane">Review lane</label><select id="reviewLane"></select></div>
+          <button id="focusNext" class="primary" type="button">FOCUS NEXT</button>
+          <button id="markLaneReviewed" type="button">MARK LANE REVIEWED</button>
+          <button id="clearReviewSession" type="button">CLEAR SESSION</button>
+          <button id="exportHandoff" type="button">EXPORT HANDOFF</button>
+        </div>
+        <div class="session-summary"><div id="reviewProgress" class="card steady"></div><div id="reviewNext" class="card steady"></div></div>
+        <div id="reviewQueue" class="checks"></div>
       </section>
 
       <section class="section">
@@ -189,7 +215,7 @@ def owner_maintenance_operations_html(api_version):
   <footer><div>API __API_VERSION__. Safe exports exclude license keys, license ids, customer labels, email addresses, owner notes, device identifiers, receipts, report contents, file data, paths, PINs, USB secrets, and customer maintenance history.</div></footer>
   <script>
     const $=id=>document.getElementById(id);
-    const state={token:"",payload:null,visible:[],baseline:null,baselineTime:"",autoTimer:null};
+    const state={token:"",payload:null,visible:[],baseline:null,baselineTime:"",autoTimer:null,reviewed:new Set(),activeLane:"all-actions",focusedId:""};
     const text=value=>String(value??"");
     function setStatus(message,tone=""){ $("status").textContent=message; $("status").className=`status ${tone}`; }
     function add(parent,tag,value,className=""){const node=document.createElement(tag);node.textContent=text(value);if(className)node.className=className;parent.append(node);return node;}
@@ -205,6 +231,32 @@ def owner_maintenance_operations_html(api_version):
       const severity=data.severity_summary;
       const rows=[["Completed",severity.complete,"good"],["Critical",severity.critical,severity.critical?"action":"good"],["High",severity.high,severity.high?"attention":"good"],["Medium",severity.medium,severity.medium?"attention":"good"],["Low",severity.low,severity.low?"attention":"good"]];
       fill("severity",rows,row=>card(row[0],`${row[1]} check(s)`,row[2],"SEVERITY"),"No severity data is available.");
+    }
+    function renderApprovalGates(data){
+      fill("approvalGates",data.approval_gates,item=>{
+        const detail=`${item.purpose} ${item.passed} of ${item.total} checks pass | ${item.action_count} action(s) | ${item.blocking_action_count} blocking.`;
+        const node=card(item.label,detail,item.state,item.outcome.toUpperCase(),item.action_count?item.next_action:"",{path:item.owner_path,label:item.owner_path_label});
+        const bar=document.createElement("div");bar.className="progress";const fillNode=document.createElement("span");fillNode.style.width=`${item.score}%`;bar.append(fillNode);node.insertBefore(bar,node.querySelector(".action-link"));return node;
+      },"No approval gates are available.");
+    }
+    function buildReviewLanes(data){
+      const select=$("reviewLane");const requested=state.activeLane||select.value||"all-actions";select.replaceChildren();
+      data.review_lanes.forEach(item=>select.append(new Option(`${item.label.toUpperCase()} (${item.action_count})`,item.id)));
+      state.activeLane=data.review_lanes.some(item=>item.id===requested)?requested:"all-actions";select.value=state.activeLane;
+    }
+    function laneQueue(){return state.payload?state.payload.decision_queue.filter(item=>item.lane_ids.includes(state.activeLane)):[];}
+    function renderReviewSession(data=state.payload){
+      if(!data)return;
+      const currentIds=new Set(data.decision_queue.map(item=>item.id));state.reviewed=new Set([...state.reviewed].filter(id=>currentIds.has(id)));buildReviewLanes(data);
+      const queue=laneQueue();const reviewedTotal=data.decision_queue.filter(item=>state.reviewed.has(item.id)).length;const progress=data.decision_queue.length?Math.round((reviewedTotal/data.decision_queue.length)*100):100;
+      const progressHost=$("reviewProgress");progressHost.replaceChildren();add(progressHost,"div",`${reviewedTotal} OF ${data.decision_queue.length} REVIEWED`,`eyebrow ${reviewedTotal===data.decision_queue.length?"good":"steady"}`);add(progressHost,"h3",`${progress}% session review coverage`);add(progressHost,"p","Current-tab review marker only. Underlying owner actions remain unchanged.");const bar=document.createElement("div");bar.className="progress";const fillNode=document.createElement("span");fillNode.style.width=`${progress}%`;bar.append(fillNode);progressHost.append(bar);
+      const next=queue.find(item=>!state.reviewed.has(item.id))||data.decision_queue.find(item=>!state.reviewed.has(item.id));const nextHost=$("reviewNext");nextHost.replaceChildren();add(nextHost,"div",next?next.suggested_review_window.toUpperCase():"QUEUE CLEAR",`eyebrow ${next?next.state:"good"}`);add(nextHost,"h3",next?next.title:"No unreviewed owner actions");add(nextHost,"p",next?next.action:"Every current decision-queue item is marked reviewed in this tab.");
+      fill("reviewQueue",queue,item=>{
+        const reviewed=state.reviewed.has(item.id);const node=document.createElement("article");node.className=`card ${item.state} review-card${reviewed?" reviewed":""}${state.focusedId===item.id?" focused":""}`;node.dataset.reviewId=item.id;
+        const toggle=document.createElement("div");toggle.className="review-toggle";const box=document.createElement("input");box.type="checkbox";box.id=`review-${item.id}`;box.checked=reviewed;const label=document.createElement("label");label.htmlFor=box.id;label.textContent=item.title;toggle.append(box,label);node.append(toggle);
+        add(node,"div",`#${item.sequence} | ${item.priority} | ${item.suggested_review_window}`,`eyebrow ${item.state}`);add(node,"p",item.detail);add(node,"p",`Next: ${item.action}`,"next");const link=document.createElement("a");link.className="action-link";link.href=item.owner_path;link.textContent=item.owner_path_label;node.append(link);
+        box.addEventListener("change",()=>{if(box.checked)state.reviewed.add(item.id);else state.reviewed.delete(item.id);state.focusedId="";renderReviewSession();});return node;
+      },"No failed checks are in this review lane.");
     }
     function renderChanges(data){
       const baseline=state.baseline;
@@ -263,7 +315,7 @@ def owner_maintenance_operations_html(api_version):
       const score=data.score;
       const metrics=$("metrics");metrics.replaceChildren();
       [["Readiness",`${score.value} / 100`],["Checks",`${score.passed} / ${score.total}`],["Owner actions",data.runbook.length],["Persistent stores",`${data.metrics.persistent_stores} / ${data.metrics.total_stores}`],["Customer surfaces",`${data.metrics.ready_surfaces} / ${data.metrics.total_surfaces}`],["Release adoption",`${data.metrics.release_adoption_percent}%`],["Support queue",data.metrics.support_needs_action],["High/Critical",data.metrics.high_critical_audits]].forEach(row=>metrics.append(metric(...row)));
-      renderBriefing(data);renderChanges(data);renderDomains(data);renderRunbook(data);renderPlanner(data);renderShortcuts(data);renderMatrices(data);
+      renderBriefing(data);renderApprovalGates(data);renderReviewSession(data);renderChanges(data);renderDomains(data);renderRunbook(data);renderPlanner(data);renderShortcuts(data);renderMatrices(data);
       fill("surfaces",data.customer_surfaces,item=>card(item.label,`${item.path} | ${item.purpose}`,item.ready?"good":"attention",item.ready?"READY":"CHECK","",{path:item.path,label:"OPEN SURFACE"}),"No customer surface data is available.");
       buildCategories(data.categories);
       $("updated").textContent=`Updated ${new Date(data.server_time_utc).toLocaleString()}`;
@@ -290,17 +342,17 @@ def owner_maintenance_operations_html(api_version):
         const response=await fetch("/api/v1/admin/maintenance-operations",{headers:{"X-License-Admin-Token":state.token,"Accept":"application/json"},cache:"no-store",redirect:"error"});
         const data=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(data.message||"Owner operations could not be loaded.");
-        if(data.operations_schema_version!==2||data.check_count!==40||!Array.isArray(data.checks))throw new Error("The API did not return the complete owner operations contract.");
+        if(data.operations_schema_version!==3||data.check_count!==40||!Array.isArray(data.checks)||data.approval_gates?.length!==6||data.review_lanes?.length!==5)throw new Error("The API did not return the complete owner operations contract.");
         render(data);if(!silent)setStatus(`Owner operations loaded. ${data.score.passed} of ${data.score.total} checks pass.`,data.score.label==="action"?"bad":"good");
       }catch(error){state.payload=null;state.visible=[];$("console").hidden=true;setStatus(error.message||"Owner operations could not be loaded.","bad");}
       finally{$("connect").disabled=false;}
     }
     function connect(){state.token=$("token").value.trim();load();}
-    function clear(){state.token="";state.payload=null;state.visible=[];state.baseline=null;state.baselineTime="";$("token").value="";$("console").hidden=true;$("autoRefresh").checked=false;stopAutoRefresh();setStatus("Owner token, report, and current-tab baseline cleared.");}
+    function clear(){state.token="";state.payload=null;state.visible=[];state.baseline=null;state.baselineTime="";state.reviewed.clear();state.activeLane="all-actions";state.focusedId="";$("token").value="";$("console").hidden=true;$("autoRefresh").checked=false;stopAutoRefresh();setStatus("Owner token, report, baseline, and current-tab review session cleared.");}
     function download(name,body,type){const blob=new Blob([body],{type});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
     function briefingText(){
       if(!state.payload)return"";
-      const p=state.payload;const lines=[`VaultLink Owner Operations`,`${p.briefing.headline}`,p.briefing.summary,`Customer impact: ${p.briefing.customer_impact}`,`Next review: ${p.briefing.next_review_minutes} minutes`,`Service: ${p.briefing.service_mode}`,`Release: ${p.briefing.release_version||"not published"}`,"",`Priority runbook (${p.runbook.length})`];
+      const p=state.payload;const lines=[`VaultLink Owner Operations`,`${p.briefing.headline}`,p.briefing.summary,`Customer impact: ${p.briefing.customer_impact}`,`Next review: ${p.briefing.next_review_minutes} minutes`,`Service: ${p.briefing.service_mode}`,`Release: ${p.briefing.release_version||"not published"}`,"","Approval gates",...p.approval_gates.map(item=>`${item.label}: ${item.outcome.toUpperCase()} | ${item.passed}/${item.total}`),"",`Priority runbook (${p.runbook.length})`];
       if(!p.runbook.length)lines.push("No owner actions are currently required.");else p.runbook.forEach((item,index)=>lines.push(`${index+1}. [${item.priority.toUpperCase()}] ${item.title}: ${item.action}`));
       lines.push("","Operational guidance only. No customer records, secrets, files, paths, or maintenance history are included.");return lines.join("\n");
     }
@@ -311,10 +363,16 @@ def owner_maintenance_operations_html(api_version):
     async function exportReceipt(){
       if(!state.payload)return;
       const p=state.payload;
-      const payload={schema_version:1,generated_at_utc:new Date().toISOString(),source_server_time_utc:p.server_time_utc,api_version:p.api_version,operations_schema_version:p.operations_schema_version,score:p.score,severity_summary:p.severity_summary,watch_metrics:p.watch_metrics,checks:p.checks.map(item=>({id:item.id,category:item.category,passed:item.passed,state:item.state,priority:item.priority})),privacy:"Aggregate fixed results only; no admin token, customer record, license proof, file, path, PIN, or USB secret."};
+      const payload={schema_version:2,generated_at_utc:new Date().toISOString(),source_server_time_utc:p.server_time_utc,api_version:p.api_version,operations_schema_version:p.operations_schema_version,score:p.score,severity_summary:p.severity_summary,approval_gates:p.approval_gates.map(item=>({id:item.id,outcome:item.outcome,passed:item.passed,total:item.total,action_count:item.action_count})),review_session:{lane_id:state.activeLane,reviewed_ids:[...state.reviewed].sort(),total_actions:p.decision_queue.length},watch_metrics:p.watch_metrics,checks:p.checks.map(item=>({id:item.id,category:item.category,passed:item.passed,state:item.state,priority:item.priority})),privacy:"Aggregate fixed results and current-tab fixed IDs only; no admin token, customer record, license proof, file, path, PIN, or USB secret."};
       const canonical=JSON.stringify(payload);const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canonical));const sha256=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
-      download("vaultlink-owner-operations-sha256-receipt.json",JSON.stringify({receipt_schema_version:1,algorithm:"SHA-256",sha256,payload},null,2),"application/json");setStatus(`SHA-256 evidence receipt exported: ${sha256.slice(0,16)}...`,"good");
+      download("vaultlink-owner-operations-sha256-receipt.json",JSON.stringify({receipt_schema_version:2,algorithm:"SHA-256",sha256,payload},null,2),"application/json");setStatus(`SHA-256 evidence receipt exported: ${sha256.slice(0,16)}...`,"good");
     }
+    function focusNext(){const next=laneQueue().find(item=>!state.reviewed.has(item.id));if(!next){setStatus("Every action in this lane is marked reviewed in this tab.","good");return;}state.focusedId=next.id;renderReviewSession();const node=[...document.querySelectorAll("[data-review-id]")].find(item=>item.dataset.reviewId===next.id);if(node){node.scrollIntoView({behavior:"smooth",block:"center"});node.querySelector("input")?.focus();}setStatus(`Focused next owner action: ${next.title}`);}
+    function markLaneReviewed(){const queue=laneQueue();queue.forEach(item=>state.reviewed.add(item.id));state.focusedId="";renderReviewSession();setStatus(`${queue.length} action(s) in this lane are marked reviewed for this tab only.`,"good");}
+    function clearReviewSession(){state.reviewed.clear();state.focusedId="";renderReviewSession();setStatus("Current-tab owner review session cleared.");}
+    function handoffText(){if(!state.payload)return"";const p=state.payload;const lines=["VaultLink Owner Review Handoff",`Generated: ${new Date().toISOString()}`,`Source server time: ${p.server_time_utc}`,`Readiness: ${p.score.value} / 100`,`Current lane: ${state.activeLane}`,`Reviewed in this tab: ${state.reviewed.size} of ${p.decision_queue.length}`,"","Approval gates",...p.approval_gates.map(item=>`${item.label}: ${item.outcome.toUpperCase()} | ${item.passed}/${item.total}`),"","Decision queue"];
+      if(!p.decision_queue.length)lines.push("No failed fixed checks are currently queued.");else p.decision_queue.forEach(item=>lines.push(`${state.reviewed.has(item.id)?"REVIEWED":"OPEN"} | ${item.priority.toUpperCase()} | ${item.id} | ${item.title} | ${item.suggested_review_window}`));lines.push("","Review marks are current-tab notes only and do not prove remediation. No token, customer record, license proof, file, path, PIN, USB secret, or free-form note is included.");return lines.join("\n");}
+    function exportHandoff(){if(!state.payload)return;download("vaultlink-owner-review-handoff.txt",handoffText(),"text/plain");setStatus("Privacy-safe fixed-field owner handoff exported.","good");}
     function setBaseline(){if(!state.payload)return;state.baseline=state.payload.watch_metrics.map(item=>({...item}));state.baselineTime=new Date().toISOString();renderChanges(state.payload);setStatus("Current-tab change baseline set.","good");}
     function clearBaseline(){state.baseline=null;state.baselineTime="";if(state.payload)renderChanges(state.payload);setStatus("Current-tab change baseline cleared.");}
     function selectedStart(){const raw=$("reviewStart").value;if(raw){const parsed=new Date(raw);if(!Number.isNaN(parsed.getTime()))return parsed;}return new Date(Date.now()+5*60*1000);}
@@ -325,7 +383,7 @@ def owner_maintenance_operations_html(api_version):
     function stopAutoRefresh(){if(state.autoTimer){clearInterval(state.autoTimer);state.autoTimer=null;}}
     function toggleAutoRefresh(){stopAutoRefresh();if($("autoRefresh").checked){state.autoTimer=setInterval(()=>{if(state.token)load(true);},60000);setStatus("Auto refresh enabled for this tab every 60 seconds.","good");}else setStatus("Auto refresh disabled.");}
     function resetFilters(){$("search").value="";$("category").value="";$("stateFilter").value="";renderChecks();}
-    $("connect").addEventListener("click",connect);$("clear").addEventListener("click",clear);$("refresh").addEventListener("click",()=>load());$("autoRefresh").addEventListener("change",toggleAutoRefresh);$("copyBriefing").addEventListener("click",copyBriefing);$("textExport").addEventListener("click",exportText);$("json").addEventListener("click",exportJson);$("csv").addEventListener("click",exportCsv);$("receipt").addEventListener("click",()=>exportReceipt().catch(error=>setStatus(error.message||"Receipt export failed.","bad")));$("print").addEventListener("click",()=>window.print());$("setBaseline").addEventListener("click",setBaseline);$("clearBaseline").addEventListener("click",clearBaseline);$("reviewWindow").addEventListener("change",renderSelectedPlan);$("copyPlan").addEventListener("click",copyPlan);$("calendar").addEventListener("click",exportCalendar);$("search").addEventListener("input",renderChecks);$("category").addEventListener("change",renderChecks);$("stateFilter").addEventListener("change",renderChecks);$("resetFilters").addEventListener("click",resetFilters);$("token").addEventListener("keydown",event=>{if(event.key==="Enter")connect();});window.addEventListener("beforeunload",stopAutoRefresh);
+    $("connect").addEventListener("click",connect);$("clear").addEventListener("click",clear);$("refresh").addEventListener("click",()=>load());$("autoRefresh").addEventListener("change",toggleAutoRefresh);$("copyBriefing").addEventListener("click",copyBriefing);$("textExport").addEventListener("click",exportText);$("json").addEventListener("click",exportJson);$("csv").addEventListener("click",exportCsv);$("receipt").addEventListener("click",()=>exportReceipt().catch(error=>setStatus(error.message||"Receipt export failed.","bad")));$("print").addEventListener("click",()=>window.print());$("focusNext").addEventListener("click",focusNext);$("markLaneReviewed").addEventListener("click",markLaneReviewed);$("clearReviewSession").addEventListener("click",clearReviewSession);$("exportHandoff").addEventListener("click",exportHandoff);$("reviewLane").addEventListener("change",()=>{state.activeLane=$("reviewLane").value;state.focusedId="";renderReviewSession();});$("setBaseline").addEventListener("click",setBaseline);$("clearBaseline").addEventListener("click",clearBaseline);$("reviewWindow").addEventListener("change",renderSelectedPlan);$("copyPlan").addEventListener("click",copyPlan);$("calendar").addEventListener("click",exportCalendar);$("search").addEventListener("input",renderChecks);$("category").addEventListener("change",renderChecks);$("stateFilter").addEventListener("change",renderChecks);$("resetFilters").addEventListener("click",resetFilters);$("token").addEventListener("keydown",event=>{if(event.key==="Enter")connect();});window.addEventListener("beforeunload",stopAutoRefresh);
   </script>
 </body>
 </html>'''
