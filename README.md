@@ -10,7 +10,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
-- An owner-only Maintenance Operations cockpit at `/owner/operations` with exactly forty aggregate checks, eight categories, a prioritized runbook, release and storage matrices, customer-surface status, and privacy-safe JSON/CSV exports
+- An owner-only Maintenance Operations cockpit at `/owner/operations` with exactly forty aggregate checks, eight scored domains, a daily briefing, severity summary, ten-metric current-tab change watch, prioritized runbook, four fixed review windows, eight owner shortcuts, release and storage matrices, customer-surface status, print, and privacy-safe text/JSON/CSV/SHA-256 exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
 - A public Security Maintenance workspace at `/maintenance` with eight fixed categories, thirty-two fixed tasks, six routines, four cadence horizons, priority review, coverage bars, calendar reminders, print, and privacy-safe local export
@@ -73,13 +73,13 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
 - Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
 
-## Owner Maintenance Operations 0.37
+## Owner Maintenance Operations 0.38
 
 `GET /owner/operations` opens the responsive owner cockpit. The admin token stays only in current page memory and is sent only in `X-License-Admin-Token`.
 
-`GET /api/v1/admin/maintenance-operations` returns exactly forty fixed checks across eight categories of five. The report includes a scored summary, priority-sorted owner runbook, signed-release gate, five-store persistence matrix, public service status, and sixteen customer-surface readiness rows.
+`GET /api/v1/admin/maintenance-operations` returns exactly forty fixed checks across eight categories of five. The schema-two report adds a daily owner briefing, five-level severity summary, eight scored domain cards, ten fixed aggregate watch metrics, four fixed maintenance review windows, eight owner shortcuts, check-specific deep links, a priority-sorted runbook, signed-release gate, five-store persistence matrix, public service status, and sixteen customer-surface readiness rows.
 
-The response and browser-created JSON/CSV exports contain aggregate results only. They exclude license keys, license ids, customer labels, email, owner notes, receipts, machine identifiers, report contents, files, paths, PINs, USB secrets, and customer maintenance history. The score is operational guidance, not certification, legal advice, antivirus proof, or a guarantee.
+The browser can keep a temporary comparison baseline, auto-refresh every sixty seconds, copy a fixed briefing or plan, export a local calendar, print, and create text, JSON, CSV, or SHA-256 evidence-receipt downloads. Baseline, planner, search, and filter state stay only in the current tab. The response and exports contain aggregate fixed results only. They exclude license keys, license ids, customer labels, email, owner notes, receipts, machine identifiers, report contents, files, paths, PINs, USB secrets, and customer maintenance history. The score is operational guidance, not certification, legal advice, antivirus proof, or a guarantee.
 
 ## Security Maintenance 0.36
 

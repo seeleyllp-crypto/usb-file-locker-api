@@ -47,7 +47,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.37.0"
+API_VERSION = "0.38.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1842,7 +1842,7 @@ def docs_payload():
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
             {"method": "GET", "path": "/owner/trust", "purpose": "Owner-only trust, release, storage, audit, and service operations gate"},
-            {"method": "GET", "path": "/owner/operations", "purpose": "Owner-only 40-check maintenance operations cockpit"},
+            {"method": "GET", "path": "/owner/operations", "purpose": "Owner-only maintenance cockpit with briefing, current-tab change watch, review planner, evidence receipt, and 40 fixed checks"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1892,7 +1892,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "GET", "path": "/api/v1/admin/customer-experience", "purpose": "Admin-only aggregate customer experience, rank, release, and support health"},
             {"method": "GET", "path": "/api/v1/admin/trust-center", "purpose": "Admin-only trust gate with concrete operational actions"},
-            {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only fixed 40-check maintenance, release, storage, service, and governance report"},
+            {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only briefing, severity, domain, watch, review-window, shortcut, and fixed 40-check operations report"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -8798,17 +8798,54 @@ def admin_maintenance_operations():
         "Audit & Incident Review",
         "Commerce & Governance",
     ]
+    owner_links_by_category = {
+        "Access & Secrets": {"path": "/owner/trust", "label": "OPEN TRUST OPERATIONS"},
+        "Storage & Recovery": {"path": "/owner/trust", "label": "OPEN TRUST OPERATIONS"},
+        "Signed Releases": {"path": "/owner/trust", "label": "OPEN TRUST OPERATIONS"},
+        "Service & Surfaces": {"path": "/owner", "label": "OPEN OWNER CONSOLE"},
+        "Licensing & Seats": {"path": "/owner", "label": "OPEN LICENSE OPERATIONS"},
+        "Support & Messaging": {"path": "/owner", "label": "OPEN SUPPORT OPERATIONS"},
+        "Audit & Incident Review": {"path": "/owner", "label": "OPEN AUDIT OPERATIONS"},
+        "Commerce & Governance": {"path": "/shop", "label": "OPEN SHOP STATUS"},
+    }
+    owner_links_by_check = {
+        "governance-legal-draft": {"path": "/terms", "label": "OPEN DRAFT TERMS"},
+        "commerce-checkout": {"path": "/shop", "label": "OPEN SHOP STATUS"},
+        "release-current": {"path": "/update", "label": "OPEN UPDATE CENTER"},
+        "release-signature": {"path": "/update", "label": "OPEN UPDATE CENTER"},
+        "release-size": {"path": "/update", "label": "OPEN UPDATE CENTER"},
+        "release-hash": {"path": "/update", "label": "OPEN UPDATE CENTER"},
+        "release-app-data": {"path": "/update", "label": "OPEN UPDATE CENTER"},
+        "surfaces-ready": {"path": "/owner/customers", "label": "OPEN CUSTOMER EXPERIENCE"},
+        "licenses-release-adoption": {"path": "/owner/customers", "label": "OPEN CUSTOMER EXPERIENCE"},
+    }
+    for item in checks:
+        link = owner_links_by_check.get(item["id"], owner_links_by_category[item["category"]])
+        item["owner_path"] = link["path"]
+        item["owner_path_label"] = link["label"]
+
     category_summary = []
     for category in category_order:
         rows = [item for item in checks if item["category"] == category]
         if len(rows) != 5:
             raise RuntimeError(f"Owner maintenance category {category} expected 5 checks, built {len(rows)}.")
+        category_passed = sum(item["passed"] for item in rows)
+        category_actions = len(rows) - category_passed
+        category_critical = sum(not item["passed"] and item["priority"] == "critical" for item in rows)
+        category_high = sum(not item["passed"] and item["priority"] == "high" for item in rows)
+        category_score = round((category_passed / len(rows)) * 100)
         category_summary.append(
             {
                 "category": category,
-                "passed": sum(item["passed"] for item in rows),
+                "passed": category_passed,
                 "total": len(rows),
-                "actions": sum(not item["passed"] for item in rows),
+                "actions": category_actions,
+                "critical_actions": category_critical,
+                "high_actions": category_high,
+                "score": category_score,
+                "state": "good" if category_actions == 0 else "action" if category_critical else "attention",
+                "owner_path": owner_links_by_category[category]["path"],
+                "owner_path_label": owner_links_by_category[category]["label"],
             }
         )
     priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -8821,6 +8858,8 @@ def admin_maintenance_operations():
             "priority": item["priority"],
             "detail": item["detail"],
             "action": item["action"],
+            "owner_path": item["owner_path"],
+            "owner_path_label": item["owner_path_label"],
         }
         for item in sorted(
             (row for row in checks if not row["passed"]),
@@ -8830,6 +8869,13 @@ def admin_maintenance_operations():
     passed = sum(item["passed"] for item in checks)
     score_value = round((passed / len(checks)) * 100)
     score_label = "ready" if score_value >= 90 else "attention" if score_value >= 70 else "action"
+    severity_summary = {
+        "complete": passed,
+        "critical": sum(not item["passed"] and item["priority"] == "critical" for item in checks),
+        "high": sum(not item["passed"] and item["priority"] == "high" for item in checks),
+        "medium": sum(not item["passed"] and item["priority"] == "medium" for item in checks),
+        "low": sum(not item["passed"] and item["priority"] == "low" for item in checks),
+    }
     storage_matrix = [
         {
             "id": key,
@@ -8839,13 +8885,112 @@ def admin_maintenance_operations():
         }
         for key in ("licenses", "audit_exports", "support_tickets", "announcements", "api_activity")
     ]
+    persistent_stores = sum(item["persistent"] for item in storage_matrix)
+    ready_surfaces = int(surfaces.get("ready", 0) or 0)
+    total_surfaces = int(surfaces.get("total", 0) or 0)
+    customer_impact_points = 0
+    customer_impact_points += 2 if service.get("mode") != "normal" else 0
+    customer_impact_points += 2 if not release.get("ready") else 0
+    customer_impact_points += 1 if ready_surfaces < total_surfaces else 0
+    customer_impact_points += 1 if int(support.get("needs_action", 0) or 0) else 0
+    customer_impact_points += 2 if high_critical else 0
+    customer_impact_points += 1 if adoption < 80 else 0
+    customer_impact = (
+        "high"
+        if customer_impact_points >= 4
+        else "watch"
+        if customer_impact_points
+        else "none"
+    )
+    briefing_headline = (
+        "Immediate owner review required"
+        if severity_summary["critical"] or score_label == "action"
+        else "Owner review has follow-up items"
+        if runbook
+        else "Owner operations look ready"
+    )
+    next_review_minutes = 15 if severity_summary["critical"] else 60 if runbook else 240
+    watch_metrics = [
+        {"id": "readiness_score", "label": "Readiness score", "value": score_value, "unit": "points", "better": "higher"},
+        {"id": "owner_actions", "label": "Owner actions", "value": len(runbook), "unit": "actions", "better": "lower"},
+        {"id": "critical_actions", "label": "Critical actions", "value": severity_summary["critical"], "unit": "actions", "better": "lower"},
+        {"id": "persistent_stores", "label": "Persistent stores", "value": persistent_stores, "unit": "stores", "better": "higher"},
+        {"id": "ready_surfaces", "label": "Ready customer surfaces", "value": ready_surfaces, "unit": "surfaces", "better": "higher"},
+        {"id": "release_adoption", "label": "Release adoption", "value": adoption, "unit": "percent", "better": "higher"},
+        {"id": "support_queue", "label": "Support queue", "value": int(support.get("needs_action", 0) or 0), "unit": "tickets", "better": "lower"},
+        {"id": "high_critical_audits", "label": "High/Critical audits", "value": high_critical, "unit": "reports", "better": "lower"},
+        {"id": "stale_clients", "label": "Stale clients", "value": int(clients.get("stale_24h", 0) or 0), "unit": "clients", "better": "lower"},
+        {"id": "shop_links", "label": "Hosted checkout links", "value": int(shop.get("configured", 0) or 0), "unit": "links", "better": "higher"},
+    ]
+    review_windows = [
+        {
+            "id": "triage-15",
+            "minutes": 15,
+            "label": "15-minute priority triage",
+            "purpose": "Review critical and high owner actions first.",
+            "steps": [
+                "Refresh the live operations report.",
+                "Review Critical actions before High actions.",
+                "Confirm service and signed-release status.",
+                "Record the next owner action outside VaultLink if follow-up is required.",
+            ],
+        },
+        {
+            "id": "release-30",
+            "minutes": 30,
+            "label": "30-minute release review",
+            "purpose": "Verify the customer release and update path.",
+            "steps": [
+                "Review all five Signed Releases checks.",
+                "Open Update Center and confirm the published version.",
+                "Review anonymous release adoption and stale-client counts.",
+                "Publish a plain-text customer notice only when useful.",
+            ],
+        },
+        {
+            "id": "service-60",
+            "minutes": 60,
+            "label": "60-minute service review",
+            "purpose": "Review service, support, audit, storage, and customer surfaces.",
+            "steps": [
+                "Review every domain below 100 points.",
+                "Work the support and audit queues without downloading unnecessary data.",
+                "Confirm all persistent stores and public customer surfaces.",
+                "Export a SHA-256 evidence receipt after the review.",
+            ],
+        },
+        {
+            "id": "full-120",
+            "minutes": 120,
+            "label": "120-minute full owner review",
+            "purpose": "Complete the full fixed owner operations contract.",
+            "steps": [
+                "Review all forty checks and eight domain scorecards.",
+                "Verify access secrets, recovery copies, and persistent storage.",
+                "Review licensing, commerce, draft legal status, and customer communication.",
+                "Export the safe report, checks CSV, text briefing, and evidence receipt.",
+            ],
+        },
+    ]
+    owner_shortcuts = [
+        {"id": "owner", "label": "Owner Console", "path": "/owner", "purpose": "Licenses, support, announcements, service, audit, and activity"},
+        {"id": "insights", "label": "50-Point Insights", "path": "/owner/insights", "purpose": "Aggregate business and service metrics"},
+        {"id": "customers", "label": "Customer Experience", "path": "/owner/customers", "purpose": "Journey, renewal, rank, and customer-surface health"},
+        {"id": "trust", "label": "Trust Operations", "path": "/owner/trust", "purpose": "Access, storage, release, audit, and service trust gate"},
+        {"id": "update", "label": "Update Center", "path": "/update", "purpose": "Published signed desktop release"},
+        {"id": "status", "label": "Customer Status", "path": "/status", "purpose": "Public service and release status"},
+        {"id": "shop", "label": "Rank Shop", "path": "/shop", "purpose": "Seven-rank catalog and hosted checkout readiness"},
+        {"id": "terms", "label": "Draft Terms", "path": "/terms", "purpose": "Adult-owner and qualified legal review status"},
+    ]
     return {
         "ok": True,
-        "operations_schema_version": 1,
+        "operations_schema_version": 2,
+        "api_version": API_VERSION,
         "check_count": len(checks),
         "checks": checks,
         "categories": category_order,
         "category_summary": category_summary,
+        "severity_summary": severity_summary,
         "score": {
             "value": score_value,
             "maximum": 100,
@@ -8855,12 +9000,29 @@ def admin_maintenance_operations():
             "actions": len(runbook),
             "limitations": "Operational readiness only; not certification, antivirus proof, legal advice, or a guarantee.",
         },
+        "briefing": {
+            "headline": briefing_headline,
+            "summary": (
+                f"{passed} of {len(checks)} fixed checks pass. "
+                f"{len(runbook)} owner action(s) remain, including {severity_summary['critical']} critical "
+                f"and {severity_summary['high']} high-priority action(s)."
+            ),
+            "customer_impact": customer_impact,
+            "customer_impact_points": customer_impact_points,
+            "next_review_minutes": next_review_minutes,
+            "top_action_ids": [item["id"] for item in runbook[:5]],
+            "service_mode": str(service.get("mode", "unknown")),
+            "release_version": str(release.get("version", "")),
+        },
         "runbook": runbook,
+        "watch_metrics": watch_metrics,
+        "review_windows": review_windows,
+        "owner_shortcuts": owner_shortcuts,
         "metrics": {
-            "persistent_stores": sum(item["persistent"] for item in storage_matrix),
+            "persistent_stores": persistent_stores,
             "total_stores": len(storage_matrix),
-            "ready_surfaces": int(surfaces.get("ready", 0) or 0),
-            "total_surfaces": int(surfaces.get("total", 0) or 0),
+            "ready_surfaces": ready_surfaces,
+            "total_surfaces": total_surfaces,
             "release_adoption_percent": adoption,
             "active_reporting_devices": active_clients,
             "support_needs_action": int(support.get("needs_action", 0) or 0),
@@ -8904,6 +9066,20 @@ def admin_maintenance_operations():
             "The legal pages remain drafts and do not make VaultLink HIPAA certified or legally compliant.",
             "Payment confirmation and license delivery remain separate owner responsibilities.",
         ],
+        "report_contract": {
+            "fixed_check_count": 40,
+            "fixed_category_count": 8,
+            "watch_metric_count": len(watch_metrics),
+            "review_window_count": len(review_windows),
+            "owner_shortcut_count": len(owner_shortcuts),
+            "change_tracking": "current_tab_only",
+            "review_plan_state": "current_tab_only",
+            "auto_refresh_default": False,
+            "evidence_hash": "browser_generated_sha256",
+            "accepts_free_text": False,
+            "accepts_files": False,
+            "accepts_customer_progress": False,
+        },
         "safe_to_export": True,
         "customer_records_included": False,
         "customer_maintenance_history_included": False,
@@ -9332,6 +9508,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
                     "owner_maintenance_operations_enabled": True,
+                    "owner_operations_schema_version": 2,
+                    "owner_operations_change_watch_enabled": True,
+                    "owner_operations_review_planner_enabled": True,
+                    "owner_operations_evidence_receipt_enabled": True,
                     "public_trust_center_enabled": True,
                     "owner_trust_center_enabled": True,
                     "anonymous_plan_advisor_enabled": True,
@@ -9478,6 +9658,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Activity downloads use a two-minute scoped token instead of placing the admin token in a URL.",
                         "The maintenance operations cockpit exposes only aggregate checks, fixed actions, public surface states, and signed-release evidence.",
                         "Owner maintenance exports exclude customer records, customer maintenance history, license proof, device identity, files, paths, PINs, and USB secrets.",
+                        "Change baselines, auto-refresh choice, review-plan selection, and calendar start time exist only in the current browser tab.",
+                        "The browser evidence receipt hashes a fixed privacy-safe payload with SHA-256 and never includes the admin token.",
                     ],
                     "shop_controls": [
                         "VaultLink never collects card numbers; checkout occurs on a separately hosted payment page.",
