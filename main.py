@@ -32,12 +32,19 @@ from customer_experience_pages import (
 from recovery_drill_catalog import fixed_recovery_drills
 from recovery_kit_catalog import fixed_emergency_runbooks, fixed_recovery_kit_profiles, fixed_recovery_kit_sections
 from recovery_kit_page import customer_recovery_kit_html
+from maintenance_catalog import (
+    CADENCE_DAYS,
+    fixed_maintenance_categories,
+    fixed_maintenance_routines,
+    fixed_maintenance_tasks,
+)
+from maintenance_page import customer_maintenance_html
 from retention_catalog import fixed_cleanup_flow, fixed_retention_areas, fixed_retention_practices
 from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.34.0"
+API_VERSION = "0.35.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -150,6 +157,17 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "lock_remove_original",
         "locked_file_browser_scan",
         "login",
+        "maintenance_calendar_export",
+        "maintenance_center_open",
+        "maintenance_center_refresh",
+        "maintenance_history_export",
+        "maintenance_online_open",
+        "maintenance_report_export",
+        "maintenance_routine_complete",
+        "maintenance_summary_copy",
+        "maintenance_task_complete",
+        "maintenance_task_reopen",
+        "maintenance_trusted_tool_open",
         "open_temp_unlocked_file",
         "open_temp_unlocked_text",
         "owner_usb_removed",
@@ -252,6 +270,12 @@ class UnsupportedMediaType(ValueError):
 
 
 FEATURES = [
+    {
+        "id": "security-maintenance-center",
+        "title": "Security Maintenance Center",
+        "summary": "Schedule thirty-two fixed defensive tasks, use six routines, keep append-only hash-chained local completion history, and export reviewed privacy-safe reports and calendar reminders.",
+        "category": "starter",
+    },
     {
         "id": "storage-retention-center",
         "title": "Storage & Retention Center",
@@ -412,6 +436,7 @@ FEATURES = [
 
 
 COMPANION_APPS = [
+    {"name": "Security Maintenance Center", "script": "security_maintenance_center.py", "purpose": "Track thirty-two fixed defensive tasks, task-specific due dates, six routines, and privacy-safe hash-chained local completion history."},
     {"name": "Storage & Retention Center", "script": "storage_retention_center.py", "purpose": "Review eight fixed storage areas and safely clean only expired entries in VaultLink's exact temporary workspace after a fresh bounded preview and typed confirmation."},
     {"name": "Local Data Control Center", "script": "local_data_control_center.py", "purpose": "Map fixed VaultLink data boundaries, verify eleven protection controls, and export reviewed coarse privacy receipts without arbitrary file discovery."},
     {"name": "Recovery Kit Builder", "script": "recovery_kit_builder.py", "purpose": "Build a fixed privacy-safe emergency card, score local readiness, export a calendar reminder, and keep hash-chained coarse snapshots."},
@@ -442,6 +467,7 @@ SECURITY_NOTES = [
     "Audit exports are reduced to privacy-safe fields, require an active licensed machine, and use short-lived signed download links.",
     "Ranks are software and service package descriptions, not HIPAA certification, legal approval, guaranteed protection, or proof of professional review.",
     "The Storage & Retention Center can clean only the exact local VaultLink temporary workspace; it rejects links and never accepts remote cleanup commands or customer storage inventories.",
+    "The Security Maintenance Center stores fixed task completion and reopen events locally; the public guide receives no progress, local result, reminder, or history.",
 ]
 
 
@@ -455,6 +481,7 @@ PLAN_TIERS = [
         "best_for": "One Windows PC and basic locking instructions",
         "rank": 1,
         "includes": [
+            "Security Maintenance Center",
             "Storage & Retention Center",
             "Local Data Control Center",
             "Recovery Kit Builder",
@@ -470,6 +497,7 @@ PLAN_TIERS = [
             "Core PIN, recovery, and audit tools",
         ],
         "features": [
+            "security-maintenance-center",
             "storage-retention-center",
             "data-control-center",
             "recovery-kit-builder",
@@ -1761,6 +1789,7 @@ def product_payload():
             "quick_lock_note.py",
             "customer_hub.py",
             "diagnostics_center.py",
+            "security_maintenance_center.py",
             "storage_retention_center.py",
             "local_data_control_center.py",
             "incident_response_center.py",
@@ -1790,6 +1819,7 @@ def docs_payload():
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
+            {"method": "GET", "path": "/maintenance", "purpose": "Public thirty-two-task security maintenance planner with six routines and current-tab-only review"},
             {"method": "GET", "path": "/retention", "purpose": "Public fixed storage map, retention practices, cleanup boundaries, and current-tab-only review receipt"},
             {"method": "GET", "path": "/data-control", "purpose": "Public fixed data map, protection boundaries, retention guidance, and current-tab-only review receipt"},
             {"method": "GET", "path": "/recovery-kit", "purpose": "Public fixed emergency kit, first-hour runbooks, calendar reminder, and current-tab-only progress"},
@@ -1819,6 +1849,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
+            {"method": "GET", "path": "/api/v1/maintenance-guide", "purpose": "Public eight-category, thirty-two-task, six-routine maintenance catalog with no customer progress collection"},
             {"method": "GET", "path": "/api/v1/retention-guide", "purpose": "Public eight-area retention catalog and ten fixed practices with no local inventory or cleanup control"},
             {"method": "GET", "path": "/api/v1/data-map", "purpose": "Public fourteen-class data map with no customer inventory or progress collection"},
             {"method": "GET", "path": "/api/v1/diagnostics-guide", "purpose": "Public fixed troubleshooting categories and forty safe steps"},
@@ -2215,6 +2246,72 @@ def trust_center_payload():
             "A valid signed update proves package integrity and publisher-key possession, not that software is free of every possible defect.",
         ],
         "safe_to_export": True,
+        "customer_records_included": False,
+        "server_time_utc": utc_now(),
+    }
+
+
+def maintenance_guide_payload():
+    """Return fixed maintenance guidance without receiving customer progress or PC data."""
+    categories = fixed_maintenance_categories()
+    tasks = fixed_maintenance_tasks()
+    routines = fixed_maintenance_routines()
+    release = windows_update_release_status()
+    receipt_fields = [
+        "schema_version",
+        "report_type",
+        "generated_at_utc",
+        "api_version",
+        "service_mode",
+        "signed_desktop_version",
+        "selected_category_id",
+        "selected_routine_id",
+        "reviewed_task_ids",
+        "reviewed_count",
+        "task_count",
+        "privacy_notice",
+    ]
+    return {
+        "ok": True,
+        "maintenance_schema_version": 1,
+        "api_version": API_VERSION,
+        "service_status": service_status_payload(),
+        "signed_release": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+            "published_at_utc": str(release.get("published_at_utc", "")),
+        },
+        "categories": categories,
+        "category_count": len(categories),
+        "tasks": tasks,
+        "task_count": len(tasks),
+        "routines": routines,
+        "routine_count": len(routines),
+        "cadence_days": list(CADENCE_DAYS),
+        "browser_receipt_fields": receipt_fields,
+        "browser_receipt_field_count": len(receipt_fields),
+        "accepts_free_text": False,
+        "accepts_files": False,
+        "accepts_paths": False,
+        "accepts_progress": False,
+        "accepts_local_results": False,
+        "accepts_completion_history": False,
+        "accepts_reminders": False,
+        "accepts_maintenance_commands": False,
+        "remote_maintenance_allowed": False,
+        "progress_storage": "current_browser_tab_only",
+        "privacy_boundaries": [
+            "The public maintenance API receives no license key, receipt, identity, machine identifier, key, PIN, USB secret, path, filename, file content, local result, completion time, reminder, or history.",
+            "Browser review state stays only in the current tab and is not uploaded or written to browser storage.",
+            "Desktop completion history stays local and contains only fixed task IDs, fixed cadence, completion or reopen state, UTC time, anonymous event ID, and hash-chain fields.",
+            "Trusted-tool launches are desktop-only and limited to fixed Windows pages, fixed VaultLink scripts, the fixed app folder, and fixed public pages.",
+        ],
+        "limitations": [
+            "A reviewed or completed task is a reminder record, not proof that Windows, Defender, a backup, a key, an update, or recovery is healthy.",
+            "The browser cannot inspect, scan, update, launch, schedule, complete, or control anything on a customer PC.",
+            "VaultLink does not replace Microsoft Defender, Windows Update, independent backups, professional incident response, legal advice, or compliance review.",
+        ],
         "customer_records_included": False,
         "server_time_utc": utc_now(),
     }
@@ -3283,7 +3380,7 @@ def customer_status_html():
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/retention">RETENTION</a> &nbsp; <a href="/data-control">DATA</a> &nbsp; <a href="/recovery-kit">KIT</a> &nbsp; <a href="/backup-verification">BACKUPS</a> &nbsp; <a href="/recovery-drills">DRILLS</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><strong>VaultLink</strong><nav><a href="/">HOME</a> &nbsp; <a href="/maintenance">MAINTENANCE</a> &nbsp; <a href="/retention">RETENTION</a> &nbsp; <a href="/data-control">DATA</a> &nbsp; <a href="/recovery-kit">KIT</a> &nbsp; <a href="/backup-verification">BACKUPS</a> &nbsp; <a href="/recovery-drills">DRILLS</a> &nbsp; <a href="/incident-response">INCIDENT</a> &nbsp; <a href="/diagnostics">DIAGNOSTICS</a> &nbsp; <a href="/trust">TRUST</a> &nbsp; <a href="/update">UPDATE</a> &nbsp; <a href="/readiness">READINESS</a> &nbsp; <a href="/shop">SHOP</a> &nbsp; <a href="/terms">TERMS</a> &nbsp; <a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Customer Status</h1>
     <p class="lead">Public service and signed-release information. This page does not request or display license keys, device identifiers, files, or account data.</p>
@@ -3358,7 +3455,7 @@ def update_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Update Center</div><nav><a href="/">HOME</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/readiness">READINESS</a><a href="/customer">LICENSE</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -3485,7 +3582,7 @@ def recovery_readiness_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Readiness</div><nav><a href="/">HOME</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/customer">LICENSE</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Recovery Readiness</h1>
     <p class="lead">Self-reported preparation for safe file locking and recovery.</p>
@@ -3913,7 +4010,7 @@ def customer_license_center_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">READINESS</a><a href="/shop">SHOP</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <div class="top">
       <section>
@@ -4419,7 +4516,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/maintenance" target="_blank" rel="noopener">SECURITY MAINTENANCE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -6264,6 +6361,7 @@ def customer_workspace(payload):
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
+            {"id": "maintenance", "label": "SECURITY MAINTENANCE", "path": "/maintenance"},
             {"id": "retention", "label": "STORAGE & RETENTION", "path": "/retention"},
             {"id": "data", "label": "DATA CONTROL", "path": "/data-control"},
             {"id": "kit", "label": "RECOVERY KIT", "path": "/recovery-kit"},
@@ -6443,6 +6541,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "maintenance", "label": "Security Maintenance", "path": "/maintenance", "purpose": "Thirty-two fixed tasks, six routines, and current-tab-only review", "ready": maintenance_guide_payload()["task_count"] == 32},
         {"id": "retention", "label": "Storage & Retention", "path": "/retention", "purpose": "Eight fixed storage areas, ten retention practices, and current-tab-only review", "ready": retention_guide_payload()["practice_count"] == 10},
         {"id": "data", "label": "Data Control", "path": "/data-control", "purpose": "Fourteen fixed data classes, protection boundaries, retention, and current-tab-only review", "ready": data_control_map_payload()["class_count"] == 14},
         {"id": "kit", "label": "Recovery Kit", "path": "/recovery-kit", "purpose": "Five fixed profiles, fifty kit items, and five first-hour runbooks", "ready": recovery_kit_guide_payload()["item_count"] == 50},
@@ -8849,6 +8948,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
             return
+        if path == "/maintenance":
+            self.send_html(customer_maintenance_html(API_VERSION))
+            return
         if path == "/retention":
             self.send_html(customer_retention_html(API_VERSION))
             return
@@ -8939,6 +9041,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
+                    "security_maintenance_center_enabled": True,
                     "storage_retention_center_enabled": True,
                     "data_control_center_enabled": True,
                     "recovery_kit_builder_enabled": True,
@@ -8984,6 +9087,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/trust-center":
             self.send_json(trust_center_payload())
+            return
+        if path == "/api/v1/maintenance-guide":
+            self.send_json(maintenance_guide_payload())
             return
         if path == "/api/v1/retention-guide":
             self.send_json(retention_guide_payload())
@@ -9032,6 +9138,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "license-gated rank-exclusive customer checklists and tool packs",
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "unified privacy-safe customer workspace with a session-only action checklist",
+                        "public fixed security maintenance guidance with current-tab-only review and no remote task completion or PC control",
                         "public fixed storage and retention guidance with current-tab-only review and no remote cleanup capability",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
                         "public fixed-step diagnostics with session-only checklist progress and privacy-safe local export",

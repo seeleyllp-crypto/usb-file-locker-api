@@ -14,7 +14,7 @@ def customer_retention_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Storage & Retention</div><nav><a href="/workspace">WORKSPACE</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/privacy">PRIVACY</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Storage & Retention</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/privacy">PRIVACY</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Keep what protects recovery</h1>
     <p class="lead">Review fixed retention areas and safe cleanup practices without sending a file inventory, path, customer record, local result, or cleanup command.</p>

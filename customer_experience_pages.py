@@ -70,7 +70,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -357,7 +357,7 @@ def customer_trust_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Trust Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/privacy">PRIVACY</a></nav></div></header>
   <main>
     <h1>Trust and recovery status</h1>
     <p class="lead">Live service, signed-release, storage, privacy-boundary, and recovery evidence. This public view contains no customer or license records.</p>
@@ -427,7 +427,7 @@ def customer_diagnostics_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Diagnostics Center</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Guided troubleshooting</h1>
     <p class="lead">Choose the visible problem and work through fixed, privacy-safe steps. Progress stays only in this browser tab; this page cannot inspect or control the PC.</p>
@@ -489,7 +489,7 @@ def customer_incident_response_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Incident Response</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Incident Response</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Respond without exposing secrets</h1>
     <p class="lead">Choose what happened and follow fixed safety steps. This page cannot inspect or control the PC, and progress disappears when the current tab closes or reloads.</p>
@@ -553,7 +553,7 @@ def customer_recovery_drills_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Recovery Drills</div><nav><a href="/workspace">WORKSPACE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Recovery Drills</div><nav><a href="/workspace">WORKSPACE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
   <main>
     <h1>Practice recovery before it matters</h1>
     <p class="lead">Choose a fixed exercise, follow every step, and export only reviewed coarse progress. This page cannot inspect the PC, verify a real backup, or receive customer drill history.</p>

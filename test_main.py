@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 14)
+        self.assertEqual(len(workspace["quick_links"]), 15)
+        self.assertTrue(any(item["path"] == "/maintenance" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/retention" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in workspace["quick_links"]))
@@ -718,7 +719,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 15)
+        self.assertEqual(len(experience["customer_surfaces"]), 16)
+        self.assertTrue(any(item["path"] == "/maintenance" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/retention" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in experience["customer_surfaces"]))
@@ -733,7 +735,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 15)
+        self.assertEqual(experience["surface_summary"]["total"], 16)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -1322,6 +1324,148 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any(item["path"] == "/recovery-kit" for item in docs["routes"]))
         self.assertTrue(any(item["path"] == "/api/v1/recovery-kit" for item in docs["routes"]))
+
+    def test_public_maintenance_is_fixed_private_and_current_tab_only(self):
+        manifest, _package = self.publish_test_update()
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "starter",
+                "customer_label": "MAINTENANCE-PRIVATE-CUSTOMER-8241",
+                "customer_email": "maintenance-8241@example.test",
+                "license_note": "MAINTENANCE-PRIVATE-NOTE-8241",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, guide = self.call("/api/v1/maintenance-guide")
+        self.assertEqual(status, 200)
+        self.assertTrue(guide["ok"])
+        self.assertEqual(guide["maintenance_schema_version"], 1)
+        self.assertEqual(guide["api_version"], api.API_VERSION)
+        self.assertEqual(guide["category_count"], 8)
+        self.assertEqual(guide["task_count"], 32)
+        self.assertEqual(guide["routine_count"], 6)
+        self.assertEqual(guide["cadence_days"], [7, 14, 30, 60, 90])
+        self.assertEqual(len(guide["categories"]), 8)
+        self.assertEqual(len(guide["tasks"]), 32)
+        self.assertEqual(len(guide["routines"]), 6)
+        self.assertEqual(len({item["id"] for item in guide["categories"]}), 8)
+        self.assertEqual(len({item["id"] for item in guide["tasks"]}), 32)
+        self.assertEqual(len({item["id"] for item in guide["routines"]}), 6)
+        category_ids = {item["id"] for item in guide["categories"]}
+        task_ids = {item["id"] for item in guide["tasks"]}
+        for category_id in category_ids:
+            self.assertEqual(sum(item["category_id"] == category_id for item in guide["tasks"]), 4)
+        self.assertTrue(all(item["category_id"] in category_ids for item in guide["tasks"]))
+        self.assertTrue(all(item["cadence_days"] in guide["cadence_days"] for item in guide["tasks"]))
+        self.assertTrue(all(set(item["task_ids"]).issubset(task_ids) for item in guide["routines"]))
+        full = next(item for item in guide["routines"] if item["id"] == "full-maintenance")
+        self.assertEqual(set(full["task_ids"]), task_ids)
+        self.assertEqual(guide["browser_receipt_field_count"], 12)
+        self.assertEqual(
+            set(guide["browser_receipt_fields"]),
+            {
+                "schema_version",
+                "report_type",
+                "generated_at_utc",
+                "api_version",
+                "service_mode",
+                "signed_desktop_version",
+                "selected_category_id",
+                "selected_routine_id",
+                "reviewed_task_ids",
+                "reviewed_count",
+                "task_count",
+                "privacy_notice",
+            },
+        )
+        for field in (
+            "accepts_free_text",
+            "accepts_files",
+            "accepts_paths",
+            "accepts_progress",
+            "accepts_local_results",
+            "accepts_completion_history",
+            "accepts_reminders",
+            "accepts_maintenance_commands",
+            "remote_maintenance_allowed",
+            "customer_records_included",
+        ):
+            self.assertFalse(guide[field])
+        self.assertEqual(guide["progress_storage"], "current_browser_tab_only")
+        self.assertEqual(len(guide["privacy_boundaries"]), 4)
+        self.assertEqual(len(guide["limitations"]), 3)
+        self.assertTrue(guide["signed_release"]["ready"])
+        self.assertEqual(guide["signed_release"]["version"], manifest["version"])
+        serialized = json.dumps(guide)
+        for private_value in (
+            "MAINTENANCE-PRIVATE-CUSTOMER-8241",
+            "maintenance-8241@example.test",
+            "MAINTENANCE-PRIVATE-NOTE-8241",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/maintenance")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("VaultLink Security Maintenance", page_text)
+        self.assertIn("/api/v1/maintenance-guide", page_text)
+        self.assertIn("REVIEW NEXT", page_text)
+        self.assertIn("REVIEW ROUTINE", page_text)
+        self.assertIn("REVIEW ALL", page_text)
+        self.assertIn("CALENDAR", page_text)
+        self.assertIn("EXPORT JSON", page_text)
+        self.assertIn("vaultlink-browser-maintenance-review.json", page_text)
+        self.assertIn("vaultlink-maintenance-plan.ics", page_text)
+        self.assertIn("current tab", page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+        self.assertNotIn('type="file"', page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["security_maintenance_center_enabled"])
+        status, product = self.call("/api/v1/product")
+        self.assertEqual(status, 200)
+        self.assertIn("security_maintenance_center.py", product["desktop_scripts"])
+        status, features = self.call("/api/v1/features")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["id"] == "security-maintenance-center" for item in features["items"]))
+        status, companions = self.call("/api/v1/companions")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["script"] == "security_maintenance_center.py" for item in companions["items"]))
+        status, plans = self.call("/api/v1/plans")
+        self.assertEqual(status, 200)
+        starter = next(item for item in plans["items"] if item["id"] == "starter")
+        self.assertIn("security-maintenance-center", starter["entitlements"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["path"] == "/maintenance" for item in docs["routes"]))
+        self.assertTrue(any(item["path"] == "/api/v1/maintenance-guide" for item in docs["routes"]))
+        self.assertTrue(
+            {
+                "maintenance_center_open",
+                "maintenance_center_refresh",
+                "maintenance_task_complete",
+                "maintenance_task_reopen",
+                "maintenance_routine_complete",
+                "maintenance_history_export",
+                "maintenance_calendar_export",
+                "maintenance_summary_copy",
+                "maintenance_online_open",
+                "maintenance_report_export",
+                "maintenance_trusted_tool_open",
+            }.issubset(api.ALLOWED_AUDIT_ACTIONS)
+        )
 
     def test_public_retention_is_fixed_private_and_current_tab_only(self):
         manifest, _package = self.publish_test_update()

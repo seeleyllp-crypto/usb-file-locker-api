@@ -12,6 +12,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
+- A public Security Maintenance workspace at `/maintenance` with eight fixed categories, thirty-two fixed tasks, six routines, current-tab-only review, calendar reminders, print, and privacy-safe local export
 - A public Storage & Retention workspace at `/retention` with eight fixed areas, five policy bands, ten fixed practices, a five-step cleanup boundary, current-tab-only review, print, and privacy-safe local export
 - A public Data Control workspace at `/data-control` with fourteen fixed data classes, five scopes, six data-flow stages, retention guidance, current-tab-only review progress, print, and privacy-safe local export
 - A public Recovery Kit workspace at `/recovery-kit` with five fixed profiles, ten preparation sections, fifty fixed items, five emergency runbooks, current-tab-only progress, calendar reminders, print, and privacy-safe local export
@@ -54,6 +55,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
+- Public Security Maintenance accepts no progress, local result, completion history, reminder, maintenance command, identity, free text, file, or path; it cannot inspect, scan, update, schedule, launch, complete, or control anything on a customer PC
 - Public Data Control accepts no inventory, free text, contacts, customer progress, files, paths, local results, license proof, keys, PINs, filenames, or file contents; it stores no review state in browser storage
 - Public Storage & Retention accepts no inventory, progress, cleanup command, local result, free text, file, or path; it cannot inspect or delete anything on a customer PC and stores no review state in browser storage
 - Public recovery kits accept no free text, files, paths, filenames, keys, PINs, customer records, local results, or progress uploads; suspected-malware guidance is defensive and tabletop only
@@ -68,6 +70,14 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - LIMITED status never remotely locks a PC, deletes files, runs commands, or disables unlock/recovery access
 - Draft legal pages are not legal advice and require adult business-owner approval before commercial use
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
+
+## Security Maintenance 0.35
+
+`GET /api/v1/maintenance-guide` returns exactly eight fixed categories, thirty-two fixed tasks, six fixed routines, and five allowed cadence values. It is a public catalog endpoint, not a PC-control or progress endpoint. It receives no request body and returns no customer, license, device, maintenance-history, audit-export, support, or owner record.
+
+`GET /maintenance` renders the catalog as a responsive customer workspace. Review state lives only in the current page's JavaScript memory and disappears on reload. Copy, print, calendar, and JSON export happen locally in the browser. The downloaded receipt has exactly twelve fixed fields and contains only public service metadata plus reviewed fixed task IDs.
+
+The separate Windows Security Maintenance Center stores append-only complete or reopen events in an exact ten-field SHA-256 hash chain capped at 500 records and 2 MiB. It records no names, contacts, keys, PINs, paths, filenames, file contents, scan results, customer records, screenshots, process lists, or free-form notes. Completion is a reminder record, not proof that Defender, Windows, a key, a backup, an update, or recovery is healthy.
 
 ## Storage & Retention 0.34
 
