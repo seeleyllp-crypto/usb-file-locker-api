@@ -251,7 +251,7 @@ def owner_customer_experience_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><strong>VaultLink Customer Experience</strong><div><a href="/owner/trust">TRUST OPERATIONS</a> &nbsp; <a href="/owner">BACK TO OWNER CONSOLE</a></div></div></header>
+  <header><div><strong>VaultLink Customer Experience</strong><div><a href="/owner/operations">MAINTENANCE OPS</a> &nbsp; <a href="/owner/trust">TRUST OPERATIONS</a> &nbsp; <a href="/owner">BACK TO OWNER CONSOLE</a></div></div></header>
   <main>
     <h1>Customer Experience Console</h1>
     <p class="lead">Aggregate customer readiness, service, release adoption, rank coverage, support workload, and public-surface health without customer identities or secrets.</p>
@@ -632,7 +632,7 @@ def owner_trust_center_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Trust Operations</div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/customers">CUSTOMERS</a><a href="/owner/insights">INSIGHTS</a><a href="/trust">PUBLIC TRUST</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Trust Operations</div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/operations">MAINTENANCE OPS</a><a href="/owner/customers">CUSTOMERS</a><a href="/owner/insights">INSIGHTS</a><a href="/trust">PUBLIC TRUST</a></nav></div></header>
   <main>
     <h1>Owner trust gate</h1>
     <p class="lead">A scored operational review of owner authentication, secrets, persistent storage, release integrity, service status, audit integrity, support workload, and signed-release adoption.</p>

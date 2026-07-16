@@ -41,12 +41,13 @@ from maintenance_catalog import (
     fixed_maintenance_tasks,
 )
 from maintenance_page import customer_maintenance_html
+from owner_operations_page import owner_maintenance_operations_html
 from retention_catalog import fixed_cleanup_flow, fixed_retention_areas, fixed_retention_practices
 from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.36.0"
+API_VERSION = "0.37.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1841,6 +1842,7 @@ def docs_payload():
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
             {"method": "GET", "path": "/owner/trust", "purpose": "Owner-only trust, release, storage, audit, and service operations gate"},
+            {"method": "GET", "path": "/owner/operations", "purpose": "Owner-only 40-check maintenance operations cockpit"},
             {"method": "GET", "path": "/docs", "purpose": "JSON route index"},
             {"method": "GET", "path": "/health", "purpose": "Health check"},
             {"method": "GET", "path": "/api/v1/product", "purpose": "Product metadata"},
@@ -1890,6 +1892,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/insights", "purpose": "Admin-only set of exactly 50 privacy-safe owner operations insights"},
             {"method": "GET", "path": "/api/v1/admin/customer-experience", "purpose": "Admin-only aggregate customer experience, rank, release, and support health"},
             {"method": "GET", "path": "/api/v1/admin/trust-center", "purpose": "Admin-only trust gate with concrete operational actions"},
+            {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only fixed 40-check maintenance, release, storage, service, and governance report"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
@@ -4533,13 +4536,21 @@ def owner_portal_html():
     </section>
 
     <section>
+      <h2>Owner Maintenance Operations</h2>
+      <div class="latest">
+        <div class="status">Run the fixed 40-check owner readiness contract, review a prioritized runbook, inspect release and storage matrices, and export privacy-safe JSON or CSV.</div>
+        <a href="/owner/operations" style="display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:4px;background:var(--green);color:#06120a;text-decoration:none;font-weight:800;">OPEN OPERATIONS</a>
+      </div>
+    </section>
+
+    <section>
       <div class="record-head"><h2>Client Release Adoption</h2><div id="clientHealthSummary" class="meta">Connect to load anonymous client health.</div></div>
       <div id="clientVersionRecords"><div class="empty">No client version data loaded.</div></div>
     </section>
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/maintenance" target="_blank" rel="noopener">SECURITY MAINTENANCE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/maintenance" target="_blank" rel="noopener">SECURITY MAINTENANCE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/operations">OWNER OPERATIONS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5467,7 +5478,7 @@ def owner_insights_html():
   </style>
 </head>
 <body>
-  <header><div><div class="brand"><h1>Owner Command Center</h1><span class="version">50 live insights</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/status">CUSTOMER STATUS</a></nav></div></header>
+  <header><div><div class="brand"><h1>Owner Command Center</h1><span class="version">50 live insights</span></div><nav><a href="/owner">OWNER CONSOLE</a><a href="/owner/operations">MAINTENANCE OPS</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/status">CUSTOMER STATUS</a></nav></div></header>
   <main>
     <section>
       <h2>Owner Access</h2>
@@ -8657,6 +8668,250 @@ def admin_trust_center():
     }
 
 
+def admin_maintenance_operations():
+    """Build a fixed owner maintenance report from aggregate service state."""
+    dashboard = admin_dashboard_summary()
+    experience = admin_customer_experience()
+    release = windows_update_release_status()
+    audit_inventory = list_admin_audit_exports()
+    maintenance = maintenance_guide_payload()
+    legal = legal_payload()
+    docs = docs_payload()
+    checks = []
+
+    def add(identifier, category, title, passed, fail_state, priority, detail, action):
+        checks.append(
+            {
+                "id": identifier,
+                "category": category,
+                "title": title,
+                "passed": bool(passed),
+                "state": "good" if passed else fail_state,
+                "priority": "complete" if passed else priority,
+                "detail": detail,
+                "action": "" if passed else action,
+            }
+        )
+
+    storage = dashboard["storage"]
+    release_checks = release.get("checks") or {}
+    service = dashboard["service_status"]
+    clients = dashboard["client_health"]
+    devices = dashboard["devices"]
+    support = dashboard["support_tickets"]
+    announcements = dashboard["announcements"]
+    audits = dashboard["audit_exports"]
+    activity = dashboard["api_activity"]
+    shop = dashboard["shop"]
+    renewals = experience["renewal_health"]
+    surfaces = experience["surface_summary"]
+    high_critical = int((audits.get("breach_levels") or {}).get("high", 0) or 0) + int(
+        (audits.get("breach_levels") or {}).get("critical", 0) or 0
+    )
+    active_clients = int(clients.get("active_devices", 0) or 0)
+    current_clients = int(clients.get("current_release_devices", 0) or 0)
+    adoption = 100 if not active_clients else round((current_clients / active_clients) * 100)
+    records_secret_configured = bool(os.getenv("LICENSE_RECORDS_SECRET", "").strip())
+
+    add("access-admin-token", "Access & Secrets", "Owner admin token configured", admin_token_configured(), "action", "critical", "Owner API routes require the X-License-Admin-Token request header.", "Configure a strong LICENSE_ADMIN_TOKEN and keep it outside source control.")
+    add("access-license-secret", "Access & Secrets", "Production license signing secret", not using_default_signing_secret(), "action", "critical", "Signed license keys and activation receipts use a configured HMAC secret." if not using_default_signing_secret() else "The development signing-secret fallback is active.", "Configure and securely retain LICENSE_SIGNING_SECRET.")
+    add("access-records-secret", "Access & Secrets", "Separate private-record secret", records_secret_configured, "attention", "high", "Encrypted owner records use a separately configured secret." if records_secret_configured else "Private records derive protection from the license signing secret.", "Configure LICENSE_RECORDS_SECRET separately and retain a protected recovery copy.")
+    add("access-private-encryption", "Access & Secrets", "Private fields encrypted at rest", True, "action", "critical", "Customer labels, emails, owner notes, support text, and replies use authenticated encryption.", "")
+    add("access-header-only", "Access & Secrets", "Owner token accepted only in a header", True, "action", "critical", "The admin token is never accepted in a JSON body or placed in owner download URLs.", "")
+
+    storage_actions = {
+        "licenses": "Mount a Railway Volume and configure LICENSE_STATE_DIR.",
+        "audit_exports": "Mount a Railway Volume and configure AUDIT_EXPORT_DIR.",
+        "support_tickets": "Keep LICENSE_STATE_DIR on persistent storage for support continuity.",
+        "announcements": "Keep LICENSE_STATE_DIR on persistent storage for announcement continuity.",
+        "api_activity": "Keep LICENSE_STATE_DIR on persistent storage for owner activity continuity.",
+    }
+    storage_titles = {
+        "licenses": "License and seat storage persistent",
+        "audit_exports": "Audit export storage persistent",
+        "support_tickets": "Support inbox storage persistent",
+        "announcements": "Announcement storage persistent",
+        "api_activity": "Owner activity storage persistent",
+    }
+    for key in ("licenses", "audit_exports", "support_tickets", "announcements", "api_activity"):
+        status = str(storage.get(key, "local_ephemeral"))
+        add(
+            f"storage-{key.replace('_', '-')}",
+            "Storage & Recovery",
+            storage_titles[key],
+            status == "persistent_configured",
+            "action",
+            "high",
+            status,
+            storage_actions[key],
+        )
+
+    add("release-current", "Signed Releases", "Signed desktop release available", bool(release.get("ready")), "action", "critical", f"Desktop {release.get('version', 'unavailable')} is published." if release.get("ready") else str(release.get("message", "No signed release is ready.")), "Build, Defender-scan, sign, and publish through the Owner Update Lab.")
+    add("release-signature", "Signed Releases", "Ed25519 manifest signature passes", release_checks.get("ed25519_signature") == "passed", "action", "critical", f"Signature check: {release_checks.get('ed25519_signature', 'failed')}.", "Remove the release and republish a correctly signed manifest.")
+    add("release-size", "Signed Releases", "Published package size matches", release_checks.get("package_size") == "passed", "action", "high", f"Package-size check: {release_checks.get('package_size', 'failed')}.", "Republish the exact package described by the signed manifest.")
+    add("release-hash", "Signed Releases", "Published package SHA-256 matches", release_checks.get("package_sha256") == "passed", "action", "critical", f"SHA-256 check: {release_checks.get('package_sha256', 'failed')}.", "Remove the release and publish the exact tested package whose digest matches the manifest.")
+    add("release-app-data", "Signed Releases", "Update declares app-data preservation", release_checks.get("app_data_preservation") == "passed", "action", "critical", f"App-data preservation check: {release_checks.get('app_data_preservation', 'failed')}.", "Publish only an update that preserves keys, licenses, settings, vault data, and audit logs.")
+
+    documented_paths = {item.get("path") for item in docs.get("routes", [])}
+    add("service-normal", "Service & Surfaces", "Public service mode is normal", service.get("mode") == "normal", "attention", "high", str(service.get("message", "No service message is available.")), "Publish a clear service notice and resolve the active degraded or maintenance condition.")
+    add("surfaces-contract", "Service & Surfaces", "All 16 customer surfaces are registered", int(surfaces.get("total", 0) or 0) == 16, "action", "high", f"{int(surfaces.get('total', 0) or 0)} customer surfaces are registered.", "Restore the complete fixed customer-surface contract.")
+    add("surfaces-ready", "Service & Surfaces", "Every customer surface reports ready", int(surfaces.get("ready", 0) or 0) == int(surfaces.get("total", 0) or 0), "attention", "medium", f"{int(surfaces.get('ready', 0) or 0)} of {int(surfaces.get('total', 0) or 0)} customer surfaces are ready.", "Review every surface marked for attention before the next release.")
+    add("maintenance-contract", "Service & Surfaces", "Maintenance catalog contract passes", maintenance.get("task_count") == 32 and maintenance.get("category_count") == 8 and maintenance.get("routine_count") == 6 and maintenance.get("planning_horizon_count") == 4, "action", "high", f"{maintenance.get('task_count', 0)} tasks, {maintenance.get('category_count', 0)} categories, {maintenance.get('routine_count', 0)} routines, and {maintenance.get('planning_horizon_count', 0)} horizons.", "Restore the fixed maintenance catalog and rerun API regression tests.")
+    add("owner-route-contract", "Service & Surfaces", "Owner operations routes documented", "/owner/operations" in documented_paths and "/api/v1/admin/maintenance-operations" in documented_paths, "action", "medium", "The owner page and protected API route are included in the live route index.", "Restore both owner maintenance routes to the API documentation contract.")
+
+    active_devices = int(devices.get("active", 0) or 0)
+    device_capacity = int(devices.get("capacity", 0) or 0)
+    add("licenses-seat-capacity", "Licensing & Seats", "Active seats do not exceed capacity", active_devices <= device_capacity, "action", "critical", f"{active_devices} active seat(s) out of {device_capacity} available.", "Review the activation ledger and correct any seat-accounting mismatch.")
+    add("licenses-stale-clients", "Licensing & Seats", "No clients are stale for 24 hours", int(clients.get("stale_24h", 0) or 0) == 0, "attention", "medium", f"{int(clients.get('stale_24h', 0) or 0)} anonymous client(s) have not synced in 24 hours.", "Confirm service availability and publish update or support guidance before contacting customers.")
+    add("licenses-release-adoption", "Licensing & Seats", "Signed-release adoption is at least 80%", adoption >= 80, "attention", "medium", f"{adoption}% of reporting clients use the current signed desktop release.", "Verify compatibility, then publish a rank-targeted update announcement.")
+    add("licenses-known-versions", "Licensing & Seats", "Reporting clients identify their app version", int(clients.get("unknown_version_devices", 0) or 0) == 0, "attention", "low", f"{int(clients.get('unknown_version_devices', 0) or 0)} reporting client(s) have an unknown app version.", "Review client compatibility and update reporting without collecting device identity.")
+    add("licenses-renewal-window", "Licensing & Seats", "No active licenses expire within 7 days", int(renewals.get("expiring_7_days", 0) or 0) == 0, "attention", "medium", f"{int(renewals.get('expiring_7_days', 0) or 0)} active license(s) expire within seven days.", "Review renewal commitments and contact only the affected customers through approved business records.")
+
+    service_message = str(service.get("message", ""))
+    add("support-queue", "Support & Messaging", "Support queue has no waiting work", int(support.get("needs_action", 0) or 0) == 0, "attention", "high", f"{int(support.get('needs_action', 0) or 0)} support ticket(s) need owner action.", "Review, acknowledge, reply to, resolve, or close each waiting ticket.")
+    add("support-encryption", "Support & Messaging", "Support private text is encrypted", True, "action", "critical", "Customer reports, owner replies, and private notes use authenticated encryption at rest.", "")
+    add("announcements-valid", "Support & Messaging", "No damaged announcement records", int(announcements.get("damaged", 0) or 0) == 0, "action", "high", f"{int(announcements.get('damaged', 0) or 0)} announcement record(s) failed validation.", "Preserve evidence, remove damaged records, and republish only validated plain-text notices.")
+    add("announcements-active", "Support & Messaging", "At least one customer announcement is active", int(announcements.get("active", 0) or 0) > 0, "attention", "low", f"{int(announcements.get('active', 0) or 0)} rank-targeted announcement(s) are active.", "Publish a concise current release or service notice when customer communication is useful.")
+    add("service-message", "Support & Messaging", "Public service message is present and bounded", bool(service_message.strip()) and len(service_message) <= 240, "action", "medium", f"Public service message length: {len(service_message)} character(s).", "Publish a clear service message of 240 characters or fewer.")
+
+    add("audit-chain", "Audit & Incident Review", "Owner API activity chain verifies", bool(activity.get("integrity_valid")), "action", "critical", str(activity.get("integrity_message", "No integrity result is available.")), "Export the activity record, preserve evidence, and investigate the first failed chain entry.")
+    add("audit-severe", "Audit & Incident Review", "No High or Critical audit reports await review", high_critical == 0, "action", "critical", f"{high_critical} stored privacy-safe report(s) are High or Critical.", "Download and review each report; confirm evidence before treating any result as malware.")
+    add("audit-records-valid", "Audit & Incident Review", "No damaged stored audit reports", int(audit_inventory.get("damaged_count", 0) or 0) == 0, "action", "high", f"{int(audit_inventory.get('damaged_count', 0) or 0)} stored audit report(s) failed validation.", "Preserve the damaged files, investigate storage integrity, and remove them only after evidence review.")
+    add("audit-retention", "Audit & Incident Review", "Audit retention is within policy bounds", 1 <= int(AUDIT_EXPORT_RETENTION_HOURS) <= 2160, "action", "medium", f"Audit retention is {int(AUDIT_EXPORT_RETENTION_HOURS)} hour(s).", "Configure AUDIT_EXPORT_RETENTION_HOURS between 1 and 2160.")
+    add("audit-remote-boundary", "Audit & Incident Review", "Remote file and secret collection remains disabled", True, "action", "critical", "The API accepts only approved privacy-safe audit fields and cannot fetch customer files, paths, PINs, or USB secrets.", "")
+
+    add("commerce-ranks", "Commerce & Governance", "Seven license ranks are published", len(PLAN_TIERS) == 7, "action", "high", f"{len(PLAN_TIERS)} license rank(s) are registered.", "Restore the complete seven-rank catalog before selling licenses.")
+    add("commerce-checkout", "Commerce & Governance", "Every rank has a hosted checkout route", int(shop.get("configured", 0) or 0) == int(shop.get("total", 0) or 0) == 7, "attention", "medium", f"{int(shop.get('configured', 0) or 0)} of {int(shop.get('total', 0) or 0)} hosted checkout links are configured.", "Configure only allowlisted provider-hosted HTTPS checkout links.")
+    add("commerce-card-boundary", "Commerce & Governance", "VaultLink does not collect card data", not bool(shop.get("card_data_collected_by_vaultlink")), "action", "critical", "Payment-card entry stays on the configured hosted payment provider.", "Remove any VaultLink form or endpoint that accepts payment-card secrets.")
+    add("governance-legal-draft", "Commerce & Governance", "Legal documents remain clearly marked for review", bool(legal.get("draft")) and bool(legal.get("adult_business_owner_review_required")) and bool(legal.get("qualified_legal_review_recommended")), "action", "high", f"Legal document {legal.get('document_version', 'unknown')} is marked as a draft requiring adult-owner review.", "Keep draft labeling visible and obtain qualified legal review before commercial reliance.")
+    add("governance-remote-control", "Commerce & Governance", "Owner operations cannot control customer PCs", True, "action", "critical", "This console is aggregate and read-only toward customer devices; it cannot lock, unlock, execute, scan, delete, or retrieve local data.", "")
+
+    if len(checks) != 40:
+        raise RuntimeError(f"Owner maintenance contract expected 40 checks, built {len(checks)}.")
+    category_order = [
+        "Access & Secrets",
+        "Storage & Recovery",
+        "Signed Releases",
+        "Service & Surfaces",
+        "Licensing & Seats",
+        "Support & Messaging",
+        "Audit & Incident Review",
+        "Commerce & Governance",
+    ]
+    category_summary = []
+    for category in category_order:
+        rows = [item for item in checks if item["category"] == category]
+        if len(rows) != 5:
+            raise RuntimeError(f"Owner maintenance category {category} expected 5 checks, built {len(rows)}.")
+        category_summary.append(
+            {
+                "category": category,
+                "passed": sum(item["passed"] for item in rows),
+                "total": len(rows),
+                "actions": sum(not item["passed"] for item in rows),
+            }
+        )
+    priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    runbook = [
+        {
+            "id": item["id"],
+            "category": item["category"],
+            "title": item["title"],
+            "state": item["state"],
+            "priority": item["priority"],
+            "detail": item["detail"],
+            "action": item["action"],
+        }
+        for item in sorted(
+            (row for row in checks if not row["passed"]),
+            key=lambda row: (priority_order.get(row["priority"], 9), checks.index(row)),
+        )
+    ]
+    passed = sum(item["passed"] for item in checks)
+    score_value = round((passed / len(checks)) * 100)
+    score_label = "ready" if score_value >= 90 else "attention" if score_value >= 70 else "action"
+    storage_matrix = [
+        {
+            "id": key,
+            "label": storage_titles[key],
+            "status": str(storage.get(key, "local_ephemeral")),
+            "persistent": storage.get(key) == "persistent_configured",
+        }
+        for key in ("licenses", "audit_exports", "support_tickets", "announcements", "api_activity")
+    ]
+    return {
+        "ok": True,
+        "operations_schema_version": 1,
+        "check_count": len(checks),
+        "checks": checks,
+        "categories": category_order,
+        "category_summary": category_summary,
+        "score": {
+            "value": score_value,
+            "maximum": 100,
+            "label": score_label,
+            "passed": passed,
+            "total": len(checks),
+            "actions": len(runbook),
+            "limitations": "Operational readiness only; not certification, antivirus proof, legal advice, or a guarantee.",
+        },
+        "runbook": runbook,
+        "metrics": {
+            "persistent_stores": sum(item["persistent"] for item in storage_matrix),
+            "total_stores": len(storage_matrix),
+            "ready_surfaces": int(surfaces.get("ready", 0) or 0),
+            "total_surfaces": int(surfaces.get("total", 0) or 0),
+            "release_adoption_percent": adoption,
+            "active_reporting_devices": active_clients,
+            "support_needs_action": int(support.get("needs_action", 0) or 0),
+            "high_critical_audits": high_critical,
+            "active_announcements": int(announcements.get("active", 0) or 0),
+            "shop_links_live": int(shop.get("configured", 0) or 0),
+            "shop_links_total": int(shop.get("total", 0) or 0),
+        },
+        "release_gate": {
+            "ready": bool(release.get("ready")),
+            "version": str(release.get("version", "")),
+            "minimum_supported_version": str(release.get("minimum_supported_version", "")),
+            "published_at_utc": str(release.get("published_at_utc", "")),
+            "package_filename": str(release.get("package_filename", "")),
+            "size_bytes": int(release.get("size_bytes", 0) or 0),
+            "sha256": str(release.get("sha256", "")),
+            "signing_key_id": str(release.get("signing_key_id", "")),
+            "message": str(release.get("message", "")),
+            "checks": {
+                "manifest_schema": str(release_checks.get("manifest_schema", "failed")),
+                "ed25519_signature": str(release_checks.get("ed25519_signature", "failed")),
+                "package_size": str(release_checks.get("package_size", "failed")),
+                "package_sha256": str(release_checks.get("package_sha256", "failed")),
+                "app_data_preservation": str(release_checks.get("app_data_preservation", "failed")),
+            },
+        },
+        "storage_matrix": storage_matrix,
+        "service_status": service,
+        "customer_surfaces": experience["customer_surfaces"],
+        "privacy_boundaries": [
+            "The owner token stays in current page memory and is sent only in X-License-Admin-Token.",
+            "The report contains aggregate counts and configuration states only.",
+            "No license key, license id, customer identity, owner note, receipt, or machine identifier is returned.",
+            "No file content, full path, PIN, USB secret, customer audit contents, or customer maintenance history is returned.",
+            "The owner console cannot lock, unlock, execute, scan, delete, quarantine, or retrieve data from a customer PC.",
+            "JSON and CSV exports are created locally by the browser from this already privacy-safe response.",
+        ],
+        "limitations": [
+            "A passing server check cannot test a customer's backups, USB custody, PIN memory, local malware state, or successful recovery.",
+            "High and Critical labels can be false positives and require evidence review.",
+            "The legal pages remain drafts and do not make VaultLink HIPAA certified or legally compliant.",
+            "Payment confirmation and license delivery remain separate owner responsibilities.",
+        ],
+        "safe_to_export": True,
+        "customer_records_included": False,
+        "customer_maintenance_history_included": False,
+        "cannot_control_customer_pc": True,
+        "server_time_utc": utc_now(),
+    }
+
+
 def admin_owner_insights():
     """Build a fixed 50-point, aggregate-only owner operations report."""
     dashboard = admin_dashboard_summary()
@@ -9028,6 +9283,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/owner/trust":
             self.send_html(owner_trust_center_html(API_VERSION))
             return
+        if path == "/owner/operations":
+            self.send_html(owner_maintenance_operations_html(API_VERSION))
+            return
         if path == "/health":
             self.send_json(
                 {
@@ -9073,6 +9331,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "incident_response_center_enabled": True,
                     "diagnostics_center_enabled": True,
                     "owner_customer_experience_enabled": True,
+                    "owner_maintenance_operations_enabled": True,
                     "public_trust_center_enabled": True,
                     "owner_trust_center_enabled": True,
                     "anonymous_plan_advisor_enabled": True,
@@ -9164,6 +9423,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "public fixed security maintenance guidance with current-tab-only review and no remote task completion or PC control",
                         "public fixed storage and retention guidance with current-tab-only review and no remote cleanup capability",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
+                        "admin-only fixed 40-check maintenance operations cockpit with privacy-safe JSON and CSV export",
                         "public fixed-step diagnostics with session-only checklist progress and privacy-safe local export",
                         "public trust, signed-release, storage, privacy-boundary, and recovery posture",
                         "admin-only aggregate trust gate with release, audit, storage, and service actions",
@@ -9216,6 +9476,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Service status is informational only and cannot lock, unlock, execute, or modify customer PCs.",
                         "The API activity feed uses an HMAC-SHA-256 hash chain and excludes sensitive payloads.",
                         "Activity downloads use a two-minute scoped token instead of placing the admin token in a URL.",
+                        "The maintenance operations cockpit exposes only aggregate checks, fixed actions, public surface states, and signed-release evidence.",
+                        "Owner maintenance exports exclude customer records, customer maintenance history, license proof, device identity, files, paths, PINs, and USB secrets.",
                     ],
                     "shop_controls": [
                         "VaultLink never collects card numbers; checkout occurs on a separately hosted payment page.",
@@ -9447,6 +9709,21 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 self.require_admin_token()
                 self.send_json(admin_trust_center())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/admin/maintenance-operations":
+            try:
+                self.require_admin_token()
+                self.send_json(admin_maintenance_operations())
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "forbidden", "message": str(exc)},

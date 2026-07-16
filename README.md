@@ -10,6 +10,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
 - A separate 50-point Owner Command Center at `/owner/insights` with live filters and privacy-safe JSON/CSV exports
+- An owner-only Maintenance Operations cockpit at `/owner/operations` with exactly forty aggregate checks, eight categories, a prioritized runbook, release and storage matrices, customer-surface status, and privacy-safe JSON/CSV exports
 - A unified Customer Workspace at `/workspace` with an operational score, composite account overview, prioritized action plan, 30-day success plan, benefit map, unlocked rank tools, safe support and recovery exports, timeline, upgrades, and session-only progress
 - An aggregate Customer Experience Console at `/owner/customers` for experience scoring, customer-journey stages, renewal buckets, rank coverage, service, release adoption, support, public surfaces, shop readiness, and storage health
 - A public Security Maintenance workspace at `/maintenance` with eight fixed categories, thirty-two fixed tasks, six routines, four cadence horizons, priority review, coverage bars, calendar reminders, print, and privacy-safe local export
@@ -70,6 +71,15 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - LIMITED status never remotely locks a PC, deletes files, runs commands, or disables unlock/recovery access
 - Draft legal pages are not legal advice and require adult business-owner approval before commercial use
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
+- Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
+
+## Owner Maintenance Operations 0.37
+
+`GET /owner/operations` opens the responsive owner cockpit. The admin token stays only in current page memory and is sent only in `X-License-Admin-Token`.
+
+`GET /api/v1/admin/maintenance-operations` returns exactly forty fixed checks across eight categories of five. The report includes a scored summary, priority-sorted owner runbook, signed-release gate, five-store persistence matrix, public service status, and sixteen customer-surface readiness rows.
+
+The response and browser-created JSON/CSV exports contain aggregate results only. They exclude license keys, license ids, customer labels, email, owner notes, receipts, machine identifiers, report contents, files, paths, PINs, USB secrets, and customer maintenance history. The score is operational guidance, not certification, legal advice, antivirus proof, or a guarantee.
 
 ## Security Maintenance 0.36
 
@@ -151,6 +161,7 @@ Then open:
 - `http://127.0.0.1:8000/owner/insights`
 - `http://127.0.0.1:8000/owner/customers`
 - `http://127.0.0.1:8000/owner/trust`
+- `http://127.0.0.1:8000/owner/operations`
 
 ## Trust Center
 

@@ -1767,6 +1767,89 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("EXPORT JSON", page_text)
         self.assertIn("EXPORT CSV", page_text)
 
+    def test_owner_maintenance_operations_are_fixed_protected_and_private(self):
+        self.publish_test_update()
+        status, denied = self.call("/api/v1/admin/maintenance-operations")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "forbidden")
+
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "plan_id": "personal-plus",
+                "customer_label": "OPERATIONS-PRIVATE-CUSTOMER-9017",
+                "customer_email": "operations-9017@example.test",
+                "license_note": "OPERATIONS-PRIVATE-NOTE-9017",
+                "max_devices": 2,
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+
+        status, report = self.call(
+            "/api/v1/admin/maintenance-operations",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(report["operations_schema_version"], 1)
+        self.assertEqual(report["check_count"], 40)
+        self.assertEqual(len(report["checks"]), 40)
+        self.assertEqual(len({item["id"] for item in report["checks"]}), 40)
+        self.assertEqual(len(report["categories"]), 8)
+        self.assertEqual(len(report["category_summary"]), 8)
+        self.assertTrue(all(item["total"] == 5 for item in report["category_summary"]))
+        self.assertEqual(report["score"]["total"], 40)
+        self.assertEqual(
+            report["score"]["passed"] + report["score"]["actions"],
+            report["score"]["total"],
+        )
+        self.assertEqual(report["metrics"]["total_surfaces"], 16)
+        self.assertEqual(len(report["customer_surfaces"]), 16)
+        self.assertEqual(len(report["storage_matrix"]), 5)
+        self.assertTrue(report["safe_to_export"])
+        self.assertFalse(report["customer_records_included"])
+        self.assertFalse(report["customer_maintenance_history_included"])
+        self.assertTrue(report["cannot_control_customer_pc"])
+        serialized = json.dumps(report)
+        for private_value in (
+            "OPERATIONS-PRIVATE-CUSTOMER-9017",
+            "operations-9017@example.test",
+            "OPERATIONS-PRIVATE-NOTE-9017",
+            issued["license"]["license_id"],
+            issued["license_key"],
+            TEST_ADMIN_TOKEN,
+            TEST_SIGNING_SECRET,
+        ):
+            self.assertNotIn(private_value, serialized)
+
+        status, headers, page = self.call_bytes("/owner/operations")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        page_text = page.decode("utf-8")
+        self.assertIn("Owner Maintenance Operations", page_text)
+        self.assertIn("40 fixed readiness checks", page_text)
+        self.assertIn("/api/v1/admin/maintenance-operations", page_text)
+        self.assertIn("EXPORT SAFE JSON", page_text)
+        self.assertIn("EXPORT CHECKS CSV", page_text)
+        self.assertIn('id="token" type="password"', page_text)
+        self.assertNotIn("localStorage", page_text)
+        self.assertNotIn("sessionStorage", page_text)
+        self.assertNotIn("<textarea", page_text)
+        self.assertNotIn('type="file"', page_text)
+
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["owner_maintenance_operations_enabled"])
+        status, docs = self.call("/docs")
+        self.assertEqual(status, 200)
+        documented_paths = {item["path"] for item in docs["routes"]}
+        self.assertIn("/owner/operations", documented_paths)
+        self.assertIn("/api/v1/admin/maintenance-operations", documented_paths)
+        status, _headers, owner_page = self.call_bytes("/owner")
+        self.assertEqual(status, 200)
+        self.assertIn("/owner/operations", owner_page.decode("utf-8"))
+
     def test_rank_targeted_owner_announcements_and_admin_controls(self):
         status, denied = self.call(
             "/api/v1/admin/announcements/create",
