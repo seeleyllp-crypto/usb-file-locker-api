@@ -252,7 +252,7 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 ## Customer Workspace
 
 - `GET /workspace` opens the unified customer app.
-- `POST /api/v1/licenses/customer-workspace` returns the account summary, six-point checkup, six-factor workspace score, nine-item action center, next-best action, four readiness lanes, seven-day care routine, 30-day success plan, categorized benefit map, six help paths, privacy guarantees, timeline, cumulative rank tools, upgrade choices, safe support pack, offline recovery card, and customer routes in one response.
+- `POST /api/v1/licenses/customer-workspace` returns the account summary, six-point checkup, six-factor workspace score, nine-item action center, next-best action, four readiness lanes, five-stage continuity journey, anonymous seat planner, five-check support readiness, seven-day care routine, 30-day success plan, four-phase 90-day plan, categorized benefit map, six help paths, ten-term glossary, privacy guarantees, change digest, timeline, cumulative rank tools, upgrade choices, safe support pack, offline recovery card, and customer routes in one response.
 - Checklist progress stays only in the current browser tab and is never uploaded or saved in browser storage.
 - Customers can filter actions, search unlocked tools, and export the full safe workspace, a support pack, or an offline recovery card without exporting the license key or customer identity.
 - Safe exports exclude the license key, license id, customer identity, owner notes, machine identity, receipts, payment data, paths, PINs, USB secrets, and file contents.

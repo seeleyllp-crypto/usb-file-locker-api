@@ -629,7 +629,7 @@ class VaultLinkApiTests(unittest.TestCase):
             payload={"license_key": license_key, "app_version": "2026.07.14.2"},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(workspace["workspace_schema_version"], 3)
+        self.assertEqual(workspace["workspace_schema_version"], 4)
         self.assertTrue(workspace["does_not_activate"])
         self.assertTrue(workspace["cannot_control_customer_pc"])
         self.assertEqual(workspace["summary"]["plan"]["rank"], 5)
@@ -681,6 +681,19 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(item["count"] for item in workspace["entitlement_categories"]),
             workspace["benefit_map"]["unlocked_count"],
         )
+        self.assertEqual(len(workspace["journey_map"]["stages"]), 5)
+        self.assertFalse(workspace["journey_map"]["server_tracks_completion"])
+        self.assertEqual(workspace["seat_planner"]["active"], 0)
+        self.assertEqual(workspace["seat_planner"]["available"], 5)
+        self.assertFalse(workspace["seat_planner"]["device_identity_included"])
+        self.assertTrue(workspace["seat_planner"]["does_not_reserve_or_activate"])
+        self.assertEqual(workspace["support_readiness"]["total"], 5)
+        self.assertEqual(len(workspace["support_readiness"]["items"]), 5)
+        self.assertEqual(len(workspace["ninety_day_plan"]["phases"]), 4)
+        self.assertEqual(len(workspace["customer_glossary"]), 10)
+        self.assertFalse(workspace["change_digest"]["changes_customer_pc"])
+        self.assertEqual(workspace["customer_snapshot"]["journey_stage_count"], 5)
+        self.assertEqual(workspace["customer_snapshot"]["glossary_term_count"], 10)
         self.assertEqual(api.active_device_count(issued["license"]["license_id"]), 0)
         serialized_workspace = json.dumps(workspace)
         for private_value in (
@@ -2992,6 +3005,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(response["update"]["sha256"], manifest["sha256"])
         self.assertTrue(response["security"]["manual_install_requires_confirmation"])
         self.assertTrue(response["security"]["automatic_install_requires_local_opt_in"])
+        self.assertTrue(response["security"]["below_minimum_installs_verified_update"])
+        self.assertTrue(response["security"]["waits_for_active_local_task"])
+        self.assertTrue(response["security"]["recovery_remains_available_on_failure"])
 
         status, required = self.call(
             "/api/v1/updates/windows/check",

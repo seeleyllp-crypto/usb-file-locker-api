@@ -47,7 +47,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.40.0"
+API_VERSION = "0.41.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -2967,6 +2967,9 @@ def windows_update_payload():
             "package_integrity": "SHA-256",
             "manual_install_requires_confirmation": True,
             "automatic_install_requires_local_opt_in": True,
+            "below_minimum_installs_verified_update": True,
+            "waits_for_active_local_task": True,
+            "recovery_remains_available_on_failure": True,
         },
         "server_time_utc": utc_now(),
     }
@@ -6482,9 +6485,201 @@ def customer_workspace(payload):
         "readiness_lane_count": len(readiness_lanes),
         "weekly_step_count": len(weekly_routine["items"]),
     }
+    lane_by_id = {item["id"]: item for item in readiness_lanes}
+    journey_map = {
+        "title": "Customer continuity journey",
+        "server_tracks_completion": False,
+        "stages": [
+            {
+                "id": "account",
+                "order": 1,
+                "title": "Confirm account access",
+                "state": "ready" if preview["active"] else "action",
+                "detail": "Review signed license status and anonymous device-seat capacity.",
+                "target_path": "/customer",
+            },
+            {
+                "id": "protect",
+                "order": 2,
+                "title": "Establish signed protection",
+                "state": lane_by_id.get("protection", {}).get("state", "review"),
+                "detail": "Use supported app files and install only a verified signed release.",
+                "target_path": "/update",
+            },
+            {
+                "id": "prepare",
+                "order": 3,
+                "title": "Prepare for recovery",
+                "state": "available",
+                "detail": "Keep the original USB key separate and practice with disposable test data.",
+                "target_path": "/readiness",
+            },
+            {
+                "id": "maintain",
+                "order": 4,
+                "title": "Maintain the workspace",
+                "state": "ready" if checkup.get("attention_count", 0) == 0 else "review",
+                "detail": "Follow the weekly care routine and review changes without uploading local results.",
+                "target_path": "/maintenance",
+            },
+            {
+                "id": "recover",
+                "order": 5,
+                "title": "Recover and get help",
+                "state": "available",
+                "detail": "Preserve originals, work from copies, and use the matching fixed help path.",
+                "target_path": "/recovery-kit",
+            },
+        ],
+    }
+    device_active = int(preview["device_usage"].get("active", 0) or 0)
+    device_maximum = int(preview["device_usage"].get("maximum", 0) or 0)
+    device_available = max(0, device_maximum - device_active)
+    seat_usage_percent = round((device_active / device_maximum) * 100) if device_maximum else 0
+    seat_planner = {
+        "active": device_active,
+        "maximum": device_maximum,
+        "available": device_available,
+        "usage_percent": seat_usage_percent,
+        "state": "available" if device_available > 1 else "review" if device_available == 1 else "full",
+        "guidance": (
+            "Anonymous capacity is available for another activation."
+            if device_available > 0
+            else "No anonymous device seats remain; review devices before another activation."
+        ),
+        "device_identity_included": False,
+        "does_not_reserve_or_activate": True,
+    }
+    support_checks = [
+        {
+            "id": "license",
+            "title": "License status available",
+            "ready": bool(preview["active"]),
+            "detail": "A signed active status helps support separate licensing from local recovery.",
+        },
+        {
+            "id": "service",
+            "title": "Service status available",
+            "ready": str(preview["service_status"].get("mode", "")).lower() == "normal",
+            "detail": "Current service mode helps distinguish an outage from a local issue.",
+        },
+        {
+            "id": "release",
+            "title": "Signed release information available",
+            "ready": bool(preview["release"].get("latest_version")),
+            "detail": "A published signed version gives support a safe compatibility reference.",
+        },
+        {
+            "id": "support-pack",
+            "title": "Privacy-safe support pack available",
+            "ready": bool(support_pack.get("safe_to_share_after_review")),
+            "detail": "The fixed-field support pack excludes files, paths, identity, secrets, and free text.",
+        },
+        {
+            "id": "recovery-card",
+            "title": "Offline recovery card available",
+            "ready": bool(recovery_card.get("offline_copy_recommended")),
+            "detail": "The card provides recovery order without containing key material.",
+        },
+    ]
+    support_ready_count = sum(item["ready"] for item in support_checks)
+    support_readiness = {
+        "ready_count": support_ready_count,
+        "total": len(support_checks),
+        "state": "ready" if support_ready_count == len(support_checks) else "review",
+        "items": support_checks,
+        "limitations": "This is support-preparation guidance, not proof that a device or file is safe.",
+    }
+    ninety_day_plan = {
+        "title": "Customer 90-day continuity plan",
+        "phases": [
+            {
+                "id": "now",
+                "label": "Now",
+                "target_days": 1,
+                "items": [
+                    {
+                        "id": next_best_action["id"],
+                        "title": next_best_action["title"],
+                        "detail": next_best_action["detail"],
+                        "target_path": next_best_action["target_path"],
+                    }
+                ],
+            },
+            {
+                "id": "week",
+                "label": "First 7 days",
+                "target_days": 7,
+                "items": weekly_routine["items"],
+            },
+            {
+                "id": "month",
+                "label": "First 30 days",
+                "target_days": 30,
+                "items": [
+                    {
+                        "id": item["id"],
+                        "title": item["title"],
+                        "detail": item["detail"],
+                        "target_path": item["target_path"],
+                    }
+                    for item in actions
+                ],
+            },
+            {
+                "id": "quarter",
+                "label": "Every 90 days",
+                "target_days": 90,
+                "items": [
+                    {"id": "quarter-recovery", "title": "Repeat a disposable recovery drill", "detail": "Verify the normal key and optional PIN workflow using non-private test data.", "target_path": "/recovery-drills"},
+                    {"id": "quarter-backup", "title": "Review backup separation", "detail": "Confirm a recovery copy remains separate from the PC and original USB key.", "target_path": "/backup-verification"},
+                    {"id": "quarter-update", "title": "Review supported releases", "detail": "Confirm the installed desktop remains supported and signature verification still succeeds.", "target_path": "/update"},
+                    {"id": "quarter-privacy", "title": "Review support-sharing boundaries", "detail": "Confirm exported reports still exclude identity, secrets, paths, and file contents.", "target_path": "/data-control"},
+                ],
+            },
+        ],
+        "progress_storage": "customer_device_or_current_browser_only",
+    }
+    installed_version = str(payload.get("app_version", "") or "").strip()
+    latest_signed_version = str(preview["release"].get("latest_version", "") or "")
+    change_digest = {
+        "api_version": API_VERSION,
+        "installed_version": installed_version or "Not supplied",
+        "latest_signed_version": latest_signed_version or "Not published",
+        "desktop_state": (
+            "update_available"
+            if preview["release"].get("update_available")
+            else "current_or_not_comparable"
+        ),
+        "service_mode": str(preview["service_status"].get("mode", "unknown")),
+        "license_state": str(preview["status"]),
+        "changes_customer_pc": False,
+    }
+    customer_glossary = [
+        {"id": "locked-file", "term": "Locked file", "meaning": "An encrypted .locked file that should be preserved unchanged until recovery succeeds."},
+        {"id": "master-key", "term": "Master USB key", "meaning": "The original key file used by the official Windows app; it should never be sent to support."},
+        {"id": "optional-pin", "term": "Optional PIN", "meaning": "An extra secret used only when one was entered during locking; it is not recoverable from the API."},
+        {"id": "signed-release", "term": "Signed release", "meaning": "A desktop package whose Ed25519 manifest signature and SHA-256 package digest verify."},
+        {"id": "device-seat", "term": "Device seat", "meaning": "Anonymous activation capacity; customer workspace checks do not consume or reserve one."},
+        {"id": "support-pack", "term": "Support pack", "meaning": "A fixed-field status summary that must be reviewed before sharing and contains no attachments."},
+        {"id": "recovery-drill", "term": "Recovery drill", "meaning": "A practice lock and unlock performed with disposable, non-private test data."},
+        {"id": "owner-message", "term": "Owner message", "meaning": "A rank-targeted service announcement that does not reveal other customer records."},
+        {"id": "local-progress", "term": "Local progress", "meaning": "Completed fixed action IDs stored on the customer device or current browser tab, never uploaded."},
+        {"id": "workspace-score", "term": "Workspace score", "meaning": "An operational guidance score, not an antivirus result, certification, or guarantee."},
+    ]
+    customer_snapshot.update(
+        {
+            "journey_stage_count": len(journey_map["stages"]),
+            "available_device_seats": device_available,
+            "support_ready_count": support_ready_count,
+            "support_check_count": len(support_checks),
+            "ninety_day_phase_count": len(ninety_day_plan["phases"]),
+            "glossary_term_count": len(customer_glossary),
+        }
+    )
     return {
         "ok": True,
-        "workspace_schema_version": 3,
+        "workspace_schema_version": 4,
         "message": "Customer workspace loaded without activating or changing a device seat.",
         "summary": summary,
         "customer_snapshot": customer_snapshot,
@@ -6520,6 +6715,12 @@ def customer_workspace(payload):
         "entitlement_categories": entitlement_categories,
         "help_center": help_center,
         "privacy_guarantees": privacy_guarantees,
+        "journey_map": journey_map,
+        "seat_planner": seat_planner,
+        "support_readiness": support_readiness,
+        "ninety_day_plan": ninety_day_plan,
+        "change_digest": change_digest,
+        "customer_glossary": customer_glossary,
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
