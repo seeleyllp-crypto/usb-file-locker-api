@@ -91,7 +91,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/customer">LICENSE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/QNA">ANSWERS</a><a href="/customer">LICENSE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -312,6 +312,180 @@ def customer_workspace_html(api_version):
     function exportRecovery() { if(state.payload)downloadJson("vaultlink-offline-recovery-card.json",state.payload.recovery_card,"Offline recovery card exported."); }
     function clearAll() { state.payload=null; state.completed=new Set(); $("licenseKey").value=""; $("appVersion").value=""; $("workspace").hidden=true; setStatus("License key and workspace cleared from page memory."); }
     $("load").addEventListener("click",loadWorkspace); $("clear").addEventListener("click",clearAll); $("copy").addEventListener("click",copySummary); $("export").addEventListener("click",exportJson); $("exportSupport").addEventListener("click",exportSupport); $("exportRecovery").addEventListener("click",exportRecovery); $("resetProgress").addEventListener("click",()=>{state.completed=new Set(); if(state.payload)renderActions(state.payload);}); $("actionFilters").addEventListener("click",event=>{const filter=event.target.dataset.filter;if(filter)filterActions(filter);}); $("toolSearch").addEventListener("input",filterTools); $("clearToolSearch").addEventListener("click",()=>{$("toolSearch").value="";filterTools();}); $("licenseKey").addEventListener("keydown",event=>{if(event.key==="Enter")loadWorkspace();});
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def customer_answers_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Customer Answers</title>
+  <style>
+    :root { --bg:#0e1115; --band:#14191f; --panel:#1a2027; --field:#0a0d11; --line:#35404b; --text:#f4f7f8; --muted:#aab5bf; --green:#65df88; --blue:#67bde8; --yellow:#ffd166; --red:#ff7b72; }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#11161b; }
+    header > div, main, footer > div { width:min(1120px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-size:17px; font-weight:800; }
+    nav { display:flex; flex-wrap:wrap; gap:8px; }
+    nav a, .answer-link { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 11px; border:1px solid var(--line); border-radius:5px; color:var(--text); text-decoration:none; font-weight:750; }
+    main { padding:28px 0 50px; }
+    h1 { margin:0; font-size:32px; line-height:1.1; }
+    h2 { margin:0; font-size:18px; }
+    h3 { margin:0; font-size:15px; }
+    .lead { max-width:760px; margin:8px 0 0; color:var(--muted); font-size:15px; }
+    .privacy { margin-top:14px; padding:12px 14px; border-left:4px solid var(--blue); background:#151d24; color:var(--muted); }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    button { min-height:40px; padding:0 13px; border:1px solid var(--line); border-radius:5px; background:#29323c; color:var(--text); font:800 12px "Segoe UI",Arial,sans-serif; cursor:pointer; }
+    button:disabled { cursor:not-allowed; opacity:.5; }
+    button.active, .primary { border-color:var(--blue); background:var(--blue); color:#071118; }
+    .green { border-color:var(--green); background:var(--green); color:#071109; }
+    .status { min-height:22px; margin-top:10px; color:var(--muted); }
+    .status.good { color:var(--green); } .status.bad { color:var(--red); }
+    .metrics { display:grid; grid-template-columns:repeat(4,minmax(130px,1fr)); margin-top:18px; border:1px solid var(--line); }
+    .metric { min-width:0; padding:14px; border-right:1px solid var(--line); background:var(--band); }
+    .metric:last-child { border-right:0; }
+    .metric span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .metric strong { display:block; margin-top:4px; font-size:18px; overflow-wrap:anywhere; }
+    .search { display:grid; grid-template-columns:minmax(220px,1fr) auto; gap:9px; margin-top:22px; }
+    input { width:100%; min-width:0; height:43px; padding:0 12px; border:1px solid var(--line); border-radius:5px; background:var(--field); color:var(--text); font:inherit; }
+    .categories { display:flex; flex-wrap:wrap; gap:7px; margin:12px 0; }
+    .categories button { min-height:35px; background:var(--panel); }
+    .categories button.active { background:var(--blue); }
+    .section-head { display:flex; align-items:end; justify-content:space-between; gap:14px; padding:18px 0 10px; border-top:1px solid var(--line); }
+    .section-head p { margin:0; color:var(--muted); text-align:right; }
+    .answers { display:grid; gap:9px; }
+    details { min-width:0; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:6px; background:var(--panel); }
+    details.saved { border-left-color:var(--green); }
+    summary { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; padding:15px; cursor:pointer; list-style:none; }
+    summary::-webkit-details-marker { display:none; }
+    summary::after { content:"OPEN"; color:var(--blue); font-size:10px; font-weight:800; }
+    details[open] summary::after { content:"CLOSE"; }
+    .category { color:var(--blue); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .question { margin-top:3px; font-size:15px; font-weight:800; }
+    .answer-body { padding:0 15px 15px; border-top:1px solid var(--line); }
+    .answer-body p { margin:13px 0 0; color:var(--muted); }
+    .answer-body ol { margin:10px 0 0; padding-left:21px; color:var(--muted); }
+    .answer-body li { margin:5px 0; }
+    .answer-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    .answer-actions button, .answer-actions a { min-height:36px; }
+    .empty { padding:28px 16px; border:1px dashed var(--line); color:var(--muted); text-align:center; }
+    footer { border-top:1px solid var(--line); background:#11161b; color:var(--muted); }
+    footer > div { padding:18px 0; }
+    @media(max-width:760px) {
+      header > div { align-items:flex-start; flex-direction:column; padding:14px 0; }
+      .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .metric:nth-child(2) { border-right:0; }
+      .metric:nth-child(-n+2) { border-bottom:1px solid var(--line); }
+      .search { grid-template-columns:1fr; }
+      .section-head { align-items:flex-start; flex-direction:column; }
+      .section-head p { text-align:left; }
+    }
+    @media print {
+      header, .toolbar, .search, .categories, footer, .answer-actions, .privacy { display:none!important; }
+      body { background:#fff; color:#111; }
+      main { width:100%; padding:0; }
+      details { break-inside:avoid; border-color:#bbb; background:#fff; }
+      details[hidden] { display:none; }
+      details summary::after { display:none; }
+      .answer-body { display:block!important; }
+    }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Customer Answers</div><nav><a href="/workspace">WORKSPACE</a><a href="/readiness">RECOVERY</a><a href="/update">UPDATE</a><a href="/status">STATUS</a></nav></div></header>
+  <main>
+    <h1>Find a safe next step</h1>
+    <p class="lead">Search fixed VaultLink answers about locking, recovery, keys, updates, licensing, privacy, and security.</p>
+    <div class="privacy">No question text is uploaded. Search, filters, opened answers, and saved-answer choices stay only in this browser tab and disappear when the page closes.</div>
+    <div class="toolbar">
+      <button id="refresh" class="primary" type="button">REFRESH ANSWERS</button>
+      <button id="savedOnly" type="button">SAVED ONLY</button>
+      <button id="export" type="button" disabled>EXPORT SAVED PACK</button>
+      <button id="print" type="button">PRINT VISIBLE</button>
+      <button id="clearSaved" type="button" disabled>CLEAR SAVED</button>
+    </div>
+    <div id="status" class="status" role="status">Loading fixed customer answers...</div>
+    <div class="metrics">
+      <div class="metric"><span>Answers</span><strong id="answerCount">0</strong></div>
+      <div class="metric"><span>Categories</span><strong id="categoryCount">0</strong></div>
+      <div class="metric"><span>Visible</span><strong id="visibleCount">0</strong></div>
+      <div class="metric"><span>Saved this tab</span><strong id="savedCount">0</strong></div>
+    </div>
+    <div class="search"><input id="search" type="search" maxlength="120" autocomplete="off" placeholder="Search questions, answers, and safe steps" aria-label="Search customer answers"><button id="clearSearch" type="button">CLEAR SEARCH</button></div>
+    <div id="categories" class="categories" aria-label="Answer categories"></div>
+    <div class="section-head"><h2>Customer Answers</h2><p id="scope">Fixed public guidance. A saved answer is a current-tab bookmark, not proof that a problem was resolved.</p></div>
+    <div id="answers" class="answers"></div>
+  </main>
+  <footer><div>API __API_VERSION__. This page accepts no license key, identity, file, path, PIN, USB secret, local result, or free-form question.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id);
+    const state={payload:null,category:"all",query:"",saved:new Set(),savedOnly:false};
+    const text=value=>String(value??"");
+    function setStatus(message,tone=""){ $("status").textContent=message; $("status").className=`status ${tone}`.trim(); }
+    function add(parent,tag,value,className=""){const node=document.createElement(tag);node.textContent=text(value);if(className)node.className=className;parent.append(node);return node;}
+    function categoryTitle(id){return state.payload?.categories.find(item=>item.id===id)?.title||"Other";}
+    function answerSearchText(answer){return [answer.question,answer.answer,...answer.steps,...answer.tags,categoryTitle(answer.category_id)].join(" ").toLowerCase();}
+    function visibleAnswers(){
+      if(!state.payload)return[];
+      return state.payload.items.filter(answer=>{
+        if(state.category!=="all"&&answer.category_id!==state.category)return false;
+        if(state.savedOnly&&!state.saved.has(answer.id))return false;
+        return !state.query||answerSearchText(answer).includes(state.query);
+      });
+    }
+    function renderMetrics(visible=visibleAnswers()){ $("answerCount").textContent=state.payload?.count||0; $("categoryCount").textContent=state.payload?.category_count||0; $("visibleCount").textContent=visible.length; $("savedCount").textContent=state.saved.size; $("export").disabled=state.saved.size===0; $("clearSaved").disabled=state.saved.size===0; }
+    function renderCategories(){
+      const root=$("categories");root.replaceChildren();
+      const options=[{id:"all",title:"ALL"},...(state.payload?.categories||[])];
+      options.forEach(item=>{const button=document.createElement("button");button.type="button";button.textContent=item.title;button.classList.toggle("active",state.category===item.id);button.addEventListener("click",()=>{state.category=item.id;renderCategories();renderAnswers();});root.append(button);});
+    }
+    function renderAnswers(){
+      const items=visibleAnswers();const root=$("answers");root.replaceChildren();
+      if(!items.length){add(root,"div","No fixed answers match these filters.","empty");renderMetrics(items);return;}
+      items.forEach(answer=>{
+        const card=document.createElement("details");card.dataset.answerId=answer.id;card.classList.toggle("saved",state.saved.has(answer.id));
+        const summary=document.createElement("summary");const title=document.createElement("div");add(title,"div",categoryTitle(answer.category_id),"category");add(title,"div",answer.question,"question");summary.append(title);
+        const body=document.createElement("div");body.className="answer-body";add(body,"p",answer.answer);
+        const steps=document.createElement("ol");answer.steps.forEach(step=>add(steps,"li",step));body.append(steps);
+        const actions=document.createElement("div");actions.className="answer-actions";
+        const save=document.createElement("button");save.type="button";save.textContent=state.saved.has(answer.id)?"REMOVE SAVED":"SAVE ANSWER";save.className=state.saved.has(answer.id)?"green":"";
+        save.addEventListener("click",()=>{state.saved.has(answer.id)?state.saved.delete(answer.id):state.saved.add(answer.id);renderAnswers();setStatus("Saved-answer choices changed only in this browser tab.","good");});
+        const copy=document.createElement("button");copy.type="button";copy.textContent="COPY ANSWER";copy.addEventListener("click",()=>copyAnswer(answer));
+        const link=document.createElement("a");link.className="answer-link";link.href=answer.target_path;link.textContent=answer.target_label;
+        actions.append(save,copy,link);body.append(actions);card.append(summary,body);root.append(card);
+      });
+      renderMetrics(items);
+    }
+    async function copyAnswer(answer){
+      const lines=[answer.question,answer.answer,"",...answer.steps.map((step,index)=>`${index+1}. ${step}`),`Guide: ${location.origin}${answer.target_path}`,"","Never send passwords, PINs, USB keys, file contents, or personal details to support."];
+      try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Fixed answer copied.","good");}catch(_error){setStatus("Browser clipboard access was blocked.","bad");}
+    }
+    function safeExport(){
+      const savedItems=(state.payload?.items||[]).filter(item=>state.saved.has(item.id)).map(item=>({id:item.id,category_id:item.category_id,question:item.question,answer:item.answer,steps:item.steps,target_path:item.target_path,target_label:item.target_label}));
+      return {schema_version:1,report_type:"VaultLink Saved Customer Answers",generated_at_utc:new Date().toISOString(),api_version:state.payload?.api_version||"",saved_answer_ids:savedItems.map(item=>item.id),answers:savedItems,privacy_notice:"This public fixed-answer pack contains no license key, identity, machine identity, password, PIN, USB secret, path, filename, file content, local result, or free-form question."};
+    }
+    function exportSaved(){const report=safeExport();if(!report.answers.length)return;const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-saved-customer-answers.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Saved-answer pack exported locally.","good");}
+    async function load(){
+      $("refresh").disabled=true;setStatus("Loading fixed customer answers...");
+      try{const response=await fetch("/api/v1/customer-answers",{headers:{"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Answers could not be loaded.");state.payload=data;state.saved=new Set([...state.saved].filter(id=>data.items.some(item=>item.id===id)));renderCategories();renderAnswers();setStatus(`${data.count} fixed answers loaded. Search stays in this browser tab.`,"good");}
+      catch(error){state.payload=null;$("answers").replaceChildren();renderMetrics([]);setStatus(error.message||"Answers could not be loaded.","bad");}
+      finally{$("refresh").disabled=false;}
+    }
+    $("refresh").addEventListener("click",load);
+    $("search").addEventListener("input",event=>{state.query=event.target.value.trim().toLowerCase();renderAnswers();});
+    $("clearSearch").addEventListener("click",()=>{$("search").value="";state.query="";renderAnswers();});
+    $("savedOnly").addEventListener("click",()=>{state.savedOnly=!state.savedOnly;$("savedOnly").classList.toggle("active",state.savedOnly);renderAnswers();});
+    $("clearSaved").addEventListener("click",()=>{state.saved.clear();state.savedOnly=false;$("savedOnly").classList.remove("active");renderAnswers();setStatus("Current-tab saved answers cleared.","good");});
+    $("export").addEventListener("click",exportSaved);
+    $("print").addEventListener("click",()=>window.print());
+    load();
   </script>
 </body>
 </html>'''

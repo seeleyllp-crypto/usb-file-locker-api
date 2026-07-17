@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 15)
+        self.assertEqual(len(workspace["quick_links"]), 16)
+        self.assertTrue(any(item["path"] == "/QNA" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/maintenance" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/retention" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in workspace["quick_links"]))
@@ -745,7 +746,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 16)
+        self.assertEqual(len(experience["customer_surfaces"]), 17)
+        self.assertTrue(any(item["path"] == "/QNA" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/maintenance" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/retention" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/data-control" for item in experience["customer_surfaces"]))
@@ -761,7 +763,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 16)
+        self.assertEqual(experience["surface_summary"]["total"], 17)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -781,6 +783,76 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("EXPORT JOURNEY CSV", owner_text)
         self.assertIn("Customer Journey", owner_text)
         self.assertIn("Renewal Health", owner_text)
+
+    def test_customer_answers_are_fixed_searchable_and_collect_nothing(self):
+        status, payload = self.call("/api/v1/customer-answers")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["api_version"], "0.42.0")
+        self.assertEqual(payload["category_count"], 6)
+        self.assertEqual(payload["count"], 30)
+        self.assertEqual(set(payload["category_counts"].values()), {5})
+        self.assertFalse(payload["accepts_customer_questions"])
+        self.assertFalse(payload["collects_customer_data"])
+        self.assertEqual(payload["search_storage"], "current_browser_tab_only")
+        self.assertEqual(payload["saved_answer_storage"], "current_browser_tab_only")
+
+        category_ids = {item["id"] for item in payload["categories"]}
+        answer_ids = [item["id"] for item in payload["items"]]
+        self.assertEqual(len(answer_ids), len(set(answer_ids)))
+        allowed_paths = {
+            "/backup-verification",
+            "/customer",
+            "/data-control",
+            "/diagnostics",
+            "/incident-response",
+            "/maintenance",
+            "/readiness",
+            "/recovery-kit",
+            "/retention",
+            "/shop",
+            "/status",
+            "/trust",
+            "/update",
+        }
+        for item in payload["items"]:
+            self.assertEqual(
+                set(item),
+                {
+                    "id",
+                    "category_id",
+                    "question",
+                    "answer",
+                    "steps",
+                    "target_path",
+                    "target_label",
+                    "tags",
+                },
+            )
+            self.assertIn(item["category_id"], category_ids)
+            self.assertIn(item["target_path"], allowed_paths)
+            self.assertGreaterEqual(len(item["steps"]), 3)
+            self.assertTrue(item["question"].endswith("?"))
+            self.assertTrue(item["answer"])
+
+        for path in ("/QNA", "/qna", "/answers"):
+            page_status, headers, page = self.call_bytes(path)
+            self.assertEqual(page_status, 200)
+            self.assertIn("text/html", headers["Content-Type"])
+            page_text = page.decode("utf-8")
+            self.assertIn("VaultLink Customer Answers", page_text)
+            self.assertIn("/api/v1/customer-answers", page_text)
+            self.assertIn("Search customer answers", page_text)
+            self.assertIn("SAVED ONLY", page_text)
+            self.assertIn("EXPORT SAVED PACK", page_text)
+            self.assertIn("PRINT VISIBLE", page_text)
+            self.assertIn("this browser tab", page_text)
+            self.assertNotIn("localStorage", page_text)
+            self.assertNotIn("sessionStorage", page_text)
+
+        health_status, health = self.call("/health")
+        self.assertEqual(health_status, 200)
+        self.assertTrue(health["customer_answers_enabled"])
 
     def test_public_and_owner_trust_centers_are_scored_private_and_protected(self):
         manifest, _package = self.publish_test_update()
@@ -1833,8 +1905,8 @@ class VaultLinkApiTests(unittest.TestCase):
             report["score"]["passed"] + report["score"]["actions"],
             report["score"]["total"],
         )
-        self.assertEqual(report["metrics"]["total_surfaces"], 16)
-        self.assertEqual(len(report["customer_surfaces"]), 16)
+        self.assertEqual(report["metrics"]["total_surfaces"], 17)
+        self.assertEqual(len(report["customer_surfaces"]), 17)
         self.assertEqual(len(report["storage_matrix"]), 5)
         self.assertEqual(
             set(report["severity_summary"]),
