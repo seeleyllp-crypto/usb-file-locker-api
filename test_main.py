@@ -790,7 +790,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.43.0")
+        self.assertEqual(payload["api_version"], "0.44.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -860,10 +860,10 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.43.0")
-        self.assertEqual(payload["scenario_count"], 7)
-        self.assertEqual(payload["decision_count"], 21)
-        self.assertEqual(payload["outcome_count"], 28)
+        self.assertEqual(payload["api_version"], "0.44.0")
+        self.assertEqual(payload["scenario_count"], 10)
+        self.assertEqual(payload["decision_count"], 30)
+        self.assertEqual(payload["outcome_count"], 40)
         self.assertEqual(payload["choice_storage"], "current_browser_tab_only")
         self.assertFalse(payload["accepts_free_form_input"])
         self.assertFalse(payload["collects_customer_data"])
@@ -875,10 +875,10 @@ class VaultLinkApiTests(unittest.TestCase):
         scenario_ids = {item["id"] for item in scenarios}
         node_map = {item["id"]: item for item in nodes}
         outcome_map = {item["id"]: item for item in outcomes}
-        self.assertEqual(len(scenario_ids), 7)
-        self.assertEqual(len(node_map), 21)
-        self.assertEqual(len(outcome_map), 28)
-        self.assertEqual(sum(len(item["steps"]) for item in outcomes), 112)
+        self.assertEqual(len(scenario_ids), 10)
+        self.assertEqual(len(node_map), 30)
+        self.assertEqual(len(outcome_map), 40)
+        self.assertEqual(sum(len(item["steps"]) for item in outcomes), 160)
 
         allowed_paths = {
             "/QNA",
@@ -890,6 +890,7 @@ class VaultLinkApiTests(unittest.TestCase):
             "/readiness",
             "/recovery-drills",
             "/recovery-kit",
+            "/retention",
             "/status",
             "/trust",
             "/update",

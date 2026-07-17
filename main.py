@@ -51,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.43.0"
+API_VERSION = "0.44.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -6975,7 +6975,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
-        {"id": "decision", "label": "Recovery Decision Wizard", "path": "/decision", "purpose": "Seven fixed situations, twenty-one decision points, and current-tab-only branching", "ready": customer_decisions_payload()["decision_count"] == 21},
+        {"id": "decision", "label": "Recovery Decision Wizard", "path": "/decision", "purpose": "Ten fixed situations, thirty decision points, and current-tab-only branching", "ready": customer_decisions_payload()["decision_count"] == 30},
         {"id": "answers", "label": "Customer Answers", "path": "/QNA", "purpose": "Thirty fixed answers, safe next steps, and current-tab-only search and saved choices", "ready": customer_answers_payload()["count"] == 30},
         {"id": "maintenance", "label": "Security Maintenance", "path": "/maintenance", "purpose": "Thirty-two fixed tasks, six routines, four cadence horizons, priority review, and current-tab-only coverage", "ready": maintenance_guide_payload()["task_count"] == 32},
         {"id": "retention", "label": "Storage & Retention", "path": "/retention", "purpose": "Eight fixed storage areas, ten retention practices, and current-tab-only review", "ready": retention_guide_payload()["practice_count"] == 10},

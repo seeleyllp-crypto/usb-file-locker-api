@@ -426,6 +426,51 @@ DECISION_OUTCOMES = (
 )
 
 
+def _node(node_id, scenario_id, question, explanation, yes_type, yes_id, no_type, no_id):
+    return {
+        "id": node_id,
+        "scenario_id": scenario_id,
+        "question": question,
+        "explanation": explanation,
+        "yes": _choice(yes_type, yes_id),
+        "no": _choice(no_type, no_id),
+    }
+
+
+DECISION_SCENARIOS += (
+    {"id": "backup-failure", "title": "A backup or restore test failed", "summary": "Preserve every copy, identify the backup type, and retry without overwriting evidence.", "start_node_id": "backup-has-second-copy", "max_decisions": 3},
+    {"id": "suspicious-message", "title": "I received a suspicious message or link", "summary": "Stop interaction, protect accounts, and preserve privacy-safe evidence.", "start_node_id": "phish-opened-link", "max_decisions": 3},
+    {"id": "storage-cleanup", "title": "VaultLink or Windows is low on storage", "summary": "Separate safe temporary cleanup from keys, locked data, backups, and app evidence.", "start_node_id": "storage-task-active", "max_decisions": 3},
+)
+
+DECISION_NODES += (
+    _node("backup-has-second-copy", "backup-failure", "Does another unchanged backup or source copy still exist?", "Recovery work should never overwrite the only remaining copy.", "node", "backup-type-known", "outcome", "backup-preserve-only-copy"),
+    _node("backup-type-known", "backup-failure", "Do you know whether the failed item is a key backup, locked-data backup, or app-data backup?", "Each backup type has a different safe restore order.", "node", "backup-trusted-destination", "outcome", "backup-identify-type"),
+    _node("backup-trusted-destination", "backup-failure", "Is a trusted destination with enough free space available for a test restore?", "A test restore needs separate working space and must not replace the source backup.", "outcome", "backup-test-restore", "outcome", "backup-prepare-destination"),
+    _node("phish-opened-link", "suspicious-message", "Did you open the link, attachment, or QR code?", "Opening content changes the response from simple reporting to account and device review.", "node", "phish-entered-secret", "outcome", "phish-block-report"),
+    _node("phish-entered-secret", "suspicious-message", "Did you enter a password, PIN, license key, payment detail, or recovery secret?", "Entered secrets should be treated as exposed even if the page later looked normal.", "node", "phish-pc-behaving-oddly", "outcome", "phish-review-device"),
+    _node("phish-pc-behaving-oddly", "suspicious-message", "Is the PC now showing unusual popups, logins, downloads, or crashes?", "Active symptoms need immediate incident handling in addition to account recovery.", "outcome", "phish-incident-now", "outcome", "phish-secure-accounts"),
+    _node("storage-task-active", "storage-cleanup", "Is a lock, unlock, recovery, backup, export, or update task active?", "Cleanup during active file work can interrupt output or remove needed temporary data.", "outcome", "storage-wait-for-task", "node", "storage-target-known"),
+    _node("storage-target-known", "storage-cleanup", "Is the cleanup target the exact VaultLink temporary workspace?", "VaultLink cleanup must never expand into Downloads, Documents, USB drives, keys, backups, or arbitrary folders.", "node", "storage-preview-reviewed", "outcome", "storage-use-safe-center"),
+    _node("storage-preview-reviewed", "storage-cleanup", "Did the bounded preview show only temporary items and no links or junctions?", "Preview and boundary checks must pass immediately before ordinary deletion.", "outcome", "storage-clean-temp", "outcome", "storage-stop-cleanup"),
+)
+
+DECISION_OUTCOMES += (
+    _outcome("backup-preserve-only-copy", "backup-failure", "Preserve the only remaining copy", "urgent", "Do not run another restore against the only backup.", ("Stop restore attempts.", "Make a protected duplicate if possible.", "Do not rename or edit the source.", "Use qualified recovery help for important data."), "/backup-verification", "OPEN BACKUP CHECK", "Ordinary retrying can overwrite the last recoverable copy."),
+    _outcome("backup-identify-type", "backup-failure", "Identify the backup type first", "watch", "Use the fixed backup map before choosing a restore process.", ("Keep all copies unchanged.", "Separate key, locked-data, and app-data backups.", "Review the restore order.", "Choose the matching fixed plan."), "/backup-verification", "OPEN BACKUP CHECK", "Never restore a key backup over an unknown key file."),
+    _outcome("backup-test-restore", "backup-failure", "Run a separate test restore", "normal", "The source copy, backup type, and destination are ready for a controlled test.", ("Copy the backup to working storage.", "Restore into a new empty location.", "Open and verify the result.", "Keep all originals until verification passes."), "/backup-verification", "OPEN BACKUP CHECK", "A completed copy operation is not proof that restored data is usable."),
+    _outcome("backup-prepare-destination", "backup-failure", "Prepare safe restore space", "watch", "Do not restore into the source or a nearly full drive.", ("Choose trusted storage.", "Confirm enough free space.", "Create a new empty destination.", "Retry only from a backup copy."), "/diagnostics", "OPEN DIAGNOSTICS", "Never overwrite the source backup during a test."),
+    _outcome("phish-block-report", "suspicious-message", "Block and report without opening", "normal", "The suspicious content was not opened, so preserve minimal evidence and stop contact.", ("Do not reply.", "Block the sender.", "Report through the platform.", "Delete only after any required adult or business review."), "/incident-response", "OPEN INCIDENT GUIDE", "Do not forward suspicious attachments to other people."),
+    _outcome("phish-review-device", "suspicious-message", "Review the device after opening", "watch", "No secret was entered, but the opened content still deserves a security review.", ("Close the content.", "Keep Defender enabled.", "Run Defender scans.", "Review recent downloads and account alerts."), "/incident-response", "OPEN INCIDENT GUIDE", "Do not install unknown cleanup tools."),
+    _outcome("phish-incident-now", "suspicious-message", "Start account and device incident response", "urgent", "Entered secrets plus active symptoms require immediate trusted help.", ("Stop entering secrets.", "Disconnect from untrusted networks when appropriate.", "Use a different trusted device to secure accounts.", "Ask a trusted adult or security professional for help."), "/incident-response", "OPEN INCIDENT GUIDE", "Never send recovery codes or master keys to someone claiming to help."),
+    _outcome("phish-secure-accounts", "suspicious-message", "Secure exposed accounts from a trusted device", "urgent", "Treat entered secrets as exposed even without visible PC symptoms.", ("Use a separate trusted device.", "Change exposed passwords.", "Revoke sessions and enable MFA.", "Monitor account and payment alerts."), "/incident-response", "OPEN INCIDENT GUIDE", "Change secrets through the real service, not a link from the message."),
+    _outcome("storage-wait-for-task", "storage-cleanup", "Wait for active file work", "normal", "Cleanup should start only after the current operation finishes and its result is verified.", ("Let the task finish.", "Verify its result.", "Close extra VaultLink windows.", "Preview cleanup afterward."), "/retention", "OPEN RETENTION", "Do not force-close active encryption or recovery work."),
+    _outcome("storage-use-safe-center", "storage-cleanup", "Use the bounded Storage & Retention Center", "watch", "Do not manually broaden cleanup into personal or recovery locations.", ("Open Storage & Retention.", "Select only the fixed temporary workspace.", "Run preview.", "Keep keys, backups, audit evidence, and locked files excluded."), "/retention", "OPEN RETENTION", "Cleanup is ordinary deletion, not guaranteed secure erasure."),
+    _outcome("storage-clean-temp", "storage-cleanup", "Clean only the reviewed temporary workspace", "normal", "The active-task, boundary, and preview checks are ready.", ("Review the item count.", "Confirm the exact temporary target.", "Use the visible cleanup confirmation.", "Recheck free space afterward."), "/retention", "OPEN RETENTION", "Stop if the target changes or a link or junction appears."),
+    _outcome("storage-stop-cleanup", "storage-cleanup", "Stop and review the cleanup target", "urgent", "The preview or filesystem boundary is not safe enough for deletion.", ("Cancel cleanup.", "Do not delete manually.", "Preserve keys and evidence.", "Use diagnostics to review storage safely."), "/diagnostics", "OPEN DIAGNOSTICS", "Never delete arbitrary folders to make VaultLink continue."),
+)
+
+
 def fixed_decision_scenarios():
     return copy.deepcopy(list(DECISION_SCENARIOS))
 
