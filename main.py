@@ -47,7 +47,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.39.0"
+API_VERSION = "0.40.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -6361,11 +6361,133 @@ def customer_workspace(payload):
         "contains_customer_identity": False,
         "offline_copy_recommended": True,
     }
+    factor_by_id = {item["id"]: item for item in score_factors}
+    readiness_lanes = []
+    for identifier, title, factor_ids, purpose in (
+        (
+            "account",
+            "Account continuity",
+            ("license", "devices", "expiration"),
+            "Keep the license, device allowance, and renewal timing understandable.",
+        ),
+        (
+            "protection",
+            "Signed protection",
+            ("update",),
+            "Stay on a published desktop package whose signature and SHA-256 digest verify.",
+        ),
+        (
+            "service",
+            "Service connection",
+            ("service",),
+            "Know whether online licensing and support services are available.",
+        ),
+        (
+            "access",
+            "Rank access",
+            ("rank-tools",),
+            "See the fixed tools and benefits included with the current rank.",
+        ),
+    ):
+        factors = [factor_by_id[item_id] for item_id in factor_ids if item_id in factor_by_id]
+        awarded = sum(item["awarded"] for item in factors)
+        maximum = sum(item["maximum"] for item in factors)
+        percent = round((awarded / maximum) * 100) if maximum else 0
+        readiness_lanes.append(
+            {
+                "id": identifier,
+                "title": title,
+                "purpose": purpose,
+                "awarded": awarded,
+                "maximum": maximum,
+                "percent": percent,
+                "state": "ready" if percent >= 75 else "review" if percent >= 50 else "action",
+                "attention_count": sum(item["state"] in {"action", "check"} for item in factors),
+                "factor_ids": list(factor_ids),
+            }
+        )
+
+    category_map = {}
+    for benefit in unlocked_benefits:
+        category = str(benefit.get("category", "Other") or "Other")
+        category_map.setdefault(category, []).append(benefit["title"])
+    entitlement_categories = [
+        {"category": category, "count": len(titles), "items": sorted(titles)}
+        for category, titles in sorted(category_map.items())
+    ]
+
+    next_best_action = dict(actions[0]) if actions else {
+        "id": "maintain-workspace",
+        "source": "workspace",
+        "when": "maintain",
+        "severity": "good",
+        "title": "Keep the workspace current",
+        "detail": "Reload the workspace after a license, device, service, or signed-release change.",
+        "target_path": "/workspace",
+    }
+    next_best_action.update(
+        {
+            "position": 1,
+            "total_actions": len(actions),
+            "reason": (
+                "This is the first item after sorting customer actions by urgency. "
+                "Completing it is a local customer decision and is never reported to VaultLink."
+            ),
+        }
+    )
+
+    weekly_routine = {
+        "title": "Seven-day customer care routine",
+        "progress_storage": "customer_device_or_current_browser_only",
+        "items": [
+            {"id": "monday-status", "day": "Monday", "title": "Check service status", "detail": "Confirm the licensing and support service mode.", "target_path": "/status"},
+            {"id": "tuesday-key", "day": "Tuesday", "title": "Confirm recovery material", "detail": "Verify the original USB key is available without opening or sharing it.", "target_path": "/readiness"},
+            {"id": "wednesday-backup", "day": "Wednesday", "title": "Review backup readiness", "detail": "Use the fixed backup checklist and keep the original locked data unchanged.", "target_path": "/backup-verification"},
+            {"id": "thursday-update", "day": "Thursday", "title": "Check the signed release", "detail": "Install only a package whose signature and SHA-256 digest verify.", "target_path": "/update"},
+            {"id": "friday-diagnostics", "day": "Friday", "title": "Run privacy-safe diagnostics", "detail": "Review fixed checks without uploading paths, filenames, or file contents.", "target_path": "/diagnostics"},
+            {"id": "saturday-drill", "day": "Saturday", "title": "Practice one recovery drill", "detail": "Use copies and stop if the expected recovery result is unclear.", "target_path": "/recovery-drills"},
+            {"id": "sunday-privacy", "day": "Sunday", "title": "Review local data controls", "detail": "Confirm what stays local and what a support export may contain.", "target_path": "/data-control"},
+        ],
+    }
+    help_center = {
+        "title": "Customer help paths",
+        "items": [
+            {"id": "license", "title": "License or device issue", "first_step": "Refresh the saved license and review anonymous seat use.", "target_path": "/customer", "support_category": "licensing"},
+            {"id": "update", "title": "Update will not install", "first_step": "Check the signed manifest, package digest, disk space, and supported version.", "target_path": "/update", "support_category": "update"},
+            {"id": "unlock", "title": "Locked file will not open", "first_step": "Preserve the original, use the original USB key, and verify whether a PIN was used.", "target_path": "/readiness", "support_category": "recovery"},
+            {"id": "backup", "title": "Backup or recovery concern", "first_step": "Work from a copy and complete the fixed backup-verification checklist.", "target_path": "/backup-verification", "support_category": "recovery"},
+            {"id": "security", "title": "Security warning or suspicious behavior", "first_step": "Do not disable protection; use the incident guide and Windows Security.", "target_path": "/incident-response", "support_category": "security"},
+            {"id": "privacy", "title": "Privacy or data question", "first_step": "Review the data map before exporting or sharing a report.", "target_path": "/data-control", "support_category": "privacy"},
+        ],
+        "owner_reply_route": "/customer",
+        "free_text_not_included": True,
+    }
+    privacy_guarantees = [
+        "The workspace does not activate, remove, reset, or consume a device seat.",
+        "Customer identity, owner notes, payment data, receipts, and machine identity are excluded.",
+        "Passwords, PINs, USB secrets, key material, paths, filenames, and file contents are excluded.",
+        "Checklist progress is local to the customer app or current browser tab and is not uploaded.",
+        "The service cannot inspect, lock, unlock, scan, execute, install, or control the customer PC.",
+        "Local unlock and recovery remain available when an online premium check needs attention.",
+    ]
+    customer_snapshot = {
+        "status": preview["status"],
+        "rank": preview["plan"]["rank"],
+        "rank_name": preview["plan"]["name"],
+        "workspace_score": workspace_score,
+        "attention_count": checkup.get("attention_count", 0),
+        "action_count": len(actions),
+        "unlocked_tool_count": rank_tools.get("unlocked_count", 0),
+        "unlocked_benefit_count": len(unlocked_benefits),
+        "readiness_lane_count": len(readiness_lanes),
+        "weekly_step_count": len(weekly_routine["items"]),
+    }
     return {
         "ok": True,
-        "workspace_schema_version": 2,
+        "workspace_schema_version": 3,
         "message": "Customer workspace loaded without activating or changing a device seat.",
         "summary": summary,
+        "customer_snapshot": customer_snapshot,
         "checkup": checkup,
         "workspace_score": {
             "score": workspace_score,
@@ -6392,6 +6514,12 @@ def customer_workspace(payload):
         "upgrade_options": upgrade_options,
         "support_pack": support_pack,
         "recovery_card": recovery_card,
+        "next_best_action": next_best_action,
+        "readiness_lanes": readiness_lanes,
+        "weekly_routine": weekly_routine,
+        "entitlement_categories": entitlement_categories,
+        "help_center": help_center,
+        "privacy_guarantees": privacy_guarantees,
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},

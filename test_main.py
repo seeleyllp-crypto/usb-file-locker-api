@@ -629,7 +629,7 @@ class VaultLinkApiTests(unittest.TestCase):
             payload={"license_key": license_key, "app_version": "2026.07.14.2"},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(workspace["workspace_schema_version"], 2)
+        self.assertEqual(workspace["workspace_schema_version"], 3)
         self.assertTrue(workspace["does_not_activate"])
         self.assertTrue(workspace["cannot_control_customer_pc"])
         self.assertEqual(workspace["summary"]["plan"]["rank"], 5)
@@ -668,6 +668,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(len(workspace["recovery_card"]["steps"]), 8)
         self.assertFalse(workspace["recovery_card"]["contains_key_material"])
         self.assertFalse(workspace["recovery_card"]["contains_customer_identity"])
+        self.assertEqual(workspace["next_best_action"]["position"], 1)
+        self.assertEqual(workspace["next_best_action"]["total_actions"], workspace["action_center"]["count"])
+        self.assertEqual(len(workspace["readiness_lanes"]), 4)
+        self.assertEqual(sum(item["maximum"] for item in workspace["readiness_lanes"]), 100)
+        self.assertEqual(len(workspace["weekly_routine"]["items"]), 7)
+        self.assertEqual(len(workspace["help_center"]["items"]), 6)
+        self.assertTrue(workspace["help_center"]["free_text_not_included"])
+        self.assertEqual(len(workspace["privacy_guarantees"]), 6)
+        self.assertEqual(workspace["customer_snapshot"]["weekly_step_count"], 7)
+        self.assertEqual(
+            sum(item["count"] for item in workspace["entitlement_categories"]),
+            workspace["benefit_map"]["unlocked_count"],
+        )
         self.assertEqual(api.active_device_count(issued["license"]["license_id"]), 0)
         serialized_workspace = json.dumps(workspace)
         for private_value in (

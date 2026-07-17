@@ -62,11 +62,23 @@ def customer_workspace_html(api_version):
     .empty { padding:25px 16px; border:1px dashed var(--line); color:var(--muted); text-align:center; }
     .quick-links { display:flex; flex-wrap:wrap; gap:8px; }
     .quick-links a { background:#202833; }
+    .next-action { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:center; padding:17px; border-left:4px solid var(--yellow); background:var(--panel); }
+    .next-action p { margin:5px 0 0; color:var(--muted); }
+    .next-action a { align-self:center; background:var(--yellow); color:#171100; }
+    .lane { min-width:0; padding:15px; border:1px solid var(--line); border-top:4px solid var(--green); border-radius:6px; background:var(--panel); }
+    .lane.review { border-top-color:var(--yellow); }
+    .lane.action { border-top-color:var(--red); }
+    .lane p { margin:5px 0 0; color:var(--muted); }
+    .routine { display:grid; grid-template-columns:90px minmax(0,1fr) auto; gap:12px; align-items:center; padding:13px 14px; border-bottom:1px solid var(--line); background:var(--panel); }
+    .routine:last-child { border-bottom:0; }
+    .routine strong { color:var(--blue); }
+    .routine p { margin:2px 0 0; color:var(--muted); }
+    .routine a { min-height:34px; }
     footer { border-top:1px solid var(--line); background:#11161b; }
     footer > div { padding:22px 0 28px; color:var(--muted); }
     @media (max-width:1050px) { .metrics { grid-template-columns:repeat(4,1fr); } .metric { border-bottom:1px solid var(--line); } }
     @media (max-width:780px) { header > div,.section-head { align-items:flex-start; flex-direction:column; padding:14px 0; } .section-head p { text-align:left; } .signin { grid-template-columns:1fr 1fr; } .metrics { grid-template-columns:repeat(2,1fr); } }
-    @media (max-width:520px) { .signin { grid-template-columns:1fr; } .metrics { grid-template-columns:1fr; } .metric { border-right:0; } .action { grid-template-columns:auto minmax(0,1fr); } .action .when { grid-column:2; } }
+    @media (max-width:520px) { .signin { grid-template-columns:1fr; } .metrics { grid-template-columns:1fr; } .metric { border-right:0; } .action { grid-template-columns:auto minmax(0,1fr); } .action .when { grid-column:2; } .next-action,.routine { grid-template-columns:1fr; align-items:start; } }
   </style>
 </head>
 <body>
@@ -88,6 +100,16 @@ def customer_workspace_html(api_version):
       <div id="metrics" class="metrics"></div>
 
       <section class="band">
+        <div class="section-head"><h2>Next Best Action</h2><p>The first item after privacy-safe urgency sorting. Completion is never uploaded.</p></div>
+        <div id="nextAction" class="next-action"></div>
+      </section>
+
+      <section class="band">
+        <div class="section-head"><h2>Customer Readiness Lanes</h2><p>Account, signed protection, service, and rank access at a glance.</p></div>
+        <div id="readinessLanes" class="grid"></div>
+      </section>
+
+      <section class="band">
         <div class="section-head"><h2>Workspace Score</h2><p id="scoreSummary">Operational status only, not an antivirus result or certification.</p></div>
         <div id="scoreFactors" class="grid"></div>
       </section>
@@ -101,6 +123,11 @@ def customer_workspace_html(api_version):
       <section class="band">
         <div class="section-head"><h2>30-Day Success Plan</h2><p>Actions grouped into today, this week, and this month.</p></div>
         <div id="successPlan" class="grid"></div>
+      </section>
+
+      <section class="band">
+        <div class="section-head"><h2>Seven-Day Care Routine</h2><p>A repeatable weekly checklist whose progress stays with the customer.</p></div>
+        <div id="weeklyRoutine"></div>
       </section>
 
       <section class="band">
@@ -128,6 +155,16 @@ def customer_workspace_html(api_version):
         <div class="section-head"><h2>Customer Tools</h2><p>Direct routes for updates, recovery, service information, privacy, and support preparation.</p></div>
         <div id="quickLinks" class="quick-links"></div>
       </section>
+
+      <section class="band">
+        <div class="section-head"><h2>Help Paths</h2><p>Start with the right fixed guide before creating a privacy-safe support request.</p></div>
+        <div id="helpPaths" class="grid"></div>
+      </section>
+
+      <section class="band">
+        <div class="section-head"><h2>Privacy Guarantees</h2><p>What this workspace deliberately cannot receive or do.</p></div>
+        <div id="privacyGuarantees" class="grid"></div>
+      </section>
     </div>
   </main>
   <footer><div>API __API_VERSION__. This workspace is informational. It cannot inspect, lock, unlock, execute, install, scan, or modify anything on a customer PC.</div></footer>
@@ -140,7 +177,7 @@ def customer_workspace_html(api_version):
     function metric(label,data) { const item=document.createElement("div"); item.className="metric"; addText(item,"span",label); addText(item,"strong",data); return item; }
     function safeExport() {
       if(!state.payload) return null;
-      return { exported_at_utc:new Date().toISOString(), workspace_schema_version:state.payload.workspace_schema_version, summary:state.payload.summary, workspace_score:state.payload.workspace_score, checkup:state.payload.checkup, action_center:state.payload.action_center, success_plan:state.payload.success_plan, benefit_map:state.payload.benefit_map, timeline:state.payload.timeline, rank_tools:state.payload.rank_tools, upgrade_options:state.payload.upgrade_options, support_pack:state.payload.support_pack, recovery_card:state.payload.recovery_card, completed_action_ids:[...state.completed].sort(), privacy_notice:state.payload.privacy_notice };
+      return { exported_at_utc:new Date().toISOString(), workspace_schema_version:state.payload.workspace_schema_version, summary:state.payload.summary, customer_snapshot:state.payload.customer_snapshot, workspace_score:state.payload.workspace_score, checkup:state.payload.checkup, action_center:state.payload.action_center, next_best_action:state.payload.next_best_action, readiness_lanes:state.payload.readiness_lanes, success_plan:state.payload.success_plan, weekly_routine:state.payload.weekly_routine, benefit_map:state.payload.benefit_map, entitlement_categories:state.payload.entitlement_categories, timeline:state.payload.timeline, rank_tools:state.payload.rank_tools, upgrade_options:state.payload.upgrade_options, help_center:state.payload.help_center, privacy_guarantees:state.payload.privacy_guarantees, support_pack:state.payload.support_pack, recovery_card:state.payload.recovery_card, completed_action_ids:[...state.completed].sort(), privacy_notice:state.payload.privacy_notice };
     }
     function renderMetrics(data) {
       const root=$("metrics"); root.replaceChildren();
@@ -151,6 +188,14 @@ def customer_workspace_html(api_version):
       const root=$("scoreFactors"); root.replaceChildren(); const score=data.workspace_score;
       $("scoreSummary").textContent=`${score.score} of ${score.maximum} | ${score.label.toUpperCase()} | ${score.limitations}`;
       (score.factors||[]).forEach((item)=>{ const card=document.createElement("article"); card.className="tool"; addText(card,"div",`${item.awarded} of ${item.maximum} | ${item.state}`,"eyebrow"); addText(card,"h3",item.title); addText(card,"p",item.detail); root.append(card); });
+    }
+    function renderNextAction(data) {
+      const root=$("nextAction"); root.replaceChildren(); const item=data.next_best_action||{};
+      const body=document.createElement("div"); addText(body,"div",`${value(item.when).toUpperCase()} | ${item.position||1} OF ${item.total_actions||0}`,"eyebrow"); addText(body,"h3",item.title||"Keep the workspace current"); addText(body,"p",item.detail||"Reload after an account or release change."); addText(body,"p",item.reason||"Progress remains local.");
+      const link=document.createElement("a"); link.className="link-button"; link.href=item.target_path||"/workspace"; link.textContent="OPEN GUIDE"; root.append(body,link);
+    }
+    function renderReadiness(data) {
+      const root=$("readinessLanes"); root.replaceChildren(); (data.readiness_lanes||[]).forEach((item)=>{ const card=document.createElement("article"); card.className=`lane ${item.state}`; addText(card,"div",`${item.awarded} OF ${item.maximum} | ${item.percent}%`,"eyebrow"); addText(card,"h3",item.title); addText(card,"p",item.purpose); addText(card,"p",`${item.attention_count} factor(s) need attention.`); root.append(card); });
     }
     function renderActions(data) {
       const root=$("actions"); root.replaceChildren();
@@ -172,6 +217,9 @@ def customer_workspace_html(api_version):
     function renderSuccessPlan(data) {
       const root=$("successPlan"); root.replaceChildren(); [["Today","today"],["This week","this_week"],["This month","this_month"]].forEach(([label,key])=>{ const items=data.success_plan[key]||[]; const card=document.createElement("article"); card.className="tool"; addText(card,"div",`${items.length} action(s)`,"eyebrow"); addText(card,"h3",label); const list=document.createElement("ul"); if(items.length)items.forEach(item=>addText(list,"li",item.title));else addText(list,"li","No actions in this phase."); card.append(list); root.append(card); });
     }
+    function renderRoutine(data) {
+      const root=$("weeklyRoutine"); root.replaceChildren(); ((data.weekly_routine||{}).items||[]).forEach((item)=>{ const row=document.createElement("div"); row.className="routine"; addText(row,"strong",item.day); const body=document.createElement("div"); addText(body,"h3",item.title); addText(body,"p",item.detail); const link=document.createElement("a"); link.className="link-button"; link.href=item.target_path; link.textContent="OPEN"; row.append(body,link); root.append(row); });
+    }
     function renderBenefits(data) {
       const root=$("benefits"); root.replaceChildren(); const map=data.benefit_map; const current=document.createElement("article"); current.className="tool"; addText(current,"div",`${map.unlocked_count} included benefit(s)`,"eyebrow"); addText(current,"h3",`Rank ${map.current_rank.rank} - ${map.current_rank.name}`); const currentList=document.createElement("ul"); (map.unlocked||[]).forEach(item=>addText(currentList,"li",item.title)); current.append(currentList); root.append(current); const next=map.next_rank; const future=document.createElement("article"); future.className="tool"; if(next){addText(future,"div",`${next.added_benefits.length} added benefit(s)`,"eyebrow");addText(future,"h3",`Next: Rank ${next.plan.rank} - ${next.plan.name}`);const list=document.createElement("ul");next.added_benefits.forEach(item=>addText(list,"li",item.title));future.append(list);}else{addText(future,"div","Highest rank","eyebrow");addText(future,"h3","All rank benefits reached");addText(future,"p","No higher VaultLink rank is currently listed.");} root.append(future);
     }
@@ -186,7 +234,13 @@ def customer_workspace_html(api_version):
     function renderLinks(data) {
       const root=$("quickLinks"); root.replaceChildren(); (data.quick_links||[]).forEach((item)=>{ const link=document.createElement("a"); link.className="link-button"; link.href=item.path; link.textContent=item.label; root.append(link); });
     }
-    function render(data) { state.payload=data; state.completed=new Set(); state.actionFilter="all"; renderMetrics(data); renderScore(data); renderActions(data); renderSuccessPlan(data); renderBenefits(data); renderTools(data); renderTimeline(data); renderUpgrades(data); renderLinks(data); $("workspace").hidden=false; }
+    function renderHelp(data) {
+      const root=$("helpPaths"); root.replaceChildren(); ((data.help_center||{}).items||[]).forEach((item)=>{ const card=document.createElement("article"); card.className="tool"; addText(card,"div",item.support_category,"eyebrow"); addText(card,"h3",item.title); addText(card,"p",item.first_step); const link=document.createElement("a"); link.className="link-button"; link.href=item.target_path; link.textContent="OPEN GUIDE"; card.append(link); root.append(card); });
+    }
+    function renderPrivacy(data) {
+      const root=$("privacyGuarantees"); root.replaceChildren(); (data.privacy_guarantees||[]).forEach((text,index)=>{ const card=document.createElement("article"); card.className="surface"; addText(card,"div",`BOUNDARY ${index+1}`,"eyebrow"); addText(card,"p",text); root.append(card); });
+    }
+    function render(data) { state.payload=data; state.completed=new Set(); state.actionFilter="all"; renderMetrics(data); renderNextAction(data); renderReadiness(data); renderScore(data); renderActions(data); renderSuccessPlan(data); renderRoutine(data); renderBenefits(data); renderTools(data); renderTimeline(data); renderUpgrades(data); renderLinks(data); renderHelp(data); renderPrivacy(data); $("workspace").hidden=false; }
     async function loadWorkspace() {
       const licenseKey=$("licenseKey").value.trim(); if(!licenseKey){ setStatus("Enter a license key.","bad"); return; }
       $("load").disabled=true; setStatus("Building your privacy-safe workspace...");
