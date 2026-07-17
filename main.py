@@ -22,6 +22,7 @@ from data_control_catalog import fixed_data_classes, fixed_data_flow_steps, fixe
 from data_control_page import customer_data_control_html
 from customer_experience_pages import (
     customer_answers_html,
+    customer_decision_wizard_html,
     customer_diagnostics_center_html,
     customer_incident_response_html,
     customer_recovery_drills_html,
@@ -31,6 +32,7 @@ from customer_experience_pages import (
     owner_trust_center_html,
 )
 from customer_answers_catalog import fixed_customer_answer_categories, fixed_customer_answers
+from customer_decision_catalog import fixed_decision_nodes, fixed_decision_outcomes, fixed_decision_scenarios
 from recovery_drill_catalog import fixed_recovery_drills
 from recovery_kit_catalog import fixed_emergency_runbooks, fixed_recovery_kit_profiles, fixed_recovery_kit_sections
 from recovery_kit_page import customer_recovery_kit_html
@@ -49,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.42.0"
+API_VERSION = "0.43.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1829,6 +1831,7 @@ def docs_payload():
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
             {"method": "GET", "path": "/QNA", "purpose": "Searchable fixed customer answer center with current-tab-only saved answers"},
+            {"method": "GET", "path": "/decision", "purpose": "Branching recovery decision wizard with current-tab-only yes-or-no choices"},
             {"method": "GET", "path": "/maintenance", "purpose": "Public thirty-two-task maintenance planner with priority sorting, four cadence horizons, coverage dashboard, and current-tab-only review"},
             {"method": "GET", "path": "/retention", "purpose": "Public fixed storage map, retention practices, cleanup boundaries, and current-tab-only review receipt"},
             {"method": "GET", "path": "/data-control", "purpose": "Public fixed data map, protection boundaries, retention guidance, and current-tab-only review receipt"},
@@ -1859,6 +1862,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/legal", "purpose": "Public legal-document version and review status"},
             {"method": "GET", "path": "/api/v1/service-status", "purpose": "Public read-only service status"},
             {"method": "GET", "path": "/api/v1/customer-answers", "purpose": "Public thirty-answer catalog with no question or customer data collection"},
+            {"method": "GET", "path": "/api/v1/customer-decisions", "purpose": "Public seven-situation recovery decision catalog with no customer data collection"},
             {"method": "GET", "path": "/api/v1/security", "purpose": "Public security and licensing notes"},
             {"method": "GET", "path": "/api/v1/trust-center", "purpose": "Public privacy-safe trust posture and recovery boundaries"},
             {"method": "GET", "path": "/api/v1/maintenance-guide", "purpose": "Public eight-category, thirty-two-task, six-routine, four-horizon maintenance catalog with no customer progress collection"},
@@ -1965,6 +1969,36 @@ def customer_answers_payload():
             "Search text, selected category, opened answers, and saved-answer choices stay only in the current browser tab and are never uploaded.",
             "Every answer and next-step route is fixed in the reviewed server catalog; answer text cannot execute commands or control a customer PC.",
             "The answer center is guidance, not antivirus analysis, legal advice, compliance certification, or proof that a problem is resolved.",
+        ],
+        "server_time_utc": utc_now(),
+    }
+
+
+def customer_decisions_payload():
+    scenarios = fixed_decision_scenarios()
+    nodes = fixed_decision_nodes()
+    outcomes = fixed_decision_outcomes()
+    return {
+        "ok": True,
+        "schema_version": 1,
+        "api_version": API_VERSION,
+        "title": "VaultLink Recovery Decision Wizard",
+        "scenario_count": len(scenarios),
+        "decision_count": len(nodes),
+        "outcome_count": len(outcomes),
+        "scenarios": scenarios,
+        "nodes": nodes,
+        "outcomes": outcomes,
+        "choice_storage": "current_browser_tab_only",
+        "accepts_free_form_input": False,
+        "collects_customer_data": False,
+        "controls_customer_pc": False,
+        "privacy_boundaries": [
+            "The decision API is public and accepts no request body, license key, identity, machine identity, file, path, filename, PIN, USB secret, local result, or free-form problem description.",
+            "Selected situation, yes-or-no choices, decision trail, and outcome stay only in the current browser tab and are never uploaded or stored in browser storage.",
+            "Every decision, outcome, action step, warning, and guide route is fixed in the reviewed server catalog.",
+            "The wizard cannot inspect, scan, execute, lock, unlock, install, delete, quarantine, or control a customer PC.",
+            "A decision result is guidance, not antivirus analysis, compliance certification, a recovery guarantee, or proof that the problem is resolved.",
         ],
         "server_time_utc": utc_now(),
     }
@@ -6758,6 +6792,7 @@ def customer_workspace(payload):
         "customer_glossary": customer_glossary,
         "support_categories": ["licensing", "update", "recovery", "security", "privacy", "other"],
         "quick_links": [
+            {"id": "decision", "label": "RECOVERY DECISION WIZARD", "path": "/decision"},
             {"id": "answers", "label": "CUSTOMER ANSWERS", "path": "/QNA"},
             {"id": "license", "label": "LICENSE DETAILS", "path": "/customer"},
             {"id": "maintenance", "label": "SECURITY MAINTENANCE", "path": "/maintenance"},
@@ -6940,6 +6975,7 @@ def admin_customer_experience():
 
     customer_surfaces = [
         {"id": "workspace", "label": "Customer Workspace", "path": "/workspace", "purpose": "Unified private customer action center", "ready": True},
+        {"id": "decision", "label": "Recovery Decision Wizard", "path": "/decision", "purpose": "Seven fixed situations, twenty-one decision points, and current-tab-only branching", "ready": customer_decisions_payload()["decision_count"] == 21},
         {"id": "answers", "label": "Customer Answers", "path": "/QNA", "purpose": "Thirty fixed answers, safe next steps, and current-tab-only search and saved choices", "ready": customer_answers_payload()["count"] == 30},
         {"id": "maintenance", "label": "Security Maintenance", "path": "/maintenance", "purpose": "Thirty-two fixed tasks, six routines, four cadence horizons, priority review, and current-tab-only coverage", "ready": maintenance_guide_payload()["task_count"] == 32},
         {"id": "retention", "label": "Storage & Retention", "path": "/retention", "purpose": "Eight fixed storage areas, ten retention practices, and current-tab-only review", "ready": retention_guide_payload()["practice_count"] == 10},
@@ -9863,6 +9899,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path in {"/QNA", "/qna", "/answers"}:
             self.send_html(customer_answers_html(API_VERSION))
             return
+        if path in {"/decision", "/wizard"}:
+            self.send_html(customer_decision_wizard_html(API_VERSION))
+            return
         if path == "/maintenance":
             self.send_html(customer_maintenance_html(API_VERSION))
             return
@@ -9960,6 +9999,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_license_center_enabled": True,
                     "customer_workspace_enabled": True,
                     "customer_answers_enabled": True,
+                    "customer_decision_wizard_enabled": True,
                     "security_maintenance_center_enabled": True,
                     "storage_retention_center_enabled": True,
                     "data_control_center_enabled": True,
@@ -10015,6 +10055,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/customer-answers":
             self.send_json(customer_answers_payload())
             return
+        if path == "/api/v1/customer-decisions":
+            self.send_json(customer_decisions_payload())
+            return
         if path == "/api/v1/trust-center":
             self.send_json(trust_center_payload())
             return
@@ -10069,6 +10112,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "privacy-safe customer checkup for license, seat, service, update, and rank-tool status",
                         "unified privacy-safe customer workspace with a session-only action checklist",
                         "public fixed customer answer catalog with current-tab-only search and saved-answer choices",
+                        "public fixed recovery decision wizard with current-tab-only yes-or-no choices and action-plan export",
                         "public fixed security maintenance guidance with current-tab-only review and no remote task completion or PC control",
                         "public fixed storage and retention guidance with current-tab-only review and no remote cleanup capability",
                         "admin-only aggregate customer-experience and seven-rank coverage console",
@@ -10149,6 +10193,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "Customer timelines are read-only, and renewal calendar files are created locally without calendar-account access.",
                         "Customer Workspace combines existing read-only checks and never stores the license key or checklist progress.",
                         "Customer Answers accepts no question text or customer data; search and saved-answer choices stay in the current browser tab.",
+                        "Recovery Decision Wizard accepts no free-form input or customer data; yes-or-no choices and the resulting action plan stay in the current browser tab.",
                         "Data Control publishes a fixed data map, receives no customer inventory or review progress, and cannot inspect a customer PC.",
                         "The owner customer-experience console exposes aggregate counts only and never returns customer identity or license proof.",
                         "Update Center does not store entered versions, and selected ZIP files are hashed only in the browser.",

@@ -640,7 +640,8 @@ class VaultLinkApiTests(unittest.TestCase):
             sum(workspace["action_center"]["counts"].values()),
             workspace["action_center"]["count"],
         )
-        self.assertEqual(len(workspace["quick_links"]), 16)
+        self.assertEqual(len(workspace["quick_links"]), 17)
+        self.assertTrue(any(item["path"] == "/decision" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/QNA" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/maintenance" for item in workspace["quick_links"]))
         self.assertTrue(any(item["path"] == "/retention" for item in workspace["quick_links"]))
@@ -746,7 +747,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(experience["experience_schema_version"], 2)
         self.assertEqual(len(experience["rank_coverage"]), 7)
-        self.assertEqual(len(experience["customer_surfaces"]), 17)
+        self.assertEqual(len(experience["customer_surfaces"]), 18)
+        self.assertTrue(any(item["path"] == "/decision" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/QNA" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/maintenance" for item in experience["customer_surfaces"]))
         self.assertTrue(any(item["path"] == "/retention" for item in experience["customer_surfaces"]))
@@ -763,7 +765,7 @@ class VaultLinkApiTests(unittest.TestCase):
             set(experience["renewal_health"]),
             {"expiring_7_days", "expiring_30_days", "no_expiration", "expired"},
         )
-        self.assertEqual(experience["surface_summary"]["total"], 17)
+        self.assertEqual(experience["surface_summary"]["total"], 18)
         serialized_experience = json.dumps(experience)
         for private_value in (
             "WORKSPACE-PRIVATE-CUSTOMER-8821",
@@ -788,7 +790,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.42.0")
+        self.assertEqual(payload["api_version"], "0.43.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -853,6 +855,132 @@ class VaultLinkApiTests(unittest.TestCase):
         health_status, health = self.call("/health")
         self.assertEqual(health_status, 200)
         self.assertTrue(health["customer_answers_enabled"])
+
+    def test_customer_decision_wizard_has_complete_fixed_branches_and_collects_nothing(self):
+        status, payload = self.call("/api/v1/customer-decisions")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["api_version"], "0.43.0")
+        self.assertEqual(payload["scenario_count"], 7)
+        self.assertEqual(payload["decision_count"], 21)
+        self.assertEqual(payload["outcome_count"], 28)
+        self.assertEqual(payload["choice_storage"], "current_browser_tab_only")
+        self.assertFalse(payload["accepts_free_form_input"])
+        self.assertFalse(payload["collects_customer_data"])
+        self.assertFalse(payload["controls_customer_pc"])
+
+        scenarios = payload["scenarios"]
+        nodes = payload["nodes"]
+        outcomes = payload["outcomes"]
+        scenario_ids = {item["id"] for item in scenarios}
+        node_map = {item["id"]: item for item in nodes}
+        outcome_map = {item["id"]: item for item in outcomes}
+        self.assertEqual(len(scenario_ids), 7)
+        self.assertEqual(len(node_map), 21)
+        self.assertEqual(len(outcome_map), 28)
+        self.assertEqual(sum(len(item["steps"]) for item in outcomes), 112)
+
+        allowed_paths = {
+            "/QNA",
+            "/backup-verification",
+            "/customer",
+            "/diagnostics",
+            "/incident-response",
+            "/maintenance",
+            "/readiness",
+            "/recovery-drills",
+            "/recovery-kit",
+            "/status",
+            "/trust",
+            "/update",
+        }
+        for scenario in scenarios:
+            self.assertEqual(
+                set(scenario),
+                {"id", "title", "summary", "start_node_id", "max_decisions"},
+            )
+            self.assertEqual(scenario["max_decisions"], 3)
+            self.assertIn(scenario["start_node_id"], node_map)
+            self.assertEqual(
+                sum(item["scenario_id"] == scenario["id"] for item in nodes),
+                3,
+            )
+            self.assertEqual(
+                sum(item["scenario_id"] == scenario["id"] for item in outcomes),
+                4,
+            )
+
+        for node in nodes:
+            self.assertEqual(
+                set(node),
+                {"id", "scenario_id", "question", "explanation", "yes", "no"},
+            )
+            self.assertIn(node["scenario_id"], scenario_ids)
+            self.assertTrue(node["question"].endswith("?"))
+            for answer in ("yes", "no"):
+                target = node[answer]
+                self.assertEqual(set(target), {"target_type", "target_id"})
+                self.assertIn(target["target_type"], {"node", "outcome"})
+                target_map = node_map if target["target_type"] == "node" else outcome_map
+                self.assertIn(target["target_id"], target_map)
+
+        for outcome in outcomes:
+            self.assertEqual(
+                set(outcome),
+                {
+                    "id",
+                    "scenario_id",
+                    "title",
+                    "priority",
+                    "summary",
+                    "steps",
+                    "target_path",
+                    "target_label",
+                    "warning",
+                },
+            )
+            self.assertIn(outcome["scenario_id"], scenario_ids)
+            self.assertIn(outcome["priority"], {"normal", "watch", "urgent"})
+            self.assertEqual(len(outcome["steps"]), 4)
+            self.assertIn(outcome["target_path"], allowed_paths)
+            self.assertTrue(outcome["warning"])
+
+        reached_nodes = set()
+        reached_outcomes = set()
+
+        def walk(target_type, target_id):
+            if target_type == "outcome":
+                reached_outcomes.add(target_id)
+                return
+            if target_id in reached_nodes:
+                return
+            reached_nodes.add(target_id)
+            node = node_map[target_id]
+            walk(node["yes"]["target_type"], node["yes"]["target_id"])
+            walk(node["no"]["target_type"], node["no"]["target_id"])
+
+        for scenario in scenarios:
+            walk("node", scenario["start_node_id"])
+        self.assertEqual(reached_nodes, set(node_map))
+        self.assertEqual(reached_outcomes, set(outcome_map))
+
+        for path in ("/decision", "/wizard"):
+            page_status, headers, page = self.call_bytes(path)
+            self.assertEqual(page_status, 200)
+            self.assertIn("text/html", headers["Content-Type"])
+            page_text = page.decode("utf-8")
+            self.assertIn("VaultLink Recovery Decision Wizard", page_text)
+            self.assertIn("/api/v1/customer-decisions", page_text)
+            self.assertIn("BACK ONE ANSWER", page_text)
+            self.assertIn("EXPORT ACTION PLAN", page_text)
+            self.assertIn("current browser tab", page_text)
+            self.assertNotIn("localStorage", page_text)
+            self.assertNotIn("sessionStorage", page_text)
+            self.assertNotIn("<input", page_text)
+
+        health_status, health = self.call("/health")
+        self.assertEqual(health_status, 200)
+        self.assertTrue(health["customer_decision_wizard_enabled"])
 
     def test_public_and_owner_trust_centers_are_scored_private_and_protected(self):
         manifest, _package = self.publish_test_update()
@@ -1905,8 +2033,8 @@ class VaultLinkApiTests(unittest.TestCase):
             report["score"]["passed"] + report["score"]["actions"],
             report["score"]["total"],
         )
-        self.assertEqual(report["metrics"]["total_surfaces"], 17)
-        self.assertEqual(len(report["customer_surfaces"]), 17)
+        self.assertEqual(report["metrics"]["total_surfaces"], 18)
+        self.assertEqual(len(report["customer_surfaces"]), 18)
         self.assertEqual(len(report["storage_matrix"]), 5)
         self.assertEqual(
             set(report["severity_summary"]),

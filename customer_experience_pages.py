@@ -91,7 +91,7 @@ def customer_workspace_html(api_version):
   </style>
 </head>
 <body>
-  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/QNA">ANSWERS</a><a href="/customer">LICENSE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
+  <header><div><div class="brand">VaultLink Customer Workspace</div><nav><a href="/decision">WIZARD</a><a href="/QNA">ANSWERS</a><a href="/customer">LICENSE</a><a href="/maintenance">MAINTENANCE</a><a href="/retention">RETENTION</a><a href="/data-control">DATA</a><a href="/recovery-kit">KIT</a><a href="/backup-verification">BACKUPS</a><a href="/recovery-drills">DRILLS</a><a href="/incident-response">INCIDENT</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/trust">TRUST</a><a href="/update">UPDATE</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a><a href="/shop">SHOP</a></nav></div></header>
   <main>
     <h1>Your VaultLink workspace</h1>
     <p class="lead">One check builds your account overview, prioritized action plan, rank tools, release status, renewal timeline, upgrade path, and support routes.</p>
@@ -485,6 +485,221 @@ def customer_answers_html(api_version):
     $("clearSaved").addEventListener("click",()=>{state.saved.clear();state.savedOnly=false;$("savedOnly").classList.remove("active");renderAnswers();setStatus("Current-tab saved answers cleared.","good");});
     $("export").addEventListener("click",exportSaved);
     $("print").addEventListener("click",()=>window.print());
+    load();
+  </script>
+</body>
+</html>'''
+    return page.replace("__API_VERSION__", html.escape(str(api_version), quote=True))
+
+
+def customer_decision_wizard_html(api_version):
+    page = r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultLink Recovery Decision Wizard</title>
+  <style>
+    :root { --bg:#0d1115; --band:#141a20; --panel:#1b2229; --field:#090d11; --line:#35414c; --text:#f4f7f8; --muted:#aab5bf; --green:#65df88; --blue:#67bde8; --yellow:#ffd166; --red:#ff7b72; }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    header { border-bottom:1px solid var(--line); background:#11161b; }
+    header > div, main, footer > div { width:min(1120px,calc(100% - 32px)); margin:0 auto; }
+    header > div { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-size:17px; font-weight:800; }
+    nav { display:flex; flex-wrap:wrap; gap:8px; }
+    nav a, .guide-link { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 11px; border:1px solid var(--line); border-radius:5px; color:var(--text); text-decoration:none; font-weight:800; }
+    main { padding:28px 0 50px; }
+    h1 { margin:0; font-size:32px; line-height:1.1; }
+    h2 { margin:0; font-size:19px; } h3 { margin:0; font-size:16px; }
+    .lead { max-width:780px; margin:8px 0 0; color:var(--muted); font-size:15px; }
+    .privacy { margin-top:14px; padding:12px 14px; border-left:4px solid var(--blue); background:#151d24; color:var(--muted); }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    button { min-height:40px; padding:0 13px; border:1px solid var(--line); border-radius:5px; background:#29323c; color:var(--text); font:800 12px "Segoe UI",Arial,sans-serif; cursor:pointer; }
+    button:disabled { cursor:not-allowed; opacity:.48; }
+    .primary { border-color:var(--blue); background:var(--blue); color:#071118; }
+    .yes { border-color:var(--green); background:var(--green); color:#071109; }
+    .no { border-color:var(--yellow); background:var(--yellow); color:#171203; }
+    .status { min-height:22px; margin-top:9px; color:var(--muted); }
+    .status.good { color:var(--green); } .status.bad { color:var(--red); }
+    .metrics { display:grid; grid-template-columns:repeat(3,minmax(130px,1fr)); margin-top:18px; border:1px solid var(--line); }
+    .metric { min-width:0; padding:14px; border-right:1px solid var(--line); background:var(--band); }
+    .metric:last-child { border-right:0; }
+    .metric span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .metric strong { display:block; margin-top:4px; font-size:19px; }
+    .section-head { display:flex; align-items:end; justify-content:space-between; gap:14px; padding:22px 0 10px; border-bottom:1px solid var(--line); }
+    .section-head p { margin:0; color:var(--muted); text-align:right; }
+    .scenarios { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding-top:12px; }
+    .scenarios[hidden] { display:none; }
+    .scenario { min-width:0; min-height:104px; padding:15px; border-left:4px solid var(--blue); background:var(--panel); text-align:left; }
+    .scenario span { display:block; margin-top:7px; color:var(--muted); font-weight:500; line-height:1.45; }
+    .workspace { margin-top:16px; border:1px solid var(--line); background:var(--panel); }
+    .workspace[hidden], .outcome[hidden] { display:none; }
+    .workspace-head { display:flex; align-items:start; justify-content:space-between; gap:14px; padding:16px; border-bottom:1px solid var(--line); }
+    .eyebrow { color:var(--blue); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .question { padding:22px 16px; }
+    .question h2 { max-width:760px; margin-top:5px; font-size:24px; line-height:1.25; }
+    .question p { max-width:800px; margin:10px 0 0; color:var(--muted); }
+    .choices { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; }
+    .choices button { min-height:54px; font-size:14px; }
+    .trail { padding:0 16px 16px; }
+    .trail ol { margin:8px 0 0; padding-left:20px; color:var(--muted); }
+    .trail li { margin:5px 0; }
+    .outcome { margin-top:16px; padding:18px; border:1px solid var(--line); border-left:5px solid var(--green); background:var(--band); }
+    .outcome.watch { border-left-color:var(--yellow); } .outcome.urgent { border-left-color:var(--red); }
+    .outcome p { color:var(--muted); }
+    .outcome ol { padding-left:21px; color:var(--muted); }
+    .outcome li { margin:6px 0; }
+    .warning { padding:10px 12px; border:1px solid var(--line); background:var(--field); color:var(--yellow); }
+    .outcome-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    footer { border-top:1px solid var(--line); background:#11161b; color:var(--muted); }
+    footer > div { padding:18px 0; }
+    @media(max-width:720px) {
+      header > div { align-items:flex-start; flex-direction:column; padding:14px 0; }
+      .scenarios { grid-template-columns:1fr; }
+      .metrics { grid-template-columns:1fr; }
+      .metric { border-right:0; border-bottom:1px solid var(--line); }
+      .metric:last-child { border-bottom:0; }
+      .section-head,.workspace-head { align-items:flex-start; flex-direction:column; }
+      .section-head p { text-align:left; }
+      .choices { grid-template-columns:1fr; }
+    }
+    @media print {
+      header,.toolbar,.privacy,.scenarios,.choices,.workspace-head,footer,.outcome-actions { display:none!important; }
+      body { background:#fff; color:#111; }
+      main { width:100%; padding:0; }
+      .workspace,.outcome { border-color:#999; background:#fff; }
+      .question p,.trail ol,.outcome p,.outcome ol { color:#222; }
+    }
+  </style>
+</head>
+<body>
+  <header><div><div class="brand">VaultLink Recovery Decision Wizard</div><nav><a href="/workspace">WORKSPACE</a><a href="/QNA">ANSWERS</a><a href="/diagnostics">DIAGNOSTICS</a><a href="/readiness">RECOVERY</a><a href="/status">STATUS</a></nav></div></header>
+  <main>
+    <h1>Choose the safest next move</h1>
+    <p class="lead">Pick a situation and answer up to three fixed yes-or-no questions. VaultLink will route you to a reviewed action plan without inspecting your PC.</p>
+    <div class="privacy">Choices, decision history, and the result stay only in the current browser tab. This page accepts no typed problem description, license key, identity, file, path, PIN, USB secret, or local scan result.</div>
+    <div class="toolbar">
+      <button id="refresh" type="button" class="primary">REFRESH WIZARD</button>
+      <button id="back" type="button" disabled>BACK ONE ANSWER</button>
+      <button id="restart" type="button" disabled>CHOOSE ANOTHER SITUATION</button>
+      <button id="copy" type="button" disabled>COPY ACTION PLAN</button>
+      <button id="export" type="button" disabled>EXPORT ACTION PLAN</button>
+      <button id="print" type="button" disabled>PRINT PLAN</button>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite">Loading fixed decision paths...</div>
+    <section class="metrics" aria-label="Wizard catalog totals">
+      <div class="metric"><span>Situations</span><strong id="scenarioCount">0</strong></div>
+      <div class="metric"><span>Decision points</span><strong id="nodeCount">0</strong></div>
+      <div class="metric"><span>Fixed outcomes</span><strong id="outcomeCount">0</strong></div>
+    </section>
+    <div class="section-head"><div><h2>What is happening?</h2></div><p>Select one fixed situation. Do not enter secrets or personal details.</p></div>
+    <section id="scenarios" class="scenarios" aria-label="Customer situations"></section>
+    <section id="workspace" class="workspace" hidden>
+      <div class="workspace-head"><div><div class="eyebrow" id="scenarioPosition">SITUATION</div><h3 id="scenarioTitle"></h3></div><div class="eyebrow" id="decisionProgress"></div></div>
+      <div class="question">
+        <div class="eyebrow">YES OR NO</div>
+        <h2 id="questionText"></h2>
+        <p id="questionHelp"></p>
+        <div class="choices"><button id="yes" type="button" class="yes">YES</button><button id="no" type="button" class="no">NO</button></div>
+      </div>
+      <div class="trail"><div class="eyebrow">CURRENT-TAB DECISION TRAIL</div><ol id="trail"></ol></div>
+    </section>
+    <section id="outcome" class="outcome" hidden>
+      <div class="eyebrow" id="outcomePriority"></div>
+      <h2 id="outcomeTitle"></h2>
+      <p id="outcomeSummary"></p>
+      <ol id="outcomeSteps"></ol>
+      <div id="outcomeWarning" class="warning"></div>
+      <div class="outcome-actions"><a id="guideLink" class="guide-link" href="/workspace">OPEN GUIDE</a></div>
+    </section>
+  </main>
+  <footer><div>API __API_VERSION__. Fixed guidance only. The wizard cannot inspect, scan, lock, unlock, install, delete, quarantine, or control a customer PC.</div></footer>
+  <script>
+    const $=id=>document.getElementById(id);
+    const state={payload:null,scenario:null,currentNode:null,outcome:null,history:[]};
+    const nodeMap=()=>new Map((state.payload?.nodes||[]).map(item=>[item.id,item]));
+    const outcomeMap=()=>new Map((state.payload?.outcomes||[]).map(item=>[item.id,item]));
+    function setStatus(message,tone=""){const el=$("status");el.textContent=message;el.className=`status ${tone}`.trim();}
+    function setButtons(){
+      const hasScenario=Boolean(state.scenario);const hasOutcome=Boolean(state.outcome);
+      $("back").disabled=!hasScenario||state.history.length===0;
+      $("restart").disabled=!hasScenario;
+      $("copy").disabled=!hasOutcome;$("export").disabled=!hasOutcome;$("print").disabled=!hasOutcome;
+    }
+    function renderCatalog(){
+      $("scenarioCount").textContent=state.payload?.scenario_count||0;
+      $("nodeCount").textContent=state.payload?.decision_count||0;
+      $("outcomeCount").textContent=state.payload?.outcome_count||0;
+      const root=$("scenarios");root.replaceChildren();
+      (state.payload?.scenarios||[]).forEach((scenario,index)=>{
+        const button=document.createElement("button");button.type="button";button.className="scenario";
+        button.dataset.scenarioId=scenario.id;button.textContent=scenario.title;
+        const detail=document.createElement("span");detail.textContent=scenario.summary;button.append(detail);
+        button.addEventListener("click",()=>selectScenario(scenario,index));root.append(button);
+      });
+    }
+    function selectScenario(scenario,index){
+      state.scenario=scenario;state.currentNode=scenario.start_node_id;state.outcome=null;state.history=[];
+      $("scenarioPosition").textContent=`SITUATION ${index+1} OF ${state.payload.scenario_count}`;
+      $("scenarioTitle").textContent=scenario.title;$("scenarios").hidden=true;$("workspace").hidden=false;$("outcome").hidden=true;
+      renderDecision();setButtons();setStatus("Answer only the fixed yes-or-no question shown. Choices stay in this tab.","good");
+    }
+    function renderDecision(){
+      const node=nodeMap().get(state.currentNode);if(!node){setStatus("This fixed decision path is unavailable.","bad");return;}
+      $("questionText").textContent=node.question;$("questionHelp").textContent=node.explanation;
+      $("decisionProgress").textContent=`DECISION ${state.history.length+1} OF UP TO ${state.scenario.max_decisions}`;
+      const trail=$("trail");trail.replaceChildren();
+      state.history.forEach(item=>{const row=document.createElement("li");row.textContent=`${item.question} ${item.answer.toUpperCase()}`;trail.append(row);});
+      if(!state.history.length){const row=document.createElement("li");row.textContent="No answers recorded yet.";trail.append(row);}
+    }
+    function choose(answer){
+      const node=nodeMap().get(state.currentNode);if(!node)return;
+      state.history.push({node_id:node.id,question:node.question,answer});
+      const target=node[answer];
+      if(target.target_type==="node"){state.currentNode=target.target_id;renderDecision();setButtons();return;}
+      state.outcome=outcomeMap().get(target.target_id);renderOutcome();
+    }
+    function renderOutcome(){
+      const item=state.outcome;if(!item){setStatus("This fixed outcome is unavailable.","bad");return;}
+      $("workspace").hidden=true;$("outcome").hidden=false;$("outcome").className=`outcome ${item.priority}`;
+      $("outcomePriority").textContent=`${item.priority.toUpperCase()} ACTION PLAN`;
+      $("outcomeTitle").textContent=item.title;$("outcomeSummary").textContent=item.summary;
+      const steps=$("outcomeSteps");steps.replaceChildren();item.steps.forEach(step=>{const row=document.createElement("li");row.textContent=step;steps.append(row);});
+      $("outcomeWarning").textContent=item.warning;$("guideLink").href=item.target_path;$("guideLink").textContent=item.target_label;
+      setButtons();setStatus("Fixed action plan ready. Review it before copying, exporting, or printing.","good");
+    }
+    function replay(){
+      state.outcome=null;state.currentNode=state.scenario.start_node_id;
+      for(const item of state.history){const node=nodeMap().get(state.currentNode);const target=node?.[item.answer];if(!target)break;if(target.target_type==="node")state.currentNode=target.target_id;else state.outcome=outcomeMap().get(target.target_id);}
+      if(state.outcome)renderOutcome();else{$("workspace").hidden=false;$("outcome").hidden=true;renderDecision();setButtons();}
+    }
+    function back(){if(!state.history.length)return;state.history.pop();replay();setStatus("Last current-tab answer removed.","good");}
+    function restart(){
+      state.scenario=null;state.currentNode=null;state.outcome=null;state.history=[];
+      $("scenarios").hidden=false;$("workspace").hidden=true;$("outcome").hidden=true;setButtons();setStatus("Choose another fixed situation.");
+    }
+    function safePlan(){
+      if(!state.outcome||!state.scenario)return null;
+      return {schema_version:1,report_type:"VaultLink Recovery Decision Plan",generated_at_utc:new Date().toISOString(),api_version:state.payload?.api_version||"",scenario_id:state.scenario.id,scenario_title:state.scenario.title,decision_history:state.history.map(item=>({node_id:item.node_id,answer:item.answer})),outcome:{id:state.outcome.id,title:state.outcome.title,priority:state.outcome.priority,summary:state.outcome.summary,steps:state.outcome.steps,target_path:state.outcome.target_path,target_label:state.outcome.target_label,warning:state.outcome.warning},privacy_notice:"This fixed action plan contains no license key, identity, machine identity, file, path, filename, PIN, USB secret, local scan result, file content, or free-form problem description."};
+    }
+    async function copyPlan(){
+      const plan=safePlan();if(!plan)return;
+      const lines=[plan.scenario_title,`${plan.outcome.priority.toUpperCase()}: ${plan.outcome.title}`,plan.outcome.summary,"",...plan.outcome.steps.map((step,index)=>`${index+1}. ${step}`),"",plan.outcome.warning,`Guide: ${location.origin}${plan.outcome.target_path}`];
+      try{await navigator.clipboard.writeText(lines.join("\n"));setStatus("Fixed action plan copied.","good");}catch(_error){setStatus("Browser clipboard access was blocked.","bad");}
+    }
+    function exportPlan(){
+      const plan=safePlan();if(!plan)return;const blob=new Blob([JSON.stringify(plan,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="vaultlink-recovery-decision-plan.json";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus("Privacy-safe action plan exported locally.","good");
+    }
+    async function load(){
+      $("refresh").disabled=true;setStatus("Loading fixed decision paths...");
+      try{const response=await fetch("/api/v1/customer-decisions",{headers:{"Accept":"application/json"},cache:"no-store",redirect:"error"});const data=await response.json();if(!response.ok)throw new Error(data.message||"Decision wizard could not be loaded.");state.payload=data;restart();renderCatalog();setStatus(`${data.scenario_count} situations and ${data.decision_count} decision points loaded.`,"good");}
+      catch(error){state.payload=null;$("scenarios").replaceChildren();setStatus(error.message||"Decision wizard could not be loaded.","bad");}
+      finally{$("refresh").disabled=false;}
+    }
+    $("refresh").addEventListener("click",load);$("back").addEventListener("click",back);$("restart").addEventListener("click",restart);
+    $("yes").addEventListener("click",()=>choose("yes"));$("no").addEventListener("click",()=>choose("no"));
+    $("copy").addEventListener("click",copyPlan);$("export").addEventListener("click",exportPlan);$("print").addEventListener("click",()=>window.print());
     load();
   </script>
 </body>
