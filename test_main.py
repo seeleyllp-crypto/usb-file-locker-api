@@ -206,7 +206,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.52.0")
+        self.assertEqual(api.API_VERSION, "0.53.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -234,7 +234,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("locally sealed receipts", companion["purpose"])
         self.assertIn("inspect or compare one sanitized prior receipt", companion["purpose"])
         self.assertIn("bounded non-recursive aggregate receipt-folder audit", companion["purpose"])
+        self.assertIn("searchable", companion["purpose"])
+        self.assertIn("fixed-filter", companion["purpose"])
+        self.assertIn("deterministic-sort", companion["purpose"])
         self.assertIn("clearable local-only filename review", companion["purpose"])
+        self.assertIn("search text", companion["purpose"])
         self.assertIn("without extracting", companion["purpose"])
         self.assertIn("uploading", companion["purpose"])
         self.assertTrue(
@@ -848,7 +852,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.52.0")
+        self.assertEqual(payload["api_version"], "0.53.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -918,7 +922,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.52.0")
+        self.assertEqual(payload["api_version"], "0.53.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
