@@ -51,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.59.0"
+API_VERSION = "0.60.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -137,6 +137,7 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "download_verify_audit_receipt_folder",
         "download_verify_clear_receipt_folder_review",
         "download_verify_copy_hash",
+        "download_verify_copy_review_guidance",
         "download_verify_copy_receipt_inspection",
         "download_verify_copy_summary",
         "download_verify_compare_receipt",
@@ -487,7 +488,7 @@ COMPANION_APPS = [
     {"name": "VaultLink License Issuer", "script": "license_issuer.py", "purpose": "Issue customer licenses through the admin-protected API."},
     {"name": "Text Log Processor", "script": "text_log_processor.py", "purpose": "Parse table-style text logs into a cleaner summary."},
     {"name": "Support Redactor", "script": "support_redactor.py", "purpose": "Remove common secrets and personal details from explicitly pasted or opened support text without automatic upload."},
-    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, export locally sealed receipts, inspect or compare one sanitized prior receipt, run a bounded non-recursive aggregate receipt-folder audit with a single local review window, bounded row and review-ID consumption, cancellable search debounce, selection preservation, priority-level and session-state filtering, fixed triage, temporary single-row and bounded bulk-visible review or reopen marks, 100-action one-step bulk undo, aggregate progress with an aggregate level breakdown and visible pending and reviewed counts, failure-first navigation, and full pending navigation, inspect file structure, and explicitly run Defender without extracting, executing, or uploading selected files, folders, names, search text, delayed-callback state, review IDs, action history, bulk mark state, session state, progress, visible counts, selections, navigation, guidance state, level filters, result filters, sorting, results, receipts, keys, or reports."},
+    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, export locally sealed receipts, inspect or compare one sanitized prior receipt, run a bounded non-recursive aggregate receipt-folder audit with a single local review window, bounded row and review-ID consumption, cancellable search debounce, selection preservation with visible position, priority-level and session-state filtering, fixed triage with privacy-safe fixed guidance copy, temporary single-row and bounded bulk-visible review or reopen marks, 100-action one-step bulk undo, aggregate completion progress with a determinate bar, an aggregate level breakdown, and visible pending and reviewed counts, failure-first navigation, and forward and reverse pending navigation, inspect file structure, and explicitly run Defender without extracting, executing, or uploading selected files, folders, names, search text, clipboard text, delayed-callback state, review IDs, action history, bulk mark state, session state, progress, selected positions, visible counts, selections, navigation, guidance state, level filters, result filters, sorting, results, receipts, keys, or reports."},
     {"name": "Global Breach Guard", "script": "global_breach_guard.py", "purpose": "Run a topmost global breach watcher."},
 ]
 

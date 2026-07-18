@@ -119,22 +119,26 @@ class VaultLinkApiTests(unittest.TestCase):
         if payload is not None:
             raw_body = json.dumps(payload).encode("utf-8")
             request_headers.setdefault("Content-Type", "application/json")
-        req = request.Request(
-            self.base_url + path,
-            data=raw_body,
-            headers=request_headers,
-            method=method,
-        )
-        try:
-            with request.urlopen(req, timeout=10) as response:
-                body = response.read()
-                return response.status, json.loads(body.decode("utf-8")) if body else {}
-        except error.HTTPError as exc:
+        for attempt in range(2):
+            req = request.Request(
+                self.base_url + path,
+                data=raw_body,
+                headers=request_headers,
+                method=method,
+            )
             try:
-                body = exc.read()
-                return exc.code, json.loads(body.decode("utf-8")) if body else {}
-            finally:
-                exc.close()
+                with request.urlopen(req, timeout=10) as response:
+                    body = response.read()
+                    return response.status, json.loads(body.decode("utf-8")) if body else {}
+            except error.HTTPError as exc:
+                try:
+                    body = exc.read()
+                    return exc.code, json.loads(body.decode("utf-8")) if body else {}
+                finally:
+                    exc.close()
+            except (ConnectionAbortedError, ConnectionResetError):
+                if attempt:
+                    raise
 
     def call_bytes(self, path, headers=None):
         req = request.Request(self.base_url + path, headers=dict(headers or {}), method="GET")
@@ -206,7 +210,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.59.0")
+        self.assertEqual(api.API_VERSION, "0.60.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -237,23 +241,25 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("single local review window", companion["purpose"])
         self.assertIn("bounded row and review-ID consumption", companion["purpose"])
         self.assertIn("cancellable search debounce", companion["purpose"])
-        self.assertIn("selection preservation", companion["purpose"])
+        self.assertIn("selection preservation with visible position", companion["purpose"])
         self.assertIn("priority-level and session-state filtering", companion["purpose"])
-        self.assertIn("fixed triage", companion["purpose"])
+        self.assertIn("privacy-safe fixed guidance copy", companion["purpose"])
         self.assertIn("bounded bulk-visible review or reopen marks", companion["purpose"])
         self.assertIn("100-action one-step bulk undo", companion["purpose"])
-        self.assertIn("aggregate progress", companion["purpose"])
+        self.assertIn("aggregate completion progress with a determinate bar", companion["purpose"])
         self.assertIn("aggregate level breakdown", companion["purpose"])
         self.assertIn("visible pending and reviewed counts", companion["purpose"])
         self.assertIn("failure-first navigation", companion["purpose"])
-        self.assertIn("full pending navigation", companion["purpose"])
+        self.assertIn("forward and reverse pending navigation", companion["purpose"])
         self.assertIn("search text", companion["purpose"])
+        self.assertIn("clipboard text", companion["purpose"])
         self.assertIn("delayed-callback state", companion["purpose"])
         self.assertIn("review IDs", companion["purpose"])
         self.assertIn("action history", companion["purpose"])
         self.assertIn("bulk mark state", companion["purpose"])
         self.assertIn("session state", companion["purpose"])
         self.assertIn("progress", companion["purpose"])
+        self.assertIn("selected positions", companion["purpose"])
         self.assertIn("visible counts", companion["purpose"])
         self.assertIn("selections", companion["purpose"])
         self.assertIn("level filters", companion["purpose"])
@@ -265,6 +271,7 @@ class VaultLinkApiTests(unittest.TestCase):
                 "download_verify_audit_receipt_folder",
                 "download_verify_clear_receipt_folder_review",
                 "download_verify_copy_hash",
+                "download_verify_copy_review_guidance",
                 "download_verify_copy_receipt_inspection",
                 "download_verify_copy_summary",
                 "download_verify_compare_receipt",
@@ -871,7 +878,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.59.0")
+        self.assertEqual(payload["api_version"], "0.60.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -941,7 +948,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.59.0")
+        self.assertEqual(payload["api_version"], "0.60.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
