@@ -210,7 +210,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.60.0")
+        self.assertEqual(api.API_VERSION, "0.61.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -241,9 +241,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("single local review window", companion["purpose"])
         self.assertIn("bounded row and review-ID consumption", companion["purpose"])
         self.assertIn("cancellable search debounce", companion["purpose"])
+        self.assertIn("keyboard review controls", companion["purpose"])
+        self.assertIn("stable empty and complete states", companion["purpose"])
         self.assertIn("selection preservation with visible position", companion["purpose"])
         self.assertIn("priority-level and session-state filtering", companion["purpose"])
-        self.assertIn("privacy-safe fixed guidance copy", companion["purpose"])
+        self.assertIn("privacy-safe fixed guidance and aggregate summary copy", companion["purpose"])
         self.assertIn("bounded bulk-visible review or reopen marks", companion["purpose"])
         self.assertIn("100-action one-step bulk undo", companion["purpose"])
         self.assertIn("aggregate completion progress with a determinate bar", companion["purpose"])
@@ -264,6 +266,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("selections", companion["purpose"])
         self.assertIn("level filters", companion["purpose"])
         self.assertIn("guidance state", companion["purpose"])
+        self.assertIn("summary contents", companion["purpose"])
         self.assertIn("without extracting", companion["purpose"])
         self.assertIn("uploading", companion["purpose"])
         self.assertTrue(
@@ -272,6 +275,7 @@ class VaultLinkApiTests(unittest.TestCase):
                 "download_verify_clear_receipt_folder_review",
                 "download_verify_copy_hash",
                 "download_verify_copy_review_guidance",
+                "download_verify_copy_review_summary",
                 "download_verify_copy_receipt_inspection",
                 "download_verify_copy_summary",
                 "download_verify_compare_receipt",
@@ -878,7 +882,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.60.0")
+        self.assertEqual(payload["api_version"], "0.61.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -948,7 +952,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.60.0")
+        self.assertEqual(payload["api_version"], "0.61.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
