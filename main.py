@@ -51,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.56.0"
+API_VERSION = "0.57.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -487,7 +487,7 @@ COMPANION_APPS = [
     {"name": "VaultLink License Issuer", "script": "license_issuer.py", "purpose": "Issue customer licenses through the admin-protected API."},
     {"name": "Text Log Processor", "script": "text_log_processor.py", "purpose": "Parse table-style text logs into a cleaner summary."},
     {"name": "Support Redactor", "script": "support_redactor.py", "purpose": "Remove common secrets and personal details from explicitly pasted or opened support text without automatic upload."},
-    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, export locally sealed receipts, inspect or compare one sanitized prior receipt, run a bounded non-recursive aggregate receipt-folder audit with a single local review window, bounded row and review-ID consumption, fixed triage, temporary review marks, 100-step numeric undo, aggregate progress, and failure-first navigation, inspect file structure, and explicitly run Defender without extracting, executing, or uploading selected files, folders, names, search text, review IDs, undo history, progress, selections, navigation, guidance state, filters, sorting, results, receipts, keys, or reports."},
+    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, export locally sealed receipts, inspect or compare one sanitized prior receipt, run a bounded non-recursive aggregate receipt-folder audit with a single local review window, bounded row and review-ID consumption, cancellable search debounce, selection preservation, fixed triage, temporary review marks, 100-step numeric undo, aggregate progress with an aggregate level breakdown, failure-first navigation, and full pending navigation, inspect file structure, and explicitly run Defender without extracting, executing, or uploading selected files, folders, names, search text, delayed-callback state, review IDs, undo history, progress, selections, navigation, guidance state, filters, sorting, results, receipts, keys, or reports."},
     {"name": "Global Breach Guard", "script": "global_breach_guard.py", "purpose": "Run a topmost global breach watcher."},
 ]
 
