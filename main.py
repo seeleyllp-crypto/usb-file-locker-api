@@ -51,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.44.0"
+API_VERSION = "0.45.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -128,6 +128,12 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "incident_center_refresh",
         "incident_playbook_progress",
         "incident_windows_security_open",
+        "support_redactor_copy",
+        "support_redactor_load",
+        "support_redactor_open",
+        "support_redactor_paste",
+        "support_redactor_run",
+        "support_redactor_save",
         "customer_hub_refresh",
         "customer_hub_verify",
         "customer_status_open",
@@ -465,6 +471,7 @@ COMPANION_APPS = [
     {"name": "Audit Log Viewer", "script": "audit_log_viewer.py", "purpose": "Read and export the privacy-safe signed audit trail."},
     {"name": "VaultLink License Issuer", "script": "license_issuer.py", "purpose": "Issue customer licenses through the admin-protected API."},
     {"name": "Text Log Processor", "script": "text_log_processor.py", "purpose": "Parse table-style text logs into a cleaner summary."},
+    {"name": "Support Redactor", "script": "support_redactor.py", "purpose": "Remove common secrets and personal details from explicitly pasted or opened support text without automatic upload."},
     {"name": "Global Breach Guard", "script": "global_breach_guard.py", "purpose": "Run a topmost global breach watcher."},
 ]
 
@@ -1793,6 +1800,7 @@ def product_payload():
             "audit_log_viewer.py",
             "license_issuer.py",
             "global_breach_guard.py",
+            "support_redactor.py",
             "text_log_processor.py",
             "locked_file_browser.py",
             "perm_unlock_workbench.py",
