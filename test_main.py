@@ -206,7 +206,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.46.0")
+        self.assertEqual(api.API_VERSION, "0.47.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -231,7 +231,8 @@ class VaultLinkApiTests(unittest.TestCase):
             if item["script"] == "download_verification_center.py"
         )
         self.assertEqual(companion["name"], "Download Verification Center")
-        self.assertIn("without uploading", companion["purpose"])
+        self.assertIn("without extracting", companion["purpose"])
+        self.assertIn("uploading", companion["purpose"])
         self.assertTrue(
             {
                 "download_verify_copy_hash",
@@ -835,7 +836,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.46.0")
+        self.assertEqual(payload["api_version"], "0.47.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -905,7 +906,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.46.0")
+        self.assertEqual(payload["api_version"], "0.47.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)

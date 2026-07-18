@@ -6,7 +6,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 
 - A small public API for product info, features, companion apps, security notes, and all seven license ranks
 - Support Redactor companion discovery and fixed privacy-safe audit actions without receiving customer text, files, paths, previews, counts, or detected values
-- Download Verification Center discovery and fixed audit actions without receiving the selected file, path, hashes, signature details, Defender output, or receipt automatically
+- Download Verification Center discovery for hash, signature, bounded file/ZIP structure review, and fixed audit actions without receiving the selected file, paths, archive entry names, hashes, signature details, Defender output, or receipt automatically
 - API-backed licensing with signed keys, machine receipts, automatic client heartbeats, device deactivation, and owner revocation
 - Persistent anonymous device-seat enforcement using each license's `max_devices` value
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
