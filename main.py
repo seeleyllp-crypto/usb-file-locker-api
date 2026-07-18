@@ -51,7 +51,7 @@ from retention_page import customer_retention_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.47.0"
+API_VERSION = "0.48.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -136,8 +136,10 @@ ALLOWED_AUDIT_ACTIONS = frozenset(
         "support_redactor_save",
         "download_verify_copy_hash",
         "download_verify_copy_summary",
+        "download_verify_compare_receipt",
         "download_verify_defender",
         "download_verify_export",
+        "download_verify_export_comparison",
         "download_verify_open",
         "download_verify_run",
         "download_verify_select",
@@ -479,7 +481,7 @@ COMPANION_APPS = [
     {"name": "VaultLink License Issuer", "script": "license_issuer.py", "purpose": "Issue customer licenses through the admin-protected API."},
     {"name": "Text Log Processor", "script": "text_log_processor.py", "purpose": "Parse table-style text logs into a cleaner summary."},
     {"name": "Support Redactor", "script": "support_redactor.py", "purpose": "Remove common secrets and personal details from explicitly pasted or opened support text without automatic upload."},
-    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, compare an expected hash, inspect Authenticode and bounded file/ZIP structure, and explicitly run a Defender custom scan without extracting, executing, or uploading the selected file."},
+    {"name": "Download Verification Center", "script": "download_verification_center.py", "purpose": "Calculate SHA-256, compare an expected hash or one sanitized prior receipt, inspect Authenticode and bounded file/ZIP structure, and explicitly run a Defender custom scan without extracting, executing, or uploading the selected file or either receipt."},
     {"name": "Global Breach Guard", "script": "global_breach_guard.py", "purpose": "Run a topmost global breach watcher."},
 ]
 
