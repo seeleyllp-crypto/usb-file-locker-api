@@ -80,13 +80,15 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
 - Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
 
-## Customer Accounts 0.63
+## Account-Required Licensing 0.64
 
 `GET /account` provides registration, sign-in, assigned-rank access, license-key copy, sign-out, and password change. The browser stores only a signed session token in `sessionStorage`; passwords are never persisted by the page. Usernames are encrypted in server storage, account filenames contain no username, and each password uses a unique salt with `scrypt`.
 
 `GET /owner/accounts` lists accounts without password hashes or full license keys. The owner admin token stays in `sessionStorage` and is sent only through `X-License-Admin-Token`. The owner can issue one of the seven ranks, assign an existing license, explicitly transfer a license from another account, or disable an account and invalidate its sessions.
 
 Account sessions last twelve hours and include a server-checked session version. Password changes, account disabling, and license transfer away from an account invalidate prior sessions. Registration and failed sign-in attempts are bounded in memory per connection. This account layer does not replace signed license verification or device-seat enforcement.
+
+Every new customer license requires an existing active `account_id`. The issue endpoint, main owner console, giveaway controls, and dedicated account console bind each new license to that account. Arbitrary labels and email fields can no longer create unattached licenses. Existing legacy licenses can still be deliberately assigned or transferred from `/owner/accounts`.
 
 ## Owner Maintenance Operations 0.39
 
@@ -243,7 +245,7 @@ Then open:
 - `POST /api/v1/shop/compare` compares two or three ranks and returns a cumulative entitlement matrix.
 - A tier has a buy button only when its environment variable contains a valid HTTPS URL on the checkout-host allowlist. Missing, insecure, spoofed, credential-bearing, or malformed URLs leave that tier marked `NOT ON SALE YET`.
 - Payment happens entirely on the checkout provider's page. VaultLink does not receive or store card numbers.
-- License delivery is manual: after independently confirming payment in the provider dashboard, the owner issues the matching license from `/owner`.
+- License delivery is manual and account-first: the customer creates an account, then after independently confirming payment in the provider dashboard, the owner assigns the matching license to that account from `/owner` or `/owner/accounts`.
 
 Use an adult-owned merchant account and follow the payment provider's age, identity, tax, refund, and business requirements. This release does not include webhook-based payment verification or automatic license fulfillment.
 
@@ -277,6 +279,7 @@ Use an adult-owned merchant account and follow the payment provider's age, ident
 
 - `POST /api/v1/licenses/issue`
   - Admin-only. Requires `LICENSE_ADMIN_TOKEN` in the `X-License-Admin-Token` header.
+  - Requires an existing active `account_id` and binds the new signed license to that account.
   - The admin token is never accepted inside the JSON body.
 - `POST /api/v1/licenses/activate`
   - Exchanges a valid license key for a machine-bound receipt.

@@ -110,14 +110,37 @@ class VaultLinkApiTests(unittest.TestCase):
         api.UPDATE_MANIFEST_PATH = api.UPDATE_DIR / "windows-manifest.json"
         api.ACCOUNT_LOGIN_FAILURES.clear()
         api.ACCOUNT_REGISTER_ATTEMPTS.clear()
+        self._default_license_account_id = ""
 
     def tearDown(self):
         api.UPDATE_SIGNING_PUBLIC_KEY_B64 = self.old_update_public_key
         api.UPDATE_SIGNING_KEY_ID = self.old_update_key_id
         self.temp_dir.cleanup()
 
-    def call(self, path, method="GET", payload=None, raw_body=None, headers=None):
+    def default_license_account_id(self):
+        if self._default_license_account_id:
+            return self._default_license_account_id
+        registered = api.register_account(
+            {
+                "username": "license_test_customer",
+                "password": "Safe-Test-Account-4092!",
+            },
+            remote_key="license-test-fixture",
+        )
+        self._default_license_account_id = registered["account"]["account_id"]
+        return self._default_license_account_id
+
+    def call(self, path, method="GET", payload=None, raw_body=None, headers=None, auto_account=True):
         request_headers = dict(headers or {})
+        if (
+            auto_account
+            and path == "/api/v1/licenses/issue"
+            and method == "POST"
+            and isinstance(payload, dict)
+            and not payload.get("account_id")
+        ):
+            payload = dict(payload)
+            payload["account_id"] = self.default_license_account_id()
         if payload is not None:
             raw_body = json.dumps(payload).encode("utf-8")
             request_headers.setdefault("Content-Type", "application/json")
@@ -212,7 +235,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.63.0")
+        self.assertEqual(api.API_VERSION, "0.64.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -891,7 +914,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.63.0")
+        self.assertEqual(payload["api_version"], "0.64.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -961,7 +984,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.63.0")
+        self.assertEqual(payload["api_version"], "0.64.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3479,11 +3502,11 @@ class VaultLinkApiTests(unittest.TestCase):
         status, response = self.call(
             "/api/v1/licenses/issue",
             method="POST",
-            payload={"plan_id": "family-safety", "customer_label": "x" * 161},
+            payload={"plan_id": "family-safety", "license_note": "x" * 2001},
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
         )
         self.assertEqual(status, 400)
-        self.assertIn("160", response["message"])
+        self.assertIn("2000", response["message"])
 
         with self.assertRaisesRegex(ValueError, "too large"):
             api.verify_token("vlk1." + ("x" * api.MAX_SIGNED_TOKEN_CHARS), api.LICENSE_KEY_PREFIX)
@@ -3531,6 +3554,16 @@ class VaultLinkApiTests(unittest.TestCase):
                 self.assertEqual(response["plan"]["id"], canonical_id)
 
     def test_customer_accounts_owner_assignment_transfer_and_password_security(self):
+        status, account_required = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"plan_id": "starter"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            auto_account=False,
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("must create an account", account_required["message"])
+
         status, weak = self.call(
             "/api/v1/accounts/register",
             method="POST",
@@ -3560,6 +3593,25 @@ class VaultLinkApiTests(unittest.TestCase):
         private_fields = api.decrypt_account_private_fields(stored)
         self.assertEqual(private_fields["password_algorithm"], "scrypt")
         self.assertNotEqual(private_fields["password_hash"], "CorrectHorse9!")
+
+        status, directly_issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={
+                "account_id": alice_id,
+                "plan_id": "starter",
+                "customer_label": "SPOOFED LABEL",
+                "customer_email": "ignored@example.test",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        self.assertTrue(directly_issued["account_required"])
+        self.assertEqual(directly_issued["license"]["account_id"], alice_id)
+        self.assertEqual(directly_issued["license"]["customer_label"], "Alice_1")
+        self.assertEqual(directly_issued["license"]["customer_email"], "")
+        first_license_id = directly_issued["license"]["license_id"]
+        self.assertEqual(api.read_license_record(first_license_id)["account_id"], alice_id)
 
         status, duplicate = self.call(
             "/api/v1/accounts/register",
@@ -3613,6 +3665,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("issued_license_key", assigned)
         license_id = assigned["account"]["license"]["license_id"]
         license_key = assigned["issued_license_key"]
+        self.assertEqual(api.read_license_record(first_license_id)["account_id"], "")
+        self.assertEqual(api.read_license_record(license_id)["account_id"], alice_id)
 
         status, alice_profile = self.call(
             "/api/v1/accounts/me",

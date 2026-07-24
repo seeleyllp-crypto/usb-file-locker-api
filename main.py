@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.63.0"
+API_VERSION = "0.64.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -1599,6 +1599,14 @@ def account_license_view(record, include_license_key=False):
             "status": "missing",
             "message": "The assigned license record is missing.",
         }
+    bound_account_id = str(license_record.get("account_id", "")).strip()
+    if bound_account_id and bound_account_id != str(record.get("account_id", "")):
+        return {
+            "assigned": True,
+            "license_id": license_id,
+            "status": "binding_mismatch",
+            "message": "The license is bound to a different customer account.",
+        }
     plan = PLAN_INDEX.get(str(license_record.get("plan_id", "")))
     private_fields = stored_license_private_fields(license_record)
     license_key = str(private_fields.get("license_key", ""))
@@ -1831,26 +1839,28 @@ def assign_account_license(payload):
         account = read_account_record(account_id)
         if not account:
             raise FileNotFoundError("Account was not found.")
-        issued = None
+        if account.get("status") != "active":
+            raise ValueError("Enable the customer account before assigning a license.")
         if requested_plan:
-            plan_id = canonical_plan_id(requested_plan)
-            if plan_id not in PLAN_INDEX:
-                raise ValueError("Choose a valid plan id.")
-            username = str(decrypt_account_private_fields(account).get("username", ""))
             issued = issue_license(
                 {
-                    "plan_id": plan_id,
+                    "account_id": account_id,
+                    "plan_id": requested_plan,
                     "max_devices": int(payload.get("max_devices", 1) or 1),
                     "expires_at_utc": payload.get("expires_at_utc", ""),
-                    "customer_label": username,
                     "license_note": clean_license_note(payload.get("license_note", "")),
                 }
             )
-            license_id = str(issued["license"]["license_id"])
-        else:
-            license_id = validated_license_id(requested_license)
-            if not read_license_record(license_id):
-                raise FileNotFoundError("License was not found.")
+            return {
+                "ok": True,
+                "assigned": True,
+                "transferred": False,
+                "account": issued["account"],
+                "issued_license_key": issued["license_key"],
+            }
+        license_id = validated_license_id(requested_license)
+        if not read_license_record(license_id):
+            raise FileNotFoundError("License was not found.")
         previous_owners = [
             other
             for other in list_account_records()
@@ -1865,7 +1875,11 @@ def assign_account_license(payload):
             previous_owner["assigned_license_id"] = ""
             previous_owner["session_version"] = int(previous_owner.get("session_version", 1) or 1) + 1
             write_account_record(previous_owner)
+        previous_license_id = str(account.get("assigned_license_id", "")).strip()
+        if previous_license_id and previous_license_id != license_id:
+            update_license_account_binding(previous_license_id, "")
         account["assigned_license_id"] = license_id
+        update_license_account_binding(license_id, account_id)
         write_account_record(account)
     record_api_activity("account_license_assign", "ok", "account", account_id)
     result = {
@@ -1874,8 +1888,6 @@ def assign_account_license(payload):
         "transferred": bool(previous_owners),
         "account": account_view(account, include_license_key=False),
     }
-    if issued:
-        result["issued_license_key"] = issued["license_key"]
     return result
 
 
@@ -1953,6 +1965,9 @@ def write_license_record(license_payload, license_key, license_note="", status=N
     license_id = validated_license_id(license_payload.get("license_id"))
     plan = current_plan_for_license(license_payload)
     existing = read_license_record(license_id) or {}
+    account_id = str(license_payload.get("account_id") or existing.get("account_id") or "").strip()
+    if account_id:
+        account_id = validated_account_id(account_id)
     private_fields = stored_license_private_fields(existing)
     private_fields.update(
         {
@@ -1971,6 +1986,7 @@ def write_license_record(license_payload, license_key, license_note="", status=N
     record = {
         "schema_version": 1,
         "license_id": license_id,
+        "account_id": account_id,
         "plan_id": plan["id"],
         "plan_name": plan["name"],
         "issued_at_utc": str(license_payload.get("issued_at_utc", "")),
@@ -1988,6 +2004,20 @@ def write_license_record(license_payload, license_key, license_note="", status=N
         record["restored_at_utc"] = now if existing else ""
         record["revoked_at_utc"] = ""
     write_private_json(license_record_path(license_id), record)
+    return record
+
+
+def update_license_account_binding(license_id, account_id):
+    clean_license_id = validated_license_id(license_id)
+    clean_account_id = str(account_id or "").strip()
+    if clean_account_id:
+        clean_account_id = validated_account_id(clean_account_id)
+    record = read_license_record(clean_license_id)
+    if not record:
+        raise FileNotFoundError("License was not found.")
+    record["account_id"] = clean_account_id
+    record["updated_at_utc"] = utc_now()
+    write_private_json(license_record_path(clean_license_id), record)
     return record
 
 
@@ -2262,6 +2292,7 @@ def admin_license_record_view(record, include_private=True):
     limit = license_limit_payload({"license_id": license_id})
     return {
         "license_id": license_id,
+        "account_id": str(record.get("account_id", "")),
         "plan_id": str(record.get("plan_id", "")),
         "plan_name": str(record.get("plan_name", "")),
         "status": str(record.get("status", "active")),
@@ -2406,7 +2437,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/login", "purpose": "Rate-limited account sign-in with a twelve-hour signed session"},
             {"method": "GET", "path": "/api/v1/accounts/me", "purpose": "Signed-session account and assigned-license view"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
-            {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
+            {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only issuance bound to an existing active customer account"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
             {"method": "POST", "path": "/api/v1/licenses/preview", "purpose": "Read-only signed-license status without device activation"},
@@ -4459,7 +4490,7 @@ def shop_html():
     </div>
     <section class="plans">{''.join(cards)}</section>
   </main>
-  <footer><div><strong>How delivery works:</strong> after the payment provider confirms payment, the owner issues the matching VaultLink license. A checkout receipt is not itself a license key. The plans are software packages, not HIPAA certification or a guarantee against data loss, malware, or legal risk.</div></footer>
+  <footer><div><strong>How delivery works:</strong> create a VaultLink customer account first. After the payment provider confirms payment, the owner assigns the matching license to that account. A checkout receipt is not itself a license key. The plans are software packages, not HIPAA certification or a guarantee against data loss, malware, or legal risk.</div></footer>
   <script>
     const plans=[...document.querySelectorAll(".plan")];
     function filterPlans() {{
@@ -5159,7 +5190,7 @@ def owner_portal_html():
 
     <section>
       <h2>Customer Pages</h2>
-      <div class="page-links"><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/maintenance" target="_blank" rel="noopener">SECURITY MAINTENANCE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/operations">OWNER OPERATIONS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
+      <div class="page-links"><a href="/account" target="_blank" rel="noopener">CREATE CUSTOMER ACCOUNT</a><a href="/owner/accounts">OWNER ACCOUNT LIST</a><a href="/workspace" target="_blank" rel="noopener">CUSTOMER WORKSPACE</a><a href="/maintenance" target="_blank" rel="noopener">SECURITY MAINTENANCE</a><a href="/retention" target="_blank" rel="noopener">STORAGE & RETENTION</a><a href="/data-control" target="_blank" rel="noopener">DATA CONTROL</a><a href="/recovery-kit" target="_blank" rel="noopener">RECOVERY KIT</a><a href="/backup-verification" target="_blank" rel="noopener">BACKUP VERIFICATION</a><a href="/recovery-drills" target="_blank" rel="noopener">RECOVERY DRILLS</a><a href="/incident-response" target="_blank" rel="noopener">INCIDENT RESPONSE</a><a href="/diagnostics" target="_blank" rel="noopener">DIAGNOSTICS</a><a href="/owner/operations">OWNER OPERATIONS</a><a href="/owner/customers">CUSTOMER EXPERIENCE CONSOLE</a><a href="/owner/trust">TRUST OPERATIONS</a><a href="/trust" target="_blank" rel="noopener">PUBLIC TRUST</a><a href="/status" target="_blank" rel="noopener">STATUS</a><a href="/terms" target="_blank" rel="noopener">DRAFT TERMS</a><a href="/privacy" target="_blank" rel="noopener">PRIVACY</a><a href="/shop" target="_blank" rel="noopener">SHOP</a><a href="/docs" target="_blank" rel="noopener">API DOCS</a></div>
       <div class="status">Legal document """ + LEGAL_DOCUMENT_VERSION + """ is a draft. Adult business-owner approval and qualified legal review are recommended before commercial use.</div>
     </section>
 
@@ -5175,16 +5206,16 @@ def owner_portal_html():
     </section>
 
     <section>
-      <h2>Issue License</h2>
+      <h2>Issue License To Account</h2>
       <div class="grid">
+        <div class="split"><label for="issueAccount">Customer account</label><select id="issueAccount"><option value="">Connect to load accounts</option></select></div>
         <div><label for="rank">Rank</label><select id="rank"></select></div>
         <div><label for="devices">Maximum devices</label><input id="devices" type="number" min="1" max="1000" value="1"></div>
-        <div><label for="customer">Customer label</label><input id="customer" maxlength="160"></div>
-        <div><label for="email">Customer email</label><input id="email" type="email" maxlength="254"></div>
         <div><label for="expires">Expiration, optional</label><input id="expires" type="datetime-local"></div>
         <div><label for="note">Private owner note</label><input id="note" maxlength="2000"></div>
         <div class="split"><button id="issue" class="primary" disabled>ISSUE LICENSE</button></div>
       </div>
+      <div class="status">A customer must create an account first. Every new license is bound and assigned to the selected account.</div>
       <div id="latestWrap" hidden>
         <label for="latestKey">Latest key</label>
         <div class="latest"><textarea id="latestKey" readonly></textarea><button id="copyLatest" class="warn">COPY KEY</button></div>
@@ -5192,15 +5223,15 @@ def owner_portal_html():
     </section>
 
     <section>
-      <h2>Giveaway License</h2>
+      <h2>Giveaway License To Account</h2>
       <div class="grid">
-        <div><label for="giveawayWinner">Winner alias</label><input id="giveawayWinner" maxlength="80" placeholder="Public alias, not a full legal name"></div>
+        <div class="split"><label for="giveawayAccount">Winner account</label><select id="giveawayAccount"><option value="">Connect to load accounts</option></select></div>
         <div><label for="giveawayRank">Rank</label><select id="giveawayRank"></select></div>
         <div><label for="giveawayDays">Duration in days</label><input id="giveawayDays" type="number" min="1" max="365" value="30"></div>
         <div><label for="giveawayDevices">Maximum devices</label><input id="giveawayDevices" type="number" min="1" max="10" value="1"></div>
         <div class="split"><button id="issueGiveaway" class="primary" disabled>ISSUE GIVEAWAY LICENSE</button></div>
       </div>
-      <div class="status">This issues a promotional license only. It does not select winners, collect entries, process payment, or provide contest-law compliance.</div>
+      <div class="status">The winner must create an account before receiving the promotional license. This does not select winners, collect entries, process payment, or provide contest-law compliance.</div>
     </section>
 
     <section>
@@ -5240,7 +5271,7 @@ def owner_portal_html():
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { token: "", connected: false, busy: false, loading: false, items: [], supportItems: [], auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
+    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
     const AUTO_REFRESH_MS = 30000;
 
     function setStatus(message, kind="") {
@@ -5299,12 +5330,38 @@ def owner_portal_html():
       }
     }
 
+    function renderAccountOptions() {
+      for (const select of [$("issueAccount"), $("giveawayAccount")]) {
+        const previous = select.value;
+        select.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = state.accountItems.length
+          ? "Choose a customer account"
+          : "No customer accounts yet";
+        select.append(placeholder);
+        for (const account of state.accountItems) {
+          const option = document.createElement("option");
+          option.value = account.account_id;
+          const license = account.license || {};
+          const access = license.assigned ? `Rank ${license.rank || "?"}` : "No license";
+          option.textContent = `${account.username} | ${access} | ${account.status}`;
+          option.disabled = account.status !== "active";
+          select.append(option);
+        }
+        if ([...select.options].some(option => option.value === previous && !option.disabled)) {
+          select.value = previous;
+        }
+      }
+    }
+
     async function loadLicenses(silent=false) {
       if (state.loading) return;
       state.loading = true;
       try {
-      const [payload, dashboard, support, audits, announcements, serviceStatus, activity, releaseStatus] = await Promise.all([
+      const [payload, accounts, dashboard, support, audits, announcements, serviceStatus, activity, releaseStatus] = await Promise.all([
         api("/api/v1/admin/licenses"),
+        api("/api/v1/admin/accounts"),
         api("/api/v1/admin/dashboard"),
         api("/api/v1/admin/support-tickets"),
         api("/api/v1/admin/audit-exports"),
@@ -5314,6 +5371,7 @@ def owner_portal_html():
         api("/api/v1/admin/updates/windows/status")
       ]);
       state.items = payload.items || [];
+      state.accountItems = accounts.items || [];
       state.supportItems = support.items || [];
       state.auditItems = audits.items || [];
       state.announcementItems = announcements.items || [];
@@ -5327,6 +5385,7 @@ def owner_portal_html():
       $("auditStorage").textContent = `${audits.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE"} | ${audits.retention_hours || 0}H RETENTION`;
       $("announcementStorage").textContent = announcements.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE";
       renderDashboard(dashboard);
+      renderAccountOptions();
       renderRecords();
       renderSupport();
       renderAudits();
@@ -5335,7 +5394,7 @@ def owner_portal_html():
       renderActivity();
       renderReleaseStatus(releaseStatus);
       setConnected(true);
-      if (!silent) setStatus(`Loaded ${payload.count || 0} license(s), ${support.count || 0} bug report(s), ${audits.count || 0} audit log(s), ${announcements.count || 0} announcement(s), and ${activity.count || 0} activity event(s).`, "good");
+      if (!silent) setStatus(`Loaded ${accounts.count || 0} customer account(s), ${payload.count || 0} license(s), ${support.count || 0} bug report(s), ${audits.count || 0} audit log(s), ${announcements.count || 0} announcement(s), and ${activity.count || 0} activity event(s).`, "good");
       } finally {
         state.loading = false;
       }
@@ -5750,50 +5809,51 @@ def owner_portal_html():
 
     async function issueLicense() {
       if (!state.connected || state.busy) return;
+      const accountId = $("issueAccount").value;
+      if (!accountId) return setStatus("Choose an existing customer account first.", "bad");
       state.busy = true; setConnected(true); setStatus("Issuing license...");
       try {
         const expiresValue = $("expires").value;
         const payload = await api("/api/v1/licenses/issue", { method:"POST", body:JSON.stringify({
+          account_id: accountId,
           plan_id: $("rank").value,
           max_devices: Number($("devices").value || 1),
-          customer_label: $("customer").value.trim(),
-          customer_email: $("email").value.trim(),
           license_note: $("note").value.trim(),
           expires_at_utc: expiresValue ? new Date(expiresValue).toISOString() : ""
         }) });
         $("latestKey").value = payload.license_key || "";
         $("latestWrap").hidden = false;
         await loadLicenses();
-        setStatus("License issued and stored. Copy the key for the customer.", "good");
+        setStatus(`License issued and assigned to ${payload.account?.username || "the selected account"}.`, "good");
       } catch (error) { setStatus(error.message, "bad"); }
       finally { state.busy = false; setConnected(state.connected); }
     }
 
     async function issueGiveaway() {
       if (!state.connected || state.busy) return;
-      const winner = $("giveawayWinner").value.trim();
+      const accountId = $("giveawayAccount").value;
+      const account = state.accountItems.find(item => item.account_id === accountId);
       const days = Number($("giveawayDays").value || 30);
       const devices = Number($("giveawayDevices").value || 1);
-      if (winner.length < 2) return setStatus("Enter a winner alias with at least 2 characters.", "bad");
+      if (!account) return setStatus("Choose the winner's existing customer account first.", "bad");
       if (!Number.isInteger(days) || days < 1 || days > 365) return setStatus("Giveaway duration must be 1 to 365 days.", "bad");
       if (!Number.isInteger(devices) || devices < 1 || devices > 10) return setStatus("Giveaway devices must be 1 to 10.", "bad");
-      if (!confirm(`ISSUE A ${days}-DAY GIVEAWAY LICENSE TO ${winner}?`)) return;
+      if (!confirm(`ISSUE A ${days}-DAY GIVEAWAY LICENSE TO ${account.username}?`)) return;
       state.busy = true; setConnected(true); setStatus("Issuing giveaway license...");
       try {
         const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
         const result = await api("/api/v1/licenses/issue", { method:"POST", body:JSON.stringify({
+          account_id: accountId,
           plan_id: $("giveawayRank").value,
           max_devices: devices,
-          customer_label: `Giveaway: ${winner}`,
-          customer_email: "",
           license_note: `Promotional giveaway license | ${days} day(s) | no payment recorded`,
           expires_at_utc: expires
         }) });
         $("latestKey").value = result.license_key || "";
         $("latestWrap").hidden = false;
-        $("giveawayWinner").value = "";
+        $("giveawayAccount").value = "";
         await loadLicenses(true);
-        setStatus(`Giveaway license issued for ${winner}. Copy the latest key.`, "good");
+        setStatus(`Giveaway license issued and assigned to ${account.username}.`, "good");
       } catch (error) { setStatus(error.message, "bad"); }
       finally { state.busy = false; setConnected(state.connected); }
     }
@@ -7596,7 +7656,7 @@ def require_json_object(payload):
     return payload
 
 
-def issue_license(payload):
+def issue_license_record(payload):
     plan_id = canonical_plan_id(payload.get("plan_id", ""))
     if plan_id not in PLAN_INDEX:
         raise ValueError("Choose a valid plan id.")
@@ -7621,6 +7681,7 @@ def issue_license(payload):
         raise ValueError("That license_id already exists.")
     license_payload = {
         "license_id": license_id,
+        "account_id": str(payload.get("account_id", "")).strip(),
         "product": "USB File Locker",
         "plan_id": plan["id"],
         "plan_name": plan["name"],
@@ -7647,6 +7708,37 @@ def issue_license(payload):
             "Device seats are enforced by the persistent anonymous activation ledger.",
         ],
     }
+
+
+def issue_license(payload):
+    if not str(payload.get("account_id", "")).strip():
+        raise ValueError(
+            "account_id is required. The customer must create an account before a license can be issued."
+        )
+    account_id = validated_account_id(payload.get("account_id"))
+    with LICENSE_STATE_LOCK:
+        account = read_account_record(account_id)
+        if not account:
+            raise FileNotFoundError("Customer account was not found. The customer must create an account first.")
+        if account.get("status") != "active":
+            raise ValueError("Enable the customer account before issuing a license.")
+        private_fields = decrypt_account_private_fields(account)
+        username = str(private_fields.get("username", "")).strip()
+        issue_payload = dict(payload)
+        issue_payload["account_id"] = account_id
+        issue_payload["customer_label"] = username
+        issue_payload["customer_email"] = ""
+        issued = issue_license_record(issue_payload)
+        previous_license_id = str(account.get("assigned_license_id", "")).strip()
+        new_license_id = str(issued["license"]["license_id"])
+        if previous_license_id and previous_license_id != new_license_id:
+            update_license_account_binding(previous_license_id, "")
+        account["assigned_license_id"] = new_license_id
+        write_account_record(account)
+    record_api_activity("account_license_assign", "ok", "account", account_id)
+    issued["account"] = account_view(account, include_license_key=False)
+    issued["account_required"] = True
+    return issued
 
 
 def activate_license(payload):
