@@ -80,13 +80,13 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
 - Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
 
-## Account-Required Licensing 0.64
+## Account Workspace 0.65
 
-`GET /account` provides registration, sign-in, assigned-rank access, license-key copy, sign-out, and password change. The browser stores only a signed session token in `sessionStorage`; passwords are never persisted by the page. Usernames are encrypted in server storage, account filenames contain no username, and each password uses a unique salt with `scrypt`.
+`GET /account` provides registration, sign-in, live username availability, password-strength feedback, assigned-rank access, automatic twenty-second refresh, session-expiry status, a privacy-safe account-summary download, password-verified username changes, sign-out, sign-out-all, and password change. The page displays only the masked license key. The browser stores only a signed session token in `sessionStorage`; passwords are never persisted by the page. Remembering the username is an explicit browser-local choice. Usernames are encrypted in server storage, account filenames contain no username, and each password uses a unique salt with `scrypt`.
 
 `GET /owner/accounts` lists accounts without password hashes or full license keys. The owner admin token stays in `sessionStorage` and is sent only through `X-License-Admin-Token`. The owner can issue one of the seven ranks, assign an existing license, explicitly transfer a license from another account, or disable an account and invalidate its sessions.
 
-Account sessions last twelve hours and include a server-checked session version. Password changes, account disabling, and license transfer away from an account invalidate prior sessions. Registration and failed sign-in attempts are bounded in memory per connection. This account layer does not replace signed license verification or device-seat enforcement.
+Account sessions last twelve hours and include a server-checked session version. Password changes, account disabling, license transfer away from an account, and the authenticated sign-out-all action invalidate prior sessions. Registration and failed sign-in attempts are bounded in memory per connection. This account layer does not replace signed license verification or device-seat enforcement.
 
 Every new customer license requires an existing active `account_id`. The issue endpoint, main owner console, giveaway controls, and dedicated account console bind each new license to that account. Arbitrary labels and email fields can no longer create unattached licenses. Existing legacy licenses can still be deliberately assigned or transferred from `/owner/accounts`.
 

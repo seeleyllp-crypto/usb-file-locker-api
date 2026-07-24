@@ -23,52 +23,96 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1p
 def customer_account_html(api_version):
     page = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VaultLink Account</title><style>__STYLE__</style></head>
+<title>VaultLink Account</title><style>__STYLE__
+.auth-grid{grid-template-columns:minmax(300px,560px) minmax(260px,1fr)}.field-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}.check{border:1px solid var(--line);padding:7px 9px;border-radius:5px;color:var(--muted);font-size:12px}.check.ok{color:var(--green);border-color:#28764c}
+.account-actions{display:flex;gap:8px;flex-wrap:wrap}.session-line{font:12px Consolas,monospace;color:var(--muted)}.progress{height:7px;background:var(--field);border:1px solid var(--line);margin-top:8px}.progress span{display:block;height:100%;width:0;background:var(--yellow)}
+.license-band{border-left:3px solid var(--green);padding-left:14px}.empty{border:1px dashed var(--line);padding:18px;color:var(--muted);border-radius:5px}
+@media(max-width:820px){.top{gap:16px;align-items:flex-start}.top .version{white-space:nowrap;margin-left:auto}.auth-grid{grid-template-columns:1fr}.checklist{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
+</style></head>
 <body><header class="top"><div class="brand">VaultLink Account</div><div class="version">API __VERSION__</div></header>
 <main class="shell">
   <div class="bar"><h1>Customer Account</h1><div id="topStatus" class="status">Signed out</div><button id="logout" class="hidden">SIGN OUT</button></div>
-  <section id="authView" class="grid">
+  <section id="authView" class="grid auth-grid">
     <div class="panel">
       <div class="segments"><button id="signInTab" class="active">SIGN IN</button><button id="createTab">CREATE ACCOUNT</button></div>
-      <label for="username">Username</label><input id="username" maxlength="32" autocomplete="username">
+      <label for="username">Username</label><input id="username" maxlength="32" autocomplete="username" spellcheck="false">
+      <div id="usernameStatus" class="message"></div>
       <label for="password">Password</label><input id="password" type="password" maxlength="128" autocomplete="current-password">
       <label id="confirmLabel" class="hidden" for="confirm">Confirm password</label><input id="confirm" class="hidden" type="password" maxlength="128" autocomplete="new-password">
+      <label style="text-transform:none"><input id="showPassword" type="checkbox" style="width:auto;margin-right:7px">Show password</label>
+      <div id="passwordHelp" class="hidden">
+        <div class="progress"><span id="strengthBar"></span></div>
+        <div class="checklist">
+          <div id="ruleLength" class="check">10-128 characters</div><div id="ruleLower" class="check">Lowercase letter</div>
+          <div id="ruleUpper" class="check">Uppercase letter</div><div id="ruleNumber" class="check">Number</div>
+          <div id="ruleSymbol" class="check">Symbol</div><div id="ruleClasses" class="check">At least 3 types</div>
+        </div>
+      </div>
+      <label style="text-transform:none"><input id="rememberUsername" type="checkbox" style="width:auto;margin-right:7px">Remember username on this browser</label>
       <button id="submit" class="primary" style="width:100%;margin-top:14px">SIGN IN</button>
       <div id="authMessage" class="message"></div>
     </div>
     <div class="panel">
       <h2>Account Security</h2>
       <div class="metric-grid">
-        <div class="metric"><span class="muted">Password</span><b>One-way hash</b></div>
+        <div class="metric"><span class="muted">Password</span><b>One-way scrypt</b></div>
         <div class="metric"><span class="muted">Session</span><b>12 hours</b></div>
         <div class="metric"><span class="muted">Storage</span><b>Encrypted</b></div>
       </div>
-      <p class="muted" style="margin-top:16px">Passwords cannot be viewed by the owner. This page keeps the signed session only in the current browser tab.</p>
+      <p class="muted" style="margin-top:16px">Passwords are never saved by this page. The signed session stays only in this browser tab.</p>
     </div>
   </section>
   <section id="accountView" class="grid hidden">
     <div class="stack">
-      <div class="panel"><h3>Account</h3><h2 id="profileName">-</h2><div id="profileStatus" class="pill">-</div><p class="muted" id="profileDates" style="margin-top:12px"></p></div>
-      <div class="panel"><h3>Change Password</h3><label for="currentPassword">Current password</label><input id="currentPassword" type="password" autocomplete="current-password"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password"><button id="changePassword" class="blue" style="margin-top:12px">CHANGE PASSWORD</button><div id="passwordMessage" class="message"></div></div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between"><div><h3>Account</h3><h2 id="profileName">-</h2></div><div id="profileStatus" class="pill">-</div></div>
+        <p class="muted" id="profileDates"></p><div id="sessionTime" class="session-line"></div><div id="lastRefresh" class="session-line"></div>
+        <div class="account-actions" style="margin-top:14px"><button id="refresh" class="blue">REFRESH</button><button id="downloadSummary">DOWNLOAD SAFE SUMMARY</button><button id="logoutAll" class="danger">SIGN OUT EVERY DEVICE</button></div>
+      </div>
+      <div class="panel">
+        <h3>Change Password</h3>
+        <label for="currentPassword">Current password</label><input id="currentPassword" type="password" maxlength="128" autocomplete="current-password">
+        <label for="newPassword">New password</label><input id="newPassword" type="password" maxlength="128" autocomplete="new-password">
+        <label style="text-transform:none"><input id="showChangePassword" type="checkbox" style="width:auto;margin-right:7px">Show password fields</label>
+        <button id="changePassword" class="blue" style="margin-top:12px">CHANGE PASSWORD</button><div id="passwordMessage" class="message"></div>
+      </div>
+      <div class="panel">
+        <h3>Change Username</h3>
+        <label for="renameUsername">New username</label><input id="renameUsername" maxlength="32" autocomplete="off" spellcheck="false">
+        <label for="renamePassword">Current password</label><input id="renamePassword" type="password" maxlength="128" autocomplete="current-password">
+        <button id="changeUsername" class="blue" style="margin-top:12px">CHANGE USERNAME</button><div id="usernameMessage" class="message"></div>
+      </div>
     </div>
-    <div class="panel"><h3>Assigned Access</h3><div id="noLicense" class="muted">No license or rank is assigned yet.</div>
-      <div id="licenseView" class="hidden"><div class="metric-grid"><div class="metric"><span class="muted">Rank</span><b id="rank">-</b></div><div class="metric"><span class="muted">Plan</span><b id="plan">-</b></div><div class="metric"><span class="muted">Status</span><b id="licenseStatus">-</b></div></div><h3 style="margin-top:18px">License Key</h3><div id="licenseKey" class="key"></div><div class="row" style="margin-top:10px"><button id="copyKey" class="primary">COPY LICENSE KEY</button><a href="/customer"><button>OPEN LICENSE CENTER</button></a></div><p class="muted" id="licenseMeta" style="margin-top:14px"></p></div>
+    <div class="panel license-band"><h3>Assigned Access</h3><div id="noLicense" class="empty">Waiting for the owner to assign a rank. This page refreshes automatically.</div>
+      <div id="licenseView" class="hidden"><div class="metric-grid"><div class="metric"><span class="muted">Rank</span><b id="rank">-</b></div><div class="metric"><span class="muted">Plan</span><b id="plan">-</b></div><div class="metric"><span class="muted">Status</span><b id="licenseStatus">-</b></div></div><h3 style="margin-top:18px">License</h3><div id="maskedKey" class="key"></div><p class="muted" id="licenseMeta" style="margin-top:14px"></p><div class="row"><a href="/customer"><button>OPEN CUSTOMER CENTER</button></a></div></div>
     </div>
   </section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let mode="login";let session=sessionStorage.getItem("vaultlink_account_session")||"";let current=null;
+const $=id=>document.getElementById(id);let mode="login";let session=sessionStorage.getItem("vaultlink_account_session")||"";let sessionExpires=sessionStorage.getItem("vaultlink_account_expires")||"";let current=null;let availabilityTimer=null;let refreshBusy=false;
 function message(id,text,kind=""){const el=$(id);el.textContent=text;el.className="message "+kind}
+function formatDate(value){if(!value)return"unknown";const parsed=new Date(value);return Number.isNaN(parsed.getTime())?value:parsed.toLocaleString()}
 async function api(path,options={}){const headers={"Content-Type":"application/json",...(options.headers||{})};if(session)headers.Authorization="Bearer "+session;const response=await fetch(path,{...options,headers});const data=await response.json().catch(()=>({message:"Invalid server response."}));if(!response.ok)throw new Error(data.message||"Request failed.");return data}
-function setMode(next){mode=next;const create=mode==="register";$("signInTab").classList.toggle("active",!create);$("createTab").classList.toggle("active",create);$("confirm").classList.toggle("hidden",!create);$("confirmLabel").classList.toggle("hidden",!create);$("submit").textContent=create?"CREATE ACCOUNT":"SIGN IN";$("password").autocomplete=create?"new-password":"current-password";message("authMessage","")}
-function showAccount(account){current=account;$("authView").classList.add("hidden");$("accountView").classList.remove("hidden");$("logout").classList.remove("hidden");$("topStatus").textContent="Signed in";$("profileName").textContent=account.username;$("profileStatus").textContent=account.status.toUpperCase();$("profileDates").textContent="Created "+(account.created_at_utc||"unknown")+" | Last sign-in "+(account.last_login_at_utc||"unknown");const license=account.license||{};$("noLicense").classList.toggle("hidden",!!license.assigned);$("licenseView").classList.toggle("hidden",!license.assigned);if(license.assigned){$("rank").textContent=license.rank?"Rank "+license.rank:"-";$("plan").textContent=license.plan_name||license.plan_id||"-";$("licenseStatus").textContent=(license.status||"unknown").toUpperCase();$("licenseKey").textContent=license.license_key||"Unavailable";$("licenseMeta").textContent="License "+(license.license_id||"-")+" | Devices "+(license.active_devices||0)+" / "+(license.max_devices||1)+(license.expires_at_utc?" | Expires "+license.expires_at_utc:"")}}
-function signedOut(){session="";current=null;sessionStorage.removeItem("vaultlink_account_session");$("authView").classList.remove("hidden");$("accountView").classList.add("hidden");$("logout").classList.add("hidden");$("topStatus").textContent="Signed out";$("password").value="";$("confirm").value=""}
-async function restore(){if(!session)return;try{const data=await api("/api/v1/accounts/me",{method:"GET"});showAccount(data.account)}catch(_){signedOut()}}
-$("signInTab").onclick=()=>setMode("login");$("createTab").onclick=()=>setMode("register");$("logout").onclick=signedOut;
-$("submit").onclick=async()=>{const username=$("username").value.trim(),password=$("password").value;if(mode==="register"&&password!==$("confirm").value)return message("authMessage","Passwords do not match.","bad");$("submit").disabled=true;try{const data=await api(mode==="register"?"/api/v1/accounts/register":"/api/v1/accounts/login",{method:"POST",body:JSON.stringify({username,password})});session=data.session_token;sessionStorage.setItem("vaultlink_account_session",session);showAccount(data.account);message("authMessage","")}catch(error){message("authMessage",error.message,"bad")}finally{$("submit").disabled=false}};
-$("changePassword").onclick=async()=>{try{const data=await api("/api/v1/accounts/change-password",{method:"POST",body:JSON.stringify({current_password:$("currentPassword").value,new_password:$("newPassword").value})});session=data.session_token;sessionStorage.setItem("vaultlink_account_session",session);$("currentPassword").value="";$("newPassword").value="";message("passwordMessage","Password changed. Other sessions were signed out.","good")}catch(error){message("passwordMessage",error.message,"bad")}};
-$("copyKey").onclick=async()=>{const key=current?.license?.license_key||"";if(!key)return;await navigator.clipboard.writeText(key);$("copyKey").textContent="COPIED";setTimeout(()=>$("copyKey").textContent="COPY LICENSE KEY",1200)};
-restore();
+function setMode(next){mode=next;const create=mode==="register";$("signInTab").classList.toggle("active",!create);$("createTab").classList.toggle("active",create);$("confirm").classList.toggle("hidden",!create);$("confirmLabel").classList.toggle("hidden",!create);$("passwordHelp").classList.toggle("hidden",!create);$("submit").textContent=create?"CREATE ACCOUNT":"SIGN IN";$("password").autocomplete=create?"new-password":"current-password";message("authMessage","");message("usernameStatus","");updatePasswordRules();if(create)checkUsernameSoon()}
+function updatePasswordRules(){const value=$("password").value;const rules={ruleLength:value.length>=10&&value.length<=128,ruleLower:/[a-z]/.test(value),ruleUpper:/[A-Z]/.test(value),ruleNumber:/[0-9]/.test(value),ruleSymbol:/[^A-Za-z0-9]/.test(value)};const classes=["ruleLower","ruleUpper","ruleNumber","ruleSymbol"].filter(id=>rules[id]).length;rules.ruleClasses=classes>=3;for(const[id,ok]of Object.entries(rules))$(id).classList.toggle("ok",ok);$("strengthBar").style.width=Math.min(100,(Number(rules.ruleLength)+classes+Number(rules.ruleClasses))*16.67)+"%"}
+function usernameValid(value){return/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(value)}
+async function checkUsername(){if(mode!=="register")return true;const username=$("username").value.trim();if(!usernameValid(username)){message("usernameStatus","Use 3-32 letters, numbers, underscores, or hyphens.","bad");return false}try{const data=await api("/api/v1/accounts/username-availability?username="+encodeURIComponent(username),{method:"GET"});message("usernameStatus",data.available?"Username is available.":"Username is already taken.",data.available?"good":"bad");return!!data.available}catch(error){message("usernameStatus",error.message,"bad");return false}}
+function checkUsernameSoon(){clearTimeout(availabilityTimer);availabilityTimer=setTimeout(checkUsername,350)}
+function saveSession(data){session=data.session_token||session;sessionExpires=data.session_expires_at_utc||sessionExpires;sessionStorage.setItem("vaultlink_account_session",session);sessionStorage.setItem("vaultlink_account_expires",sessionExpires)}
+function showAccount(account,expires=""){current=account;if(expires){sessionExpires=expires;sessionStorage.setItem("vaultlink_account_expires",expires)}$("authView").classList.add("hidden");$("accountView").classList.remove("hidden");$("logout").classList.remove("hidden");$("topStatus").textContent="Signed in";$("profileName").textContent=account.username;$("profileStatus").textContent=(account.status||"unknown").toUpperCase();$("profileDates").textContent="Created "+formatDate(account.created_at_utc)+" | Last sign-in "+formatDate(account.last_login_at_utc);const license=account.license||{};$("noLicense").classList.toggle("hidden",!!license.assigned);$("licenseView").classList.toggle("hidden",!license.assigned);if(license.assigned){$("rank").textContent=license.rank?"Rank "+license.rank:"-";$("plan").textContent=license.plan_name||license.plan_id||"-";$("licenseStatus").textContent=(license.status||"unknown").toUpperCase();$("maskedKey").textContent=license.masked_license_key||"Assigned to this account";$("licenseMeta").textContent="Devices "+(license.active_devices||0)+" / "+(license.max_devices||1)+(license.expires_at_utc?" | Expires "+formatDate(license.expires_at_utc):"")}updateSessionClock()}
+function signedOut(note=""){session="";sessionExpires="";current=null;sessionStorage.removeItem("vaultlink_account_session");sessionStorage.removeItem("vaultlink_account_expires");$("authView").classList.remove("hidden");$("accountView").classList.add("hidden");$("logout").classList.add("hidden");$("topStatus").textContent="Signed out";$("password").value="";$("confirm").value="";if(note)message("authMessage",note,"good")}
+function updateSessionClock(){if(!sessionExpires)return $("sessionTime").textContent="Session expiry unavailable";const remaining=new Date(sessionExpires).getTime()-Date.now();if(remaining<=0){signedOut("Session expired. Sign in again.");return}const hours=Math.floor(remaining/3600000),minutes=Math.floor((remaining%3600000)/60000);$("sessionTime").textContent="Session expires in "+hours+"h "+minutes+"m"}
+async function refreshProfile(showMessage=false){if(!session||refreshBusy)return;refreshBusy=true;$("refresh").disabled=true;try{const data=await api("/api/v1/accounts/me",{method:"GET"});showAccount(data.account,data.session_expires_at_utc||"");$("lastRefresh").textContent="Updated "+new Date().toLocaleTimeString();if(showMessage)$("topStatus").textContent="Account refreshed"}catch(_){signedOut("Your session ended. Sign in again.")}finally{refreshBusy=false;$("refresh").disabled=false}}
+async function restore(){if(!session)return;await refreshProfile()}
+$("signInTab").onclick=()=>setMode("login");$("createTab").onclick=()=>setMode("register");$("logout").onclick=()=>signedOut();$("username").oninput=()=>{if(mode==="register")checkUsernameSoon()};$("password").oninput=updatePasswordRules;
+$("showPassword").onchange=()=>{const type=$("showPassword").checked?"text":"password";$("password").type=type;$("confirm").type=type};$("showChangePassword").onchange=()=>{const type=$("showChangePassword").checked?"text":"password";$("currentPassword").type=type;$("newPassword").type=type};
+$("submit").onclick=async()=>{const username=$("username").value.trim(),password=$("password").value;if(mode==="register"&&password!==$("confirm").value)return message("authMessage","Passwords do not match.","bad");if(mode==="register"&&!(await checkUsername()))return;$("submit").disabled=true;try{const data=await api(mode==="register"?"/api/v1/accounts/register":"/api/v1/accounts/login",{method:"POST",body:JSON.stringify({username,password})});saveSession(data);if($("rememberUsername").checked)localStorage.setItem("vaultlink_account_username",username);else localStorage.removeItem("vaultlink_account_username");showAccount(data.account,data.session_expires_at_utc||"");message("authMessage","")}catch(error){message("authMessage",error.message,"bad")}finally{$("submit").disabled=false;$("password").value="";$("confirm").value="";updatePasswordRules()}};
+$("changePassword").onclick=async()=>{try{const data=await api("/api/v1/accounts/change-password",{method:"POST",body:JSON.stringify({current_password:$("currentPassword").value,new_password:$("newPassword").value})});saveSession(data);showAccount(data.account,data.session_expires_at_utc||"");$("currentPassword").value="";$("newPassword").value="";message("passwordMessage","Password changed. Other sessions were signed out.","good")}catch(error){message("passwordMessage",error.message,"bad")}};
+$("changeUsername").onclick=async()=>{const proposed=$("renameUsername").value.trim();if(!usernameValid(proposed))return message("usernameMessage","Use 3-32 letters, numbers, underscores, or hyphens.","bad");try{const availability=await api("/api/v1/accounts/username-availability?username="+encodeURIComponent(proposed),{method:"GET"});if(!availability.available)return message("usernameMessage","Username is already taken.","bad");const data=await api("/api/v1/accounts/change-username",{method:"POST",body:JSON.stringify({new_username:proposed,current_password:$("renamePassword").value})});saveSession(data);showAccount(data.account,data.session_expires_at_utc||"");if($("rememberUsername").checked)localStorage.setItem("vaultlink_account_username",proposed);$("renameUsername").value="";$("renamePassword").value="";message("usernameMessage","Username changed. Other sessions were signed out.","good")}catch(error){message("usernameMessage",error.message,"bad")}};
+$("refresh").onclick=()=>refreshProfile(true);$("logoutAll").onclick=async()=>{if(!confirm("Sign out this account on every device?"))return;try{await api("/api/v1/accounts/logout-all",{method:"POST",body:"{}"});signedOut("Every account session was signed out.")}catch(error){message("passwordMessage",error.message,"bad")}};
+$("downloadSummary").onclick=()=>{if(!current)return;const license=current.license||{};const safe={schema:"vaultlink-account-summary-v1",exported_at_utc:new Date().toISOString(),username:current.username,status:current.status,created_at_utc:current.created_at_utc||"",last_login_at_utc:current.last_login_at_utc||"",license:{assigned:!!license.assigned,rank:license.rank||0,plan_name:license.plan_name||"",status:license.status||"",masked_license_key:license.masked_license_key||"",active_devices:license.active_devices||0,max_devices:license.max_devices||0,expires_at_utc:license.expires_at_utc||""},privacy:"No password, session token, full license key, file data, or device identity is included."};const blob=new Blob([JSON.stringify(safe,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vaultlink-account-summary.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+const remembered=localStorage.getItem("vaultlink_account_username")||"";if(remembered){$("username").value=remembered;$("rememberUsername").checked=true}setInterval(updateSessionClock,1000);setInterval(()=>refreshProfile(false),20000);restore();
 </script></body></html>"""
     return page.replace("__STYLE__", COMMON_STYLE).replace("__VERSION__", html_escape(str(api_version)))
 

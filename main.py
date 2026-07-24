@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.64.0"
+API_VERSION = "0.65.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -282,8 +282,11 @@ ACCOUNT_LOGIN_WINDOW_SECONDS = 15 * 60
 ACCOUNT_LOGIN_MAX_FAILURES = 8
 ACCOUNT_REGISTER_WINDOW_SECONDS = 60 * 60
 ACCOUNT_REGISTER_MAX_ATTEMPTS = 10
+ACCOUNT_AVAILABILITY_WINDOW_SECONDS = 60
+ACCOUNT_AVAILABILITY_MAX_CHECKS = 120
 ACCOUNT_LOGIN_FAILURES = {}
 ACCOUNT_REGISTER_ATTEMPTS = {}
+ACCOUNT_AVAILABILITY_CHECKS = {}
 ACCOUNT_RATE_LOCK = threading.Lock()
 SUPPORT_TICKET_AAD = b"VaultLinkSupportTicketV1"
 MAX_SUPPORT_TICKETS = 1000
@@ -1788,10 +1791,76 @@ def login_account(payload, remote_key="unknown"):
 
 def account_me(token):
     record = verify_account_session(token)
+    session_payload = verify_token(token, ACCOUNT_SESSION_PREFIX)
     return {
         "ok": True,
         "account": account_view(record, include_license_key=True),
+        "session_expires_at_utc": str(session_payload.get("expires_at_utc", "")),
         "server_time_utc": utc_now(),
+    }
+
+
+def account_username_availability(value, remote_key="unknown"):
+    username, _normalized = validated_account_username(value)
+    rate_key = account_rate_key(remote_key)
+    if not account_rate_allowed(
+        ACCOUNT_AVAILABILITY_CHECKS,
+        rate_key,
+        ACCOUNT_AVAILABILITY_MAX_CHECKS,
+        ACCOUNT_AVAILABILITY_WINDOW_SECONDS,
+        consume=True,
+    ):
+        raise PermissionError("Too many username checks from this connection. Try again shortly.")
+    record, _private_fields = find_account_by_username(username)
+    return {
+        "ok": True,
+        "username": username,
+        "available": record is None,
+        "requirements": {
+            "minimum_characters": 3,
+            "maximum_characters": 32,
+            "allowed": "letters, numbers, underscores, and hyphens",
+        },
+        "server_time_utc": utc_now(),
+    }
+
+
+def logout_all_account_sessions(token):
+    record = verify_account_session(token)
+    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+    write_account_record(record)
+    record_api_activity("account_logout_all", "ok", "account", record["account_id"])
+    return {
+        "ok": True,
+        "signed_out_all": True,
+        "server_time_utc": utc_now(),
+    }
+
+
+def change_account_username(payload, token):
+    record = verify_account_session(token)
+    private_fields = decrypt_account_private_fields(record)
+    if not account_password_matches(payload.get("current_password"), private_fields):
+        raise PermissionError("Current password was incorrect.")
+    username, normalized = validated_account_username(payload.get("new_username"))
+    current_username = str(private_fields.get("username", ""))
+    if username == current_username:
+        raise ValueError("New username must be different from the current username.")
+    existing, _existing_private = find_account_by_username(username)
+    if existing and existing.get("account_id") != record.get("account_id"):
+        raise ValueError("That username is not available.")
+    private_fields["username"] = username
+    private_fields["username_normalized"] = normalized
+    record["username_hash"] = account_username_hash(normalized)
+    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+    record = write_account_record(record, private_fields)
+    new_token, expires_at = issue_account_session(record)
+    record_api_activity("account_username_change", "ok", "account", record["account_id"])
+    return {
+        "ok": True,
+        "session_token": new_token,
+        "session_expires_at_utc": expires_at,
+        "account": account_view(record, include_license_key=True),
     }
 
 
@@ -2436,7 +2505,10 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/register", "purpose": "Create an encrypted username account with a one-way scrypt password hash"},
             {"method": "POST", "path": "/api/v1/accounts/login", "purpose": "Rate-limited account sign-in with a twelve-hour signed session"},
             {"method": "GET", "path": "/api/v1/accounts/me", "purpose": "Signed-session account and assigned-license view"},
+            {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
+            {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
+            {"method": "POST", "path": "/api/v1/accounts/logout-all", "purpose": "Invalidate every signed session for the authenticated account"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only issuance bound to an existing active customer account"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
@@ -10711,6 +10783,31 @@ class ApiHandler(BaseHTTPRequestHandler):
                     status=HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
             return
+        if path == "/api/v1/accounts/username-availability":
+            try:
+                query = parse_qs(parsed.query)
+                self.send_json(
+                    account_username_availability(
+                        (query.get("username") or [""])[0],
+                        self.client_address[0],
+                    )
+                )
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "rate_limited", "message": str(exc)},
+                    status=HTTPStatus.TOO_MANY_REQUESTS,
+                )
+            except ValueError as exc:
+                self.send_json(
+                    {"ok": False, "error": "bad_request", "message": str(exc)},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
         if path == "/api/v1/customer-answers":
             self.send_json(customer_answers_payload())
             return
@@ -11219,7 +11316,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         route_limits = {
             "/api/v1/accounts/register": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/login": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/change-username": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/change-password": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/logout-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
@@ -11278,8 +11377,14 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/accounts/login":
                 self.send_json(login_account(payload, self.client_address[0]))
                 return
+            if path == "/api/v1/accounts/change-username":
+                self.send_json(change_account_username(payload, self.account_session_token()))
+                return
             if path == "/api/v1/accounts/change-password":
                 self.send_json(change_account_password(payload, self.account_session_token()))
+                return
+            if path == "/api/v1/accounts/logout-all":
+                self.send_json(logout_all_account_sessions(self.account_session_token()))
                 return
             if path == "/api/v1/admin/accounts/assign":
                 self.require_admin_token()

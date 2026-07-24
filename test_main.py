@@ -110,6 +110,7 @@ class VaultLinkApiTests(unittest.TestCase):
         api.UPDATE_MANIFEST_PATH = api.UPDATE_DIR / "windows-manifest.json"
         api.ACCOUNT_LOGIN_FAILURES.clear()
         api.ACCOUNT_REGISTER_ATTEMPTS.clear()
+        api.ACCOUNT_AVAILABILITY_CHECKS.clear()
         self._default_license_account_id = ""
 
     def tearDown(self):
@@ -235,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.64.0")
+        self.assertEqual(api.API_VERSION, "0.65.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -914,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.64.0")
+        self.assertEqual(payload["api_version"], "0.65.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -984,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.64.0")
+        self.assertEqual(payload["api_version"], "0.65.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3789,6 +3790,160 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"ISSUE AND ASSIGN", owner_page)
         self.assertIn(b"/api/v1/admin/accounts", owner_page)
         self.assertNotIn(TEST_ADMIN_TOKEN.encode("utf-8"), owner_page)
+
+    def test_account_workspace_availability_expiry_and_logout_all(self):
+        username = "Workspace_User_65"
+        status, available = self.call(
+            f"/api/v1/accounts/username-availability?username={username}"
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(available["available"])
+        self.assertEqual(available["username"], username)
+        self.assertEqual(available["requirements"]["minimum_characters"], 3)
+
+        with mock.patch.object(api, "ACCOUNT_AVAILABILITY_MAX_CHECKS", 1):
+            api.account_username_availability("Rate_User_65", "rate-limit-test")
+            with self.assertRaises(PermissionError):
+                api.account_username_availability("Other_User_65", "rate-limit-test")
+
+        status, invalid = self.call(
+            "/api/v1/accounts/username-availability?username=ab"
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("3 to 32", invalid["message"])
+
+        status, registered = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": username, "password": "WorkspaceSecure9!"},
+        )
+        self.assertEqual(status, 201)
+        first_token = registered["session_token"]
+        self.assertTrue(registered["session_expires_at_utc"])
+
+        status, taken = self.call(
+            f"/api/v1/accounts/username-availability?username={username.lower()}"
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(taken["available"])
+
+        status, second_login = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": username, "password": "WorkspaceSecure9!"},
+        )
+        self.assertEqual(status, 200)
+        second_token = second_login["session_token"]
+        self.assertNotEqual(first_token, second_token)
+
+        status, profile = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            profile["session_expires_at_utc"],
+            registered["session_expires_at_utc"],
+        )
+
+        status, signed_out = self.call(
+            "/api/v1/accounts/logout-all",
+            method="POST",
+            payload={},
+            headers={"Authorization": f"Bearer {second_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(signed_out["signed_out_all"])
+
+        for token in (first_token, second_token):
+            status, blocked = self.call(
+                "/api/v1/accounts/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(status, 401)
+            self.assertIn("no longer valid", blocked["message"])
+
+        status, _headers, page = self.call_bytes("/account")
+        self.assertEqual(status, 200)
+        self.assertIn(b"DOWNLOAD SAFE SUMMARY", page)
+        self.assertIn(b"SIGN OUT EVERY DEVICE", page)
+        self.assertIn(b"/api/v1/accounts/username-availability", page)
+        self.assertIn(b"/api/v1/accounts/logout-all", page)
+        self.assertIn(b"masked_license_key", page)
+        self.assertNotIn(b"COPY LICENSE KEY", page)
+
+    def test_account_username_change_requires_password_and_invalidates_sessions(self):
+        status, registered = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Rename_Start_65", "password": "RenameSecure9!"},
+        )
+        self.assertEqual(status, 201)
+        old_token = registered["session_token"]
+        account_id = registered["account"]["account_id"]
+
+        status, wrong_password = self.call(
+            "/api/v1/accounts/change-username",
+            method="POST",
+            payload={
+                "new_username": "Rename_Finish_65",
+                "current_password": "WrongPassword9!",
+            },
+            headers={"Authorization": f"Bearer {old_token}"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("Current password", wrong_password["message"])
+
+        status, renamed = self.call(
+            "/api/v1/accounts/change-username",
+            method="POST",
+            payload={
+                "new_username": "Rename_Finish_65",
+                "current_password": "RenameSecure9!",
+            },
+            headers={"Authorization": f"Bearer {old_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(renamed["account"]["account_id"], account_id)
+        self.assertEqual(renamed["account"]["username"], "Rename_Finish_65")
+        self.assertNotEqual(renamed["session_token"], old_token)
+
+        status, blocked_old_session = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {old_token}"},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("no longer valid", blocked_old_session["message"])
+
+        status, old_login = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Rename_Start_65", "password": "RenameSecure9!"},
+        )
+        self.assertEqual(status, 403)
+        status, new_login = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Rename_Finish_65", "password": "RenameSecure9!"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(new_login["account"]["account_id"], account_id)
+
+        status, old_available = self.call(
+            "/api/v1/accounts/username-availability?username=Rename_Start_65"
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(old_available["available"])
+        status, new_taken = self.call(
+            "/api/v1/accounts/username-availability?username=Rename_Finish_65"
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(new_taken["available"])
+
+        status, _headers, page = self.call_bytes("/account")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CHANGE USERNAME", page)
+        self.assertIn(b"/api/v1/accounts/change-username", page)
 
 
 if __name__ == "__main__":
