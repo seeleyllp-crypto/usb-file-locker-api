@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
@@ -48,14 +49,16 @@ from maintenance_page import customer_maintenance_html
 from owner_operations_page import owner_maintenance_operations_html
 from retention_catalog import fixed_cleanup_flow, fixed_retention_areas, fixed_retention_practices
 from retention_page import customer_retention_html
+from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.62.0"
+API_VERSION = "0.63.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
 LICENSE_RECEIPT_PREFIX = "vlr1"
+ACCOUNT_SESSION_PREFIX = "vlas1"
 AUDIT_DOWNLOAD_PREFIX = "vla1"
 ACTIVITY_DOWNLOAD_PREFIX = "vlt1"
 DEFAULT_SIGNING_SECRET = "vaultlink-dev-signing-secret-change-me"
@@ -66,6 +69,7 @@ UPDATE_SIGNING_PUBLIC_KEY_B64 = "UhQt7KyhSd6na6ZL5zmvOTKMgQqdY3FUEdoKRX-iGKU"
 MAX_UPDATE_MANIFEST_BYTES = 64 * 1024
 MAX_UPDATE_PACKAGE_BYTES = 50 * 1024 * 1024
 MAX_LICENSE_JSON_BODY_BYTES = 64 * 1024
+MAX_ACCOUNT_JSON_BODY_BYTES = 16 * 1024
 MAX_SUPPORT_JSON_BODY_BYTES = 32 * 1024
 MAX_REJECTED_BODY_DRAIN_BYTES = 1024 * 1024
 LICENSE_SYNC_INTERVAL_SECONDS = 60
@@ -271,6 +275,16 @@ LICENSE_STATE_DIR = Path(
 MAX_LICENSE_NOTE_CHARS = 2000
 MAX_LICENSE_RECORDS = 500
 LICENSE_RECORD_AAD = b"VaultLinkLicenseRecordV1"
+ACCOUNT_RECORD_AAD = b"VaultLinkAccountRecordV1"
+MAX_ACCOUNTS = 5000
+ACCOUNT_SESSION_HOURS = 12
+ACCOUNT_LOGIN_WINDOW_SECONDS = 15 * 60
+ACCOUNT_LOGIN_MAX_FAILURES = 8
+ACCOUNT_REGISTER_WINDOW_SECONDS = 60 * 60
+ACCOUNT_REGISTER_MAX_ATTEMPTS = 10
+ACCOUNT_LOGIN_FAILURES = {}
+ACCOUNT_REGISTER_ATTEMPTS = {}
+ACCOUNT_RATE_LOCK = threading.Lock()
 SUPPORT_TICKET_AAD = b"VaultLinkSupportTicketV1"
 MAX_SUPPORT_TICKETS = 1000
 MAX_SUPPORT_TICKETS_PER_DAY = 10
@@ -1396,6 +1410,491 @@ def decrypt_license_private_fields(record):
     return payload
 
 
+def account_record_encryption_key():
+    material = ("vaultlink-account-records-v1\0" + license_records_secret()).encode("utf-8")
+    return hashlib.sha256(material).digest()
+
+
+def encrypt_account_private_fields(payload):
+    nonce = os.urandom(12)
+    encrypted = AESGCM(account_record_encryption_key()).encrypt(
+        nonce,
+        canonical_json_bytes(payload),
+        ACCOUNT_RECORD_AAD,
+    )
+    return b64url_encode(nonce + encrypted)
+
+
+def decrypt_account_private_fields(record):
+    encoded = str(record.get("private_blob", "")).strip()
+    if not encoded:
+        raise ValueError("Stored account private data is missing.")
+    packed = b64url_decode(encoded)
+    if len(packed) < 29:
+        raise ValueError("Stored account private data is damaged.")
+    plain = AESGCM(account_record_encryption_key()).decrypt(
+        packed[:12],
+        packed[12:],
+        ACCOUNT_RECORD_AAD,
+    )
+    payload = json.loads(plain.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Stored account private data is invalid.")
+    return payload
+
+
+def validated_account_id(value):
+    account_id = str(value or "").strip()
+    if not re.fullmatch(r"acct_[A-Za-z0-9_-]{20,80}", account_id):
+        raise ValueError("account_id is invalid.")
+    return account_id
+
+
+def validated_account_username(value):
+    username = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{2,31}", username):
+        raise ValueError(
+            "Username must be 3 to 32 characters and use only letters, numbers, underscores, or hyphens."
+        )
+    return username, username.casefold()
+
+
+def validated_account_password(value):
+    if not isinstance(value, str):
+        raise ValueError("Password must be text.")
+    password = value
+    if len(password) < 10 or len(password) > 128 or len(password.encode("utf-8")) > 512:
+        raise ValueError("Password must be between 10 and 128 characters.")
+    if any(ord(character) < 32 or ord(character) == 127 for character in password):
+        raise ValueError("Password cannot contain control characters.")
+    classes = (
+        any(character.islower() for character in password),
+        any(character.isupper() for character in password),
+        any(character.isdigit() for character in password),
+        any(not character.isalnum() for character in password),
+    )
+    if sum(classes) < 3:
+        raise ValueError("Password must use at least three of: lowercase, uppercase, numbers, and symbols.")
+    return password
+
+
+def account_username_hash(normalized_username):
+    return hmac.new(
+        account_record_encryption_key(),
+        ("username\0" + str(normalized_username)).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def account_password_fields(password):
+    password = validated_account_password(password)
+    salt = os.urandom(16)
+    digest = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=2**14,
+        r=8,
+        p=1,
+        maxmem=64 * 1024 * 1024,
+        dklen=32,
+    )
+    return {
+        "password_algorithm": "scrypt",
+        "password_salt": b64url_encode(salt),
+        "password_hash": b64url_encode(digest),
+        "password_n": 2**14,
+        "password_r": 8,
+        "password_p": 1,
+    }
+
+
+def account_password_matches(password, private_fields):
+    try:
+        password = validated_account_password(password)
+        if private_fields.get("password_algorithm") != "scrypt":
+            return False
+        salt = b64url_decode(str(private_fields["password_salt"]))
+        expected = b64url_decode(str(private_fields["password_hash"]))
+        actual = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=salt,
+            n=int(private_fields.get("password_n", 0)),
+            r=int(private_fields.get("password_r", 0)),
+            p=int(private_fields.get("password_p", 0)),
+            maxmem=64 * 1024 * 1024,
+            dklen=len(expected),
+        )
+        return hmac.compare_digest(actual, expected)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def account_record_path(account_id):
+    return private_record_path("accounts", validated_account_id(account_id))
+
+
+def read_account_record(account_id):
+    clean_id = validated_account_id(account_id)
+    path = account_record_path(clean_id)
+    if not path.is_file():
+        return None
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict) or record.get("account_id") != clean_id:
+        raise ValueError("Stored account identity did not verify.")
+    return record
+
+
+def write_account_record(record, private_fields=None):
+    account_id = validated_account_id(record.get("account_id"))
+    stored = dict(record)
+    stored["schema_version"] = 1
+    stored["account_id"] = account_id
+    if private_fields is not None:
+        stored["private_blob"] = encrypt_account_private_fields(private_fields)
+    if not str(stored.get("private_blob", "")).strip():
+        raise ValueError("Account private data is required.")
+    stored["updated_at_utc"] = utc_now()
+    write_private_json(account_record_path(account_id), stored)
+    return stored
+
+
+def list_account_records():
+    folder = LICENSE_STATE_DIR / "accounts"
+    if not folder.is_dir():
+        return []
+    records = []
+    for path in sorted(folder.glob("*.json")):
+        if len(records) >= MAX_ACCOUNTS:
+            raise ValueError("Account inventory exceeds the configured safety limit.")
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(record, dict) and record.get("account_id"):
+                validated_account_id(record["account_id"])
+                records.append(record)
+        except Exception:
+            continue
+    return records
+
+
+def find_account_by_username(username):
+    display, normalized = validated_account_username(username)
+    expected_hash = account_username_hash(normalized)
+    for record in list_account_records():
+        if hmac.compare_digest(str(record.get("username_hash", "")), expected_hash):
+            private_fields = decrypt_account_private_fields(record)
+            if hmac.compare_digest(str(private_fields.get("username_normalized", "")), normalized):
+                return record, private_fields
+    return None, {"username": display, "username_normalized": normalized}
+
+
+def account_license_view(record, include_license_key=False):
+    license_id = str(record.get("assigned_license_id", "")).strip()
+    if not license_id:
+        return {"assigned": False, "status": "unassigned"}
+    license_record = read_license_record(license_id)
+    if not license_record:
+        return {
+            "assigned": True,
+            "license_id": license_id,
+            "status": "missing",
+            "message": "The assigned license record is missing.",
+        }
+    plan = PLAN_INDEX.get(str(license_record.get("plan_id", "")))
+    private_fields = stored_license_private_fields(license_record)
+    license_key = str(private_fields.get("license_key", ""))
+    payload = {
+        "assigned": True,
+        "license_id": license_id,
+        "plan_id": str(license_record.get("plan_id", "")),
+        "plan_name": str(license_record.get("plan_name", "")),
+        "rank": int(plan.get("rank", 0)) if plan else 0,
+        "status": str(license_record.get("status", "unknown")),
+        "expires_at_utc": str(license_record.get("expires_at_utc", "")),
+        "max_devices": int(license_record.get("max_devices", 1) or 1),
+        "active_devices": active_device_count(license_id),
+        "masked_license_key": masked_license_key(license_key),
+    }
+    if include_license_key:
+        payload["license_key"] = license_key
+    return payload
+
+
+def account_view(record, include_license_key=False):
+    private_fields = decrypt_account_private_fields(record)
+    return {
+        "account_id": str(record.get("account_id", "")),
+        "username": str(private_fields.get("username", "")),
+        "status": str(record.get("status", "active")),
+        "created_at_utc": str(record.get("created_at_utc", "")),
+        "updated_at_utc": str(record.get("updated_at_utc", "")),
+        "last_login_at_utc": str(record.get("last_login_at_utc", "")),
+        "license": account_license_view(record, include_license_key=include_license_key),
+    }
+
+
+def issue_account_session(record):
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(hours=ACCOUNT_SESSION_HOURS)
+    token = sign_token(
+        ACCOUNT_SESSION_PREFIX,
+        {
+            "account_id": validated_account_id(record.get("account_id")),
+            "session_version": int(record.get("session_version", 1) or 1),
+            "issued_at_utc": format_utc(now),
+            "expires_at_utc": format_utc(expires),
+            "nonce": secrets.token_hex(8),
+        },
+    )
+    return token, format_utc(expires)
+
+
+def verify_account_session(token):
+    try:
+        payload = verify_token(token, ACCOUNT_SESSION_PREFIX)
+        account_id = validated_account_id(payload.get("account_id"))
+        expires = parse_utc(payload.get("expires_at_utc"))
+        if not expires or expires <= datetime.now(timezone.utc):
+            raise PermissionError("Account session expired. Sign in again.")
+        record = read_account_record(account_id)
+        if not record or record.get("status") != "active":
+            raise PermissionError("Account access is disabled.")
+        if int(payload.get("session_version", 0) or 0) != int(record.get("session_version", 1) or 1):
+            raise PermissionError("Account session is no longer valid. Sign in again.")
+        return record
+    except PermissionError:
+        raise
+    except Exception as exc:
+        raise PermissionError("Account session was missing or invalid.") from exc
+
+
+def account_rate_key(remote_key, username=""):
+    remote = str(remote_key or "unknown")[:120]
+    normalized = str(username or "").casefold()[:64]
+    return hashlib.sha256((remote + "\0" + normalized).encode("utf-8")).hexdigest()
+
+
+def account_rate_allowed(bucket, key, limit, window_seconds, consume=False):
+    now = datetime.now(timezone.utc).timestamp()
+    with ACCOUNT_RATE_LOCK:
+        recent = [moment for moment in bucket.get(key, []) if now - moment < window_seconds]
+        if len(recent) >= limit:
+            bucket[key] = recent
+            return False
+        if consume:
+            recent.append(now)
+        if recent:
+            bucket[key] = recent
+        else:
+            bucket.pop(key, None)
+        return True
+
+
+def register_account(payload, remote_key="unknown"):
+    username, normalized = validated_account_username(payload.get("username"))
+    password = validated_account_password(payload.get("password"))
+    rate_key = account_rate_key(remote_key)
+    if not account_rate_allowed(
+        ACCOUNT_REGISTER_ATTEMPTS,
+        rate_key,
+        ACCOUNT_REGISTER_MAX_ATTEMPTS,
+        ACCOUNT_REGISTER_WINDOW_SECONDS,
+        consume=True,
+    ):
+        raise PermissionError("Too many account registrations from this connection. Try again later.")
+    with LICENSE_STATE_LOCK:
+        if len(list_account_records()) >= MAX_ACCOUNTS:
+            raise ValueError("Account capacity has been reached.")
+        existing, _private = find_account_by_username(username)
+        if existing:
+            raise ValueError("That username is not available.")
+        private_fields = {
+            "username": username,
+            "username_normalized": normalized,
+            **account_password_fields(password),
+        }
+        now = utc_now()
+        record = write_account_record(
+            {
+                "account_id": f"acct_{secrets.token_urlsafe(18)}",
+                "username_hash": account_username_hash(normalized),
+                "status": "active",
+                "created_at_utc": now,
+                "last_login_at_utc": now,
+                "session_version": 1,
+                "assigned_license_id": "",
+            },
+            private_fields,
+        )
+    token, expires_at = issue_account_session(record)
+    record_api_activity("account_register", "ok", "account", record["account_id"])
+    return {
+        "ok": True,
+        "created": True,
+        "session_token": token,
+        "session_expires_at_utc": expires_at,
+        "account": account_view(record, include_license_key=True),
+    }
+
+
+def login_account(payload, remote_key="unknown"):
+    username = str(payload.get("username", "")).strip()
+    password = payload.get("password")
+    rate_key = account_rate_key(remote_key, username)
+    if not account_rate_allowed(
+        ACCOUNT_LOGIN_FAILURES,
+        rate_key,
+        ACCOUNT_LOGIN_MAX_FAILURES,
+        ACCOUNT_LOGIN_WINDOW_SECONDS,
+    ):
+        raise PermissionError("Too many failed sign-in attempts. Try again later.")
+    try:
+        record, private_fields = find_account_by_username(username)
+    except ValueError:
+        record, private_fields = None, {}
+    if (
+        not record
+        or record.get("status") != "active"
+        or not account_password_matches(password, private_fields)
+    ):
+        account_rate_allowed(
+            ACCOUNT_LOGIN_FAILURES,
+            rate_key,
+            ACCOUNT_LOGIN_MAX_FAILURES,
+            ACCOUNT_LOGIN_WINDOW_SECONDS,
+            consume=True,
+        )
+        raise PermissionError("Username or password was incorrect.")
+    with ACCOUNT_RATE_LOCK:
+        ACCOUNT_LOGIN_FAILURES.pop(rate_key, None)
+    record["last_login_at_utc"] = utc_now()
+    write_account_record(record)
+    token, expires_at = issue_account_session(record)
+    record_api_activity("account_login", "ok", "account", record["account_id"])
+    return {
+        "ok": True,
+        "session_token": token,
+        "session_expires_at_utc": expires_at,
+        "account": account_view(record, include_license_key=True),
+    }
+
+
+def account_me(token):
+    record = verify_account_session(token)
+    return {
+        "ok": True,
+        "account": account_view(record, include_license_key=True),
+        "server_time_utc": utc_now(),
+    }
+
+
+def change_account_password(payload, token):
+    record = verify_account_session(token)
+    private_fields = decrypt_account_private_fields(record)
+    if not account_password_matches(payload.get("current_password"), private_fields):
+        raise PermissionError("Current password was incorrect.")
+    new_password = validated_account_password(payload.get("new_password"))
+    if account_password_matches(new_password, private_fields):
+        raise ValueError("New password must be different from the current password.")
+    private_fields.update(account_password_fields(new_password))
+    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+    write_account_record(record, private_fields)
+    new_token, expires_at = issue_account_session(record)
+    record_api_activity("account_password_change", "ok", "account", record["account_id"])
+    return {
+        "ok": True,
+        "session_token": new_token,
+        "session_expires_at_utc": expires_at,
+        "account": account_view(record, include_license_key=True),
+    }
+
+
+def list_admin_accounts():
+    accounts = [account_view(record, include_license_key=False) for record in list_account_records()]
+    accounts.sort(key=lambda item: (item["username"].casefold(), item["account_id"]))
+    return {
+        "ok": True,
+        "count": len(accounts),
+        "items": accounts,
+        "passwords_readable": False,
+        "server_time_utc": utc_now(),
+    }
+
+
+def assign_account_license(payload):
+    account_id = validated_account_id(payload.get("account_id"))
+    requested_plan = str(payload.get("plan_id", "")).strip()
+    requested_license = str(payload.get("license_id", "")).strip()
+    if bool(requested_plan) == bool(requested_license):
+        raise ValueError("Choose exactly one plan_id or license_id.")
+    transfer = payload.get("transfer") is True
+    with LICENSE_STATE_LOCK:
+        account = read_account_record(account_id)
+        if not account:
+            raise FileNotFoundError("Account was not found.")
+        issued = None
+        if requested_plan:
+            plan_id = canonical_plan_id(requested_plan)
+            if plan_id not in PLAN_INDEX:
+                raise ValueError("Choose a valid plan id.")
+            username = str(decrypt_account_private_fields(account).get("username", ""))
+            issued = issue_license(
+                {
+                    "plan_id": plan_id,
+                    "max_devices": int(payload.get("max_devices", 1) or 1),
+                    "expires_at_utc": payload.get("expires_at_utc", ""),
+                    "customer_label": username,
+                    "license_note": clean_license_note(payload.get("license_note", "")),
+                }
+            )
+            license_id = str(issued["license"]["license_id"])
+        else:
+            license_id = validated_license_id(requested_license)
+            if not read_license_record(license_id):
+                raise FileNotFoundError("License was not found.")
+        previous_owners = [
+            other
+            for other in list_account_records()
+            if (
+                other.get("account_id") != account_id
+                and str(other.get("assigned_license_id", "")) == license_id
+            )
+        ]
+        if previous_owners and not transfer:
+            raise ValueError("That license is already assigned to another account.")
+        for previous_owner in previous_owners:
+            previous_owner["assigned_license_id"] = ""
+            previous_owner["session_version"] = int(previous_owner.get("session_version", 1) or 1) + 1
+            write_account_record(previous_owner)
+        account["assigned_license_id"] = license_id
+        write_account_record(account)
+    record_api_activity("account_license_assign", "ok", "account", account_id)
+    result = {
+        "ok": True,
+        "assigned": True,
+        "transferred": bool(previous_owners),
+        "account": account_view(account, include_license_key=False),
+    }
+    if issued:
+        result["issued_license_key"] = issued["license_key"]
+    return result
+
+
+def update_account_status(payload):
+    account_id = validated_account_id(payload.get("account_id"))
+    status = str(payload.get("status", "")).strip().lower()
+    if status not in {"active", "disabled"}:
+        raise ValueError("status must be active or disabled.")
+    with LICENSE_STATE_LOCK:
+        account = read_account_record(account_id)
+        if not account:
+            raise FileNotFoundError("Account was not found.")
+        account["status"] = status
+        account["session_version"] = int(account.get("session_version", 1) or 1) + 1
+        write_account_record(account)
+    record_api_activity("account_status_update", "ok", "account", account_id)
+    return {"ok": True, "account": account_view(account, include_license_key=False)}
+
+
 def support_ticket_encryption_key():
     material = ("vaultlink-support-tickets-v1\0" + license_records_secret()).encode("utf-8")
     return hashlib.sha256(material).digest()
@@ -1856,6 +2355,7 @@ def docs_payload():
             {"method": "GET", "path": "/", "purpose": "HTML homepage"},
             {"method": "GET", "path": "/shop", "purpose": "Public seven-tier shop with provider-hosted checkout"},
             {"method": "GET", "path": "/customer", "purpose": "Privacy-safe read-only customer license center"},
+            {"method": "GET", "path": "/account", "purpose": "Customer registration, sign-in, assigned rank, and password-change app"},
             {"method": "GET", "path": "/workspace", "purpose": "Unified privacy-safe customer action, rank, release, and recovery workspace"},
             {"method": "GET", "path": "/QNA", "purpose": "Searchable fixed customer answer center with current-tab-only saved answers"},
             {"method": "GET", "path": "/decision", "purpose": "Branching recovery decision wizard with current-tab-only yes-or-no choices"},
@@ -1872,6 +2372,7 @@ def docs_payload():
             {"method": "GET", "path": "/terms", "purpose": "Draft Terms of Use for adult and legal review"},
             {"method": "GET", "path": "/privacy", "purpose": "Public privacy notice and data-handling summary"},
             {"method": "GET", "path": "/owner", "purpose": "Owner-only key and note web console"},
+            {"method": "GET", "path": "/owner/accounts", "purpose": "Owner-only customer account, rank, and license assignment console"},
             {"method": "GET", "path": "/owner/insights", "purpose": "Owner-only 50-point operations and readiness command center"},
             {"method": "GET", "path": "/owner/customers", "purpose": "Owner-only aggregate customer-experience console"},
             {"method": "GET", "path": "/owner/trust", "purpose": "Owner-only trust, release, storage, audit, and service operations gate"},
@@ -1901,6 +2402,10 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/backup-verification", "purpose": "Public twelve-plan backup catalog with sixty fixed steps and no customer backup collection"},
             {"method": "GET", "path": "/api/v1/recovery-kit", "purpose": "Public five-profile recovery-kit catalog with fifty fixed items and no customer progress collection"},
             {"method": "GET", "path": "/api/v1/deploy", "purpose": "Railway deploy hints"},
+            {"method": "POST", "path": "/api/v1/accounts/register", "purpose": "Create an encrypted username account with a one-way scrypt password hash"},
+            {"method": "POST", "path": "/api/v1/accounts/login", "purpose": "Rate-limited account sign-in with a twelve-hour signed session"},
+            {"method": "GET", "path": "/api/v1/accounts/me", "purpose": "Signed-session account and assigned-license view"},
+            {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
             {"method": "POST", "path": "/api/v1/licenses/issue", "purpose": "Admin-only license issuance"},
             {"method": "POST", "path": "/api/v1/licenses/activate", "purpose": "Machine-bound license activation"},
             {"method": "POST", "path": "/api/v1/licenses/verify", "purpose": "License and receipt verification"},
@@ -1921,6 +2426,9 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/licenses/reset-devices", "purpose": "Admin-only reset of active device seats"},
             {"method": "POST", "path": "/api/v1/licenses/remove-device", "purpose": "Admin-only removal of one anonymous device seat"},
             {"method": "GET", "path": "/api/v1/admin/licenses", "purpose": "Admin-only encrypted key and note inventory"},
+            {"method": "GET", "path": "/api/v1/admin/accounts", "purpose": "Admin-only account inventory without password hashes or license keys"},
+            {"method": "POST", "path": "/api/v1/admin/accounts/assign", "purpose": "Admin-only new-rank issuance or existing-license assignment and transfer"},
+            {"method": "POST", "path": "/api/v1/admin/accounts/status", "purpose": "Admin-only account enable or disable with session invalidation"},
             {"method": "GET", "path": "/api/v1/admin/licenses/{license_id}/devices", "purpose": "Admin-only anonymous device-seat inventory"},
             {"method": "GET", "path": "/api/v1/admin/dashboard", "purpose": "Admin-only license, device, audit, breach, and release totals"},
             {"method": "GET", "path": "/api/v1/admin/updates/windows/status", "purpose": "Admin-only live Ed25519, SHA-256, package-size, and app-data release test"},
@@ -3423,6 +3931,7 @@ def homepage_html():
       <p>{product['tagline']}</p>
       <div class="cta">
         <a class="primary" href="/shop">Open Shop</a>
+        <a href="/account">Customer Account</a>
         <a href="/customer">Customer License Center</a>
         <a href="/update">Update Center</a>
         <a href="/readiness">Recovery Readiness</a>
@@ -3431,6 +3940,7 @@ def homepage_html():
         <a href="/privacy">Privacy Notice</a>
         <a href="/docs">Open Route Index</a>
         <a href="/owner">Owner Console</a>
+        <a href="/owner/accounts">Owner Accounts</a>
         <a href="/api/v1/product">Product JSON</a>
         <a href="/api/v1/ranks">All Ranks JSON</a>
       </div>
@@ -9900,6 +10410,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         if not provided or not hmac.compare_digest(provided, configured):
             raise PermissionError("Admin token was missing or incorrect.")
 
+    def account_session_token(self):
+        authorization = self.headers.get("Authorization", "").strip()
+        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        if not token:
+            raise PermissionError("Account session was missing or invalid.")
+        return token
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
@@ -9919,6 +10436,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/customer":
             self.send_html(customer_license_center_html())
+            return
+        if path == "/account":
+            self.send_html(customer_account_html(API_VERSION))
             return
         if path == "/workspace":
             self.send_html(customer_workspace_html(API_VERSION))
@@ -9977,6 +10497,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/owner":
             self.send_html(owner_portal_html())
             return
+        if path == "/owner/accounts":
+            self.send_html(owner_accounts_html(API_VERSION))
+            return
         if path == "/owner/insights":
             self.send_html(owner_insights_html())
             return
@@ -10024,6 +10547,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "api_activity_integrity": list_admin_api_activity()["integrity"],
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
+                    "customer_accounts_enabled": True,
+                    "customer_passwords_one_way_hashed": True,
+                    "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
                     "customer_answers_enabled": True,
                     "customer_decision_wizard_enabled": True,
@@ -10078,6 +10604,20 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/v1/service-status":
             self.send_json({"ok": True, "service_status": service_status_payload(), "server_time_utc": utc_now()})
+            return
+        if path == "/api/v1/accounts/me":
+            try:
+                self.send_json(account_me(self.account_session_token()))
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "unauthorized", "message": str(exc)},
+                    status=HTTPStatus.UNAUTHORIZED,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
             return
         if path == "/api/v1/customer-answers":
             self.send_json(customer_answers_payload())
@@ -10315,6 +10855,21 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 self.require_admin_token()
                 self.send_json(list_admin_license_records())
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "forbidden", "message": str(exc)},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/admin/accounts":
+            try:
+                self.require_admin_token()
+                self.send_json(list_admin_accounts())
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "forbidden", "message": str(exc)},
@@ -10570,6 +11125,11 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         route_limits = {
+            "/api/v1/accounts/register": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/login": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/change-password": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/activate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/verify": MAX_LICENSE_JSON_BODY_BYTES,
@@ -10617,6 +11177,26 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self.read_json(route_limits[path])
+            if path == "/api/v1/accounts/register":
+                self.send_json(
+                    register_account(payload, self.client_address[0]),
+                    status=HTTPStatus.CREATED,
+                )
+                return
+            if path == "/api/v1/accounts/login":
+                self.send_json(login_account(payload, self.client_address[0]))
+                return
+            if path == "/api/v1/accounts/change-password":
+                self.send_json(change_account_password(payload, self.account_session_token()))
+                return
+            if path == "/api/v1/admin/accounts/assign":
+                self.require_admin_token()
+                self.send_json(assign_account_license(payload))
+                return
+            if path == "/api/v1/admin/accounts/status":
+                self.require_admin_token()
+                self.send_json(update_account_status(payload))
+                return
             if path == "/api/v1/licenses/issue":
                 self.require_admin_token()
                 self.send_json(issue_license(payload), status=HTTPStatus.CREATED)

@@ -108,6 +108,8 @@ class VaultLinkApiTests(unittest.TestCase):
         api.LICENSE_STATE_DIR = Path(self.temp_dir.name) / "license_state"
         api.UPDATE_DIR = Path(self.temp_dir.name) / "updates"
         api.UPDATE_MANIFEST_PATH = api.UPDATE_DIR / "windows-manifest.json"
+        api.ACCOUNT_LOGIN_FAILURES.clear()
+        api.ACCOUNT_REGISTER_ATTEMPTS.clear()
 
     def tearDown(self):
         api.UPDATE_SIGNING_PUBLIC_KEY_B64 = self.old_update_public_key
@@ -210,7 +212,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.62.0")
+        self.assertEqual(api.API_VERSION, "0.63.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -889,7 +891,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.62.0")
+        self.assertEqual(payload["api_version"], "0.63.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -959,7 +961,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.62.0")
+        self.assertEqual(payload["api_version"], "0.63.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3527,6 +3529,212 @@ class VaultLinkApiTests(unittest.TestCase):
                 self.assertEqual(status, 201)
                 self.assertEqual(response["license"]["plan_id"], canonical_id)
                 self.assertEqual(response["plan"]["id"], canonical_id)
+
+    def test_customer_accounts_owner_assignment_transfer_and_password_security(self):
+        status, weak = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Alice_1", "password": "12345"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("10", weak["message"])
+
+        status, alice = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Alice_1", "password": "CorrectHorse9!"},
+        )
+        self.assertEqual(status, 201)
+        self.assertTrue(alice["created"])
+        self.assertEqual(alice["account"]["username"], "Alice_1")
+        self.assertFalse(alice["account"]["license"]["assigned"])
+        alice_id = alice["account"]["account_id"]
+        alice_token = alice["session_token"]
+
+        account_files = list((api.LICENSE_STATE_DIR / "accounts").glob("*.json"))
+        self.assertEqual(len(account_files), 1)
+        stored_text = account_files[0].read_text(encoding="utf-8")
+        self.assertNotIn("Alice_1", stored_text)
+        self.assertNotIn("CorrectHorse9!", stored_text)
+        stored = json.loads(stored_text)
+        private_fields = api.decrypt_account_private_fields(stored)
+        self.assertEqual(private_fields["password_algorithm"], "scrypt")
+        self.assertNotEqual(private_fields["password_hash"], "CorrectHorse9!")
+
+        status, duplicate = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "alice_1", "password": "AnotherPass8#"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("not available", duplicate["message"])
+
+        status, wrong = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Alice_1", "password": "WrongPassword9!"},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(wrong["message"], "Username or password was incorrect.")
+
+        status, profile = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {alice_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(profile["account"]["username"], "Alice_1")
+
+        status, denied_accounts = self.call("/api/v1/admin/accounts")
+        self.assertEqual(status, 403)
+        self.assertEqual(denied_accounts["error"], "forbidden")
+        status, accounts = self.call(
+            "/api/v1/admin/accounts",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(accounts["count"], 1)
+        self.assertFalse(accounts["passwords_readable"])
+        self.assertNotIn("license_key", accounts["items"][0]["license"])
+        self.assertNotIn("password_hash", json.dumps(accounts))
+
+        status, assigned = self.call(
+            "/api/v1/admin/accounts/assign",
+            method="POST",
+            payload={
+                "account_id": alice_id,
+                "plan_id": "family-safety",
+                "max_devices": 3,
+                "license_note": "Assigned in regression test",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(assigned["assigned"])
+        self.assertIn("issued_license_key", assigned)
+        license_id = assigned["account"]["license"]["license_id"]
+        license_key = assigned["issued_license_key"]
+
+        status, alice_profile = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {alice_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(alice_profile["account"]["license"]["rank"], 4)
+        self.assertEqual(alice_profile["account"]["license"]["license_key"], license_key)
+        self.assertEqual(alice_profile["account"]["license"]["max_devices"], 3)
+
+        status, bob = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Bob_2", "password": "BobSecure8#"},
+        )
+        self.assertEqual(status, 201)
+        bob_id = bob["account"]["account_id"]
+        bob_token = bob["session_token"]
+
+        status, conflict = self.call(
+            "/api/v1/admin/accounts/assign",
+            method="POST",
+            payload={"account_id": bob_id, "license_id": license_id},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("already assigned", conflict["message"])
+
+        status, transferred = self.call(
+            "/api/v1/admin/accounts/assign",
+            method="POST",
+            payload={"account_id": bob_id, "license_id": license_id, "transfer": True},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(transferred["transferred"])
+        status, invalidated_alice = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {alice_token}"},
+        )
+        self.assertEqual(status, 401)
+        status, bob_profile = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {bob_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(bob_profile["account"]["license"]["license_key"], license_key)
+
+        status, disabled = self.call(
+            "/api/v1/admin/accounts/status",
+            method="POST",
+            payload={"account_id": bob_id, "status": "disabled"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(disabled["account"]["status"], "disabled")
+        status, blocked_bob = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {bob_token}"},
+        )
+        self.assertEqual(status, 401)
+
+        status, enabled = self.call(
+            "/api/v1/admin/accounts/status",
+            method="POST",
+            payload={"account_id": bob_id, "status": "active"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        status, relogged_bob = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Bob_2", "password": "BobSecure8#"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(relogged_bob["account"]["license"]["license_id"], license_id)
+
+        status, relogged_alice = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Alice_1", "password": "CorrectHorse9!"},
+        )
+        self.assertEqual(status, 200)
+        old_alice_token = relogged_alice["session_token"]
+        status, changed = self.call(
+            "/api/v1/accounts/change-password",
+            method="POST",
+            payload={
+                "current_password": "CorrectHorse9!",
+                "new_password": "NewSecret10$",
+            },
+            headers={"Authorization": f"Bearer {old_alice_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertNotEqual(changed["session_token"], old_alice_token)
+        status, old_session = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {old_alice_token}"},
+        )
+        self.assertEqual(status, 401)
+        status, old_password = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Alice_1", "password": "CorrectHorse9!"},
+        )
+        self.assertEqual(status, 403)
+        status, new_password = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={"username": "Alice_1", "password": "NewSecret10$"},
+        )
+        self.assertEqual(status, 200)
+
+        status, _headers, customer_page = self.call_bytes("/account")
+        self.assertEqual(status, 200)
+        self.assertIn(b"CREATE ACCOUNT", customer_page)
+        self.assertIn(b"/api/v1/accounts/login", customer_page)
+        status, _headers, owner_page = self.call_bytes("/owner/accounts")
+        self.assertEqual(status, 200)
+        self.assertIn(b"ISSUE AND ASSIGN", owner_page)
+        self.assertIn(b"/api/v1/admin/accounts", owner_page)
+        self.assertNotIn(TEST_ADMIN_TOKEN.encode("utf-8"), owner_page)
 
 
 if __name__ == "__main__":

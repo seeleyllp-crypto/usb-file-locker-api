@@ -8,6 +8,8 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Support Redactor companion discovery and fixed privacy-safe audit actions without receiving customer text, files, paths, previews, counts, or detected values
 - Download Verification Center discovery for hash, local receipt integrity sealing, standalone receipt inspection, bounded receipt-folder audits with a single local review window and scrollable small-screen review surface, bounded row and review-ID consumption, cancellable search debounce, keyboard review controls, a fixed active-view indicator without query text, stable empty and complete states, selection preservation with visible and pending queue positions, priority-level and session-state filtering, fixed four-level triage with privacy-safe fixed guidance and aggregate summary copy, temporary single-row, review-and-next, and bounded bulk-visible review or reopen marks, Ctrl+Enter review-and-next, Ctrl+Z undo, 100-action one-step bulk undo, aggregate completion progress with a determinate bar, an aggregate level breakdown, and visible pending and reviewed counts, failure-first navigation, forward and reverse pending navigation, file/ZIP structure review, prior receipt comparison, and fixed audit actions without receiving selected files, folders, names, search text, active-view state, queue positions, clipboard text, delayed-callback state, review IDs, action history, bulk mark state, session state, progress, selected positions, visible counts, selected rows, navigation, guidance state, summary contents, level filters, result filters, sorting, local results, receipts, receipt keys, paths, archive entry names, hashes, signature details, Defender output, inspection reports, folder-audit reports, or comparison output automatically
 - API-backed licensing with signed keys, machine receipts, automatic client heartbeats, device deactivation, and owner revocation
+- Encrypted customer accounts at `/account` with one-way `scrypt` password hashes, twelve-hour signed sessions, password changes, and assigned rank/license access
+- An owner-only account console at `/owner/accounts` for account inventory, enable/disable, new-rank issuance, existing-license assignment, and explicit transfer
 - Persistent anonymous device-seat enforcement using each license's `max_devices` value
 - Per-license anonymous device inventory with throttled last-heartbeat/app-version details and one-device removal without resetting every seat
 - An owner-only keys and private notes website at `/owner` with 30-second automatic refresh
@@ -59,6 +61,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not move the Windows desktop security logic onto the public internet
 - It does not store PC names or raw machine identifiers in the device-seat ledger
 - It does not accept raw files, file contents, full paths, USB secrets, passwords, or PINs in audit exports
+- It never stores readable account passwords and never returns password hashes to customers or the owner console
 - Public diagnostics accepts no free text or files and cannot inspect, scan, install, remove, execute, lock, or unlock anything on a customer PC
 - Public Security Maintenance accepts no progress, schedule score, snapshot, local result, completion history, reminder, maintenance command, identity, free text, file, or path; it cannot inspect, scan, update, schedule, launch, complete, or control anything on a customer PC
 - Public Data Control accepts no inventory, free text, contacts, customer progress, files, paths, local results, license proof, keys, PINs, filenames, or file contents; it stores no review state in browser storage
@@ -76,6 +79,14 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - Draft legal pages are not legal advice and require adult business-owner approval before commercial use
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
 - Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
+
+## Customer Accounts 0.63
+
+`GET /account` provides registration, sign-in, assigned-rank access, license-key copy, sign-out, and password change. The browser stores only a signed session token in `sessionStorage`; passwords are never persisted by the page. Usernames are encrypted in server storage, account filenames contain no username, and each password uses a unique salt with `scrypt`.
+
+`GET /owner/accounts` lists accounts without password hashes or full license keys. The owner admin token stays in `sessionStorage` and is sent only through `X-License-Admin-Token`. The owner can issue one of the seven ranks, assign an existing license, explicitly transfer a license from another account, or disable an account and invalidate its sessions.
+
+Account sessions last twelve hours and include a server-checked session version. Password changes, account disabling, and license transfer away from an account invalidate prior sessions. Registration and failed sign-in attempts are bounded in memory per connection. This account layer does not replace signed license verification or device-seat enforcement.
 
 ## Owner Maintenance Operations 0.39
 
