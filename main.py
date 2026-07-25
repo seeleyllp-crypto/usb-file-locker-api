@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.65.0"
+API_VERSION = "0.66.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -284,6 +284,7 @@ ACCOUNT_REGISTER_WINDOW_SECONDS = 60 * 60
 ACCOUNT_REGISTER_MAX_ATTEMPTS = 10
 ACCOUNT_AVAILABILITY_WINDOW_SECONDS = 60
 ACCOUNT_AVAILABILITY_MAX_CHECKS = 120
+MAX_ACCOUNT_RATE_KEYS = 10000
 ACCOUNT_LOGIN_FAILURES = {}
 ACCOUNT_REGISTER_ATTEMPTS = {}
 ACCOUNT_AVAILABILITY_CHECKS = {}
@@ -1687,6 +1688,12 @@ def account_rate_key(remote_key, username=""):
 def account_rate_allowed(bucket, key, limit, window_seconds, consume=False):
     now = datetime.now(timezone.utc).timestamp()
     with ACCOUNT_RATE_LOCK:
+        if key not in bucket and len(bucket) >= MAX_ACCOUNT_RATE_KEYS:
+            oldest_key = min(
+                bucket,
+                key=lambda candidate: max(bucket.get(candidate) or [0]),
+            )
+            bucket.pop(oldest_key, None)
         recent = [moment for moment in bucket.get(key, []) if now - moment < window_seconds]
         if len(recent) >= limit:
             bucket[key] = recent
@@ -1737,7 +1744,13 @@ def register_account(payload, remote_key="unknown"):
             private_fields,
         )
     token, expires_at = issue_account_session(record)
-    record_api_activity("account_register", "ok", "account", record["account_id"])
+    record_api_activity(
+        "account_register",
+        "ok",
+        "account",
+        record["account_id"],
+        actor="customer",
+    )
     return {
         "ok": True,
         "created": True,
@@ -1758,15 +1771,20 @@ def login_account(payload, remote_key="unknown"):
         ACCOUNT_LOGIN_WINDOW_SECONDS,
     ):
         raise PermissionError("Too many failed sign-in attempts. Try again later.")
-    try:
-        record, private_fields = find_account_by_username(username)
-    except ValueError:
-        record, private_fields = None, {}
-    if (
-        not record
-        or record.get("status") != "active"
-        or not account_password_matches(password, private_fields)
-    ):
+    with LICENSE_STATE_LOCK:
+        try:
+            record, private_fields = find_account_by_username(username)
+        except ValueError:
+            record, private_fields = None, {}
+        accepted = bool(
+            record
+            and record.get("status") == "active"
+            and account_password_matches(password, private_fields)
+        )
+        if accepted:
+            record["last_login_at_utc"] = utc_now()
+            record = write_account_record(record)
+    if not accepted:
         account_rate_allowed(
             ACCOUNT_LOGIN_FAILURES,
             rate_key,
@@ -1777,10 +1795,14 @@ def login_account(payload, remote_key="unknown"):
         raise PermissionError("Username or password was incorrect.")
     with ACCOUNT_RATE_LOCK:
         ACCOUNT_LOGIN_FAILURES.pop(rate_key, None)
-    record["last_login_at_utc"] = utc_now()
-    write_account_record(record)
     token, expires_at = issue_account_session(record)
-    record_api_activity("account_login", "ok", "account", record["account_id"])
+    record_api_activity(
+        "account_login",
+        "ok",
+        "account",
+        record["account_id"],
+        actor="customer",
+    )
     return {
         "ok": True,
         "session_token": token,
@@ -1826,10 +1848,17 @@ def account_username_availability(value, remote_key="unknown"):
 
 
 def logout_all_account_sessions(token):
-    record = verify_account_session(token)
-    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
-    write_account_record(record)
-    record_api_activity("account_logout_all", "ok", "account", record["account_id"])
+    with LICENSE_STATE_LOCK:
+        record = verify_account_session(token)
+        record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+        record = write_account_record(record)
+    record_api_activity(
+        "account_logout_all",
+        "ok",
+        "account",
+        record["account_id"],
+        actor="customer",
+    )
     return {
         "ok": True,
         "signed_out_all": True,
@@ -1838,24 +1867,31 @@ def logout_all_account_sessions(token):
 
 
 def change_account_username(payload, token):
-    record = verify_account_session(token)
-    private_fields = decrypt_account_private_fields(record)
-    if not account_password_matches(payload.get("current_password"), private_fields):
-        raise PermissionError("Current password was incorrect.")
-    username, normalized = validated_account_username(payload.get("new_username"))
-    current_username = str(private_fields.get("username", ""))
-    if username == current_username:
-        raise ValueError("New username must be different from the current username.")
-    existing, _existing_private = find_account_by_username(username)
-    if existing and existing.get("account_id") != record.get("account_id"):
-        raise ValueError("That username is not available.")
-    private_fields["username"] = username
-    private_fields["username_normalized"] = normalized
-    record["username_hash"] = account_username_hash(normalized)
-    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
-    record = write_account_record(record, private_fields)
+    with LICENSE_STATE_LOCK:
+        record = verify_account_session(token)
+        private_fields = decrypt_account_private_fields(record)
+        if not account_password_matches(payload.get("current_password"), private_fields):
+            raise PermissionError("Current password was incorrect.")
+        username, normalized = validated_account_username(payload.get("new_username"))
+        current_username = str(private_fields.get("username", ""))
+        if username == current_username:
+            raise ValueError("New username must be different from the current username.")
+        existing, _existing_private = find_account_by_username(username)
+        if existing and existing.get("account_id") != record.get("account_id"):
+            raise ValueError("That username is not available.")
+        private_fields["username"] = username
+        private_fields["username_normalized"] = normalized
+        record["username_hash"] = account_username_hash(normalized)
+        record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+        record = write_account_record(record, private_fields)
     new_token, expires_at = issue_account_session(record)
-    record_api_activity("account_username_change", "ok", "account", record["account_id"])
+    record_api_activity(
+        "account_username_change",
+        "ok",
+        "account",
+        record["account_id"],
+        actor="customer",
+    )
     return {
         "ok": True,
         "session_token": new_token,
@@ -1865,23 +1901,83 @@ def change_account_username(payload, token):
 
 
 def change_account_password(payload, token):
-    record = verify_account_session(token)
-    private_fields = decrypt_account_private_fields(record)
-    if not account_password_matches(payload.get("current_password"), private_fields):
-        raise PermissionError("Current password was incorrect.")
-    new_password = validated_account_password(payload.get("new_password"))
-    if account_password_matches(new_password, private_fields):
-        raise ValueError("New password must be different from the current password.")
-    private_fields.update(account_password_fields(new_password))
-    record["session_version"] = int(record.get("session_version", 1) or 1) + 1
-    write_account_record(record, private_fields)
+    with LICENSE_STATE_LOCK:
+        record = verify_account_session(token)
+        private_fields = decrypt_account_private_fields(record)
+        if not account_password_matches(payload.get("current_password"), private_fields):
+            raise PermissionError("Current password was incorrect.")
+        new_password = validated_account_password(payload.get("new_password"))
+        if account_password_matches(new_password, private_fields):
+            raise ValueError("New password must be different from the current password.")
+        private_fields.update(account_password_fields(new_password))
+        record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+        record = write_account_record(record, private_fields)
     new_token, expires_at = issue_account_session(record)
-    record_api_activity("account_password_change", "ok", "account", record["account_id"])
+    record_api_activity(
+        "account_password_change",
+        "ok",
+        "account",
+        record["account_id"],
+        actor="customer",
+    )
     return {
         "ok": True,
         "session_token": new_token,
         "session_expires_at_utc": expires_at,
         "account": account_view(record, include_license_key=True),
+    }
+
+
+ACCOUNT_ACTIVITY_LABELS = {
+    "account_register": "Account created",
+    "account_login": "Successful sign-in",
+    "account_logout_all": "All sessions signed out",
+    "account_username_change": "Username changed",
+    "account_password_change": "Password changed",
+    "account_license_assign": "License assignment changed",
+    "account_status_update": "Account status changed",
+}
+
+
+def account_security_activity(token):
+    record = verify_account_session(token)
+    records, valid, verification_message = read_api_activity_records()
+    account_id = str(record.get("account_id", ""))
+    items = []
+    if valid:
+        for activity in reversed(records):
+            if (
+                activity.get("resource_type") != "account"
+                or activity.get("resource_id") != account_id
+                or activity.get("action") not in ACCOUNT_ACTIVITY_LABELS
+            ):
+                continue
+            items.append(
+                {
+                    "event_id": str(activity.get("event_id", "")),
+                    "time_utc": str(activity.get("time_utc", "")),
+                    "action": str(activity.get("action", "")),
+                    "label": ACCOUNT_ACTIVITY_LABELS[str(activity.get("action", ""))],
+                    "result": str(activity.get("result", "")),
+                    "actor": str(activity.get("actor", "")),
+                }
+            )
+            if len(items) >= 25:
+                break
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+        "integrity": {
+            "valid": valid,
+            "algorithm": "HMAC-SHA-256 hash chain",
+            "message": verification_message,
+        },
+        "privacy_notice": (
+            "This view excludes passwords, session tokens, license keys, notes, "
+            "messages, device identifiers, files, and paths."
+        ),
+        "server_time_utc": utc_now(),
     }
 
 
@@ -2505,6 +2601,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/register", "purpose": "Create an encrypted username account with a one-way scrypt password hash"},
             {"method": "POST", "path": "/api/v1/accounts/login", "purpose": "Rate-limited account sign-in with a twelve-hour signed session"},
             {"method": "GET", "path": "/api/v1/accounts/me", "purpose": "Signed-session account and assigned-license view"},
+            {"method": "GET", "path": "/api/v1/accounts/activity", "purpose": "Authenticated privacy-safe account security activity from the HMAC-chained service log"},
             {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
             {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
@@ -10772,6 +10869,20 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/accounts/me":
             try:
                 self.send_json(account_me(self.account_session_token()))
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "unauthorized", "message": str(exc)},
+                    status=HTTPStatus.UNAUTHORIZED,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/accounts/activity":
+            try:
+                self.send_json(account_security_activity(self.account_session_token()))
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "unauthorized", "message": str(exc)},

@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.65.0")
+        self.assertEqual(api.API_VERSION, "0.66.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.65.0")
+        self.assertEqual(payload["api_version"], "0.66.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.65.0")
+        self.assertEqual(payload["api_version"], "0.66.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3806,6 +3806,21 @@ class VaultLinkApiTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 api.account_username_availability("Other_User_65", "rate-limit-test")
 
+        bounded_bucket = {}
+        with mock.patch.object(api, "MAX_ACCOUNT_RATE_KEYS", 2):
+            for key in ("first", "second", "third"):
+                self.assertTrue(
+                    api.account_rate_allowed(
+                        bounded_bucket,
+                        key,
+                        limit=10,
+                        window_seconds=60,
+                        consume=True,
+                    )
+                )
+        self.assertEqual(len(bounded_bucket), 2)
+        self.assertNotIn("first", bounded_bucket)
+
         status, invalid = self.call(
             "/api/v1/accounts/username-availability?username=ab"
         )
@@ -3846,6 +3861,20 @@ class VaultLinkApiTests(unittest.TestCase):
             registered["session_expires_at_utc"],
         )
 
+        status, activity = self.call(
+            "/api/v1/accounts/activity",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(activity["integrity"]["valid"])
+        self.assertEqual(activity["integrity"]["algorithm"], "HMAC-SHA-256 hash chain")
+        self.assertIn("Account created", {item["label"] for item in activity["items"]})
+        self.assertIn("Successful sign-in", {item["label"] for item in activity["items"]})
+        self.assertTrue(all(item["actor"] == "customer" for item in activity["items"]))
+        serialized_activity = json.dumps(activity["items"])
+        for forbidden in ("password", "session_token", "license_key", "machine_id"):
+            self.assertNotIn(forbidden, serialized_activity)
+
         status, signed_out = self.call(
             "/api/v1/accounts/logout-all",
             method="POST",
@@ -3862,15 +3891,27 @@ class VaultLinkApiTests(unittest.TestCase):
             )
             self.assertEqual(status, 401)
             self.assertIn("no longer valid", blocked["message"])
+            status, blocked_activity = self.call(
+                "/api/v1/accounts/activity",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(status, 401)
+            self.assertIn("no longer valid", blocked_activity["message"])
 
         status, _headers, page = self.call_bytes("/account")
         self.assertEqual(status, 200)
         self.assertIn(b"DOWNLOAD SAFE SUMMARY", page)
+        self.assertIn(b"DOWNLOAD RECOVERY CARD", page)
+        self.assertIn(b"Security Activity", page)
         self.assertIn(b"SIGN OUT EVERY DEVICE", page)
+        self.assertIn(b"/api/v1/accounts/activity", page)
         self.assertIn(b"/api/v1/accounts/username-availability", page)
         self.assertIn(b"/api/v1/accounts/logout-all", page)
         self.assertIn(b"masked_license_key", page)
+        self.assertIn(b"Your session was kept", page)
+        self.assertIn(b"error.status===401||error.status===403", page)
         self.assertNotIn(b"COPY LICENSE KEY", page)
+        self.assertNotIn(b'<a href="/customer"><button>', page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(
@@ -3881,6 +3922,14 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         old_token = registered["session_token"]
         account_id = registered["account"]["account_id"]
+        status, issued = self.call(
+            "/api/v1/licenses/issue",
+            method="POST",
+            payload={"account_id": account_id, "plan_id": "starter"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 201)
+        assigned_license_id = issued["license"]["license_id"]
 
         status, wrong_password = self.call(
             "/api/v1/accounts/change-username",
@@ -3906,6 +3955,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(renamed["account"]["account_id"], account_id)
         self.assertEqual(renamed["account"]["username"], "Rename_Finish_65")
+        self.assertEqual(
+            renamed["account"]["license"]["license_id"],
+            assigned_license_id,
+        )
         self.assertNotEqual(renamed["session_token"], old_token)
 
         status, blocked_old_session = self.call(
@@ -3928,6 +3981,21 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(new_login["account"]["account_id"], account_id)
+        self.assertEqual(
+            new_login["account"]["license"]["license_id"],
+            assigned_license_id,
+        )
+
+        status, activity = self.call(
+            "/api/v1/accounts/activity",
+            headers={"Authorization": f"Bearer {new_login['session_token']}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Username changed", {item["label"] for item in activity["items"]})
+        self.assertIn(
+            "License assignment changed",
+            {item["label"] for item in activity["items"]},
+        )
 
         status, old_available = self.call(
             "/api/v1/accounts/username-availability?username=Rename_Start_65"
