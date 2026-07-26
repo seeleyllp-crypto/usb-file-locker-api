@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.66.0"
+API_VERSION = "0.67.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -317,6 +317,10 @@ class RequestTooLarge(ValueError):
 
 
 class UnsupportedMediaType(ValueError):
+    pass
+
+
+class RateLimitExceeded(PermissionError):
     pass
 
 
@@ -1934,6 +1938,7 @@ ACCOUNT_ACTIVITY_LABELS = {
     "account_logout_all": "All sessions signed out",
     "account_username_change": "Username changed",
     "account_password_change": "Password changed",
+    "account_support_create": "Help request sent",
     "account_license_assign": "License assignment changed",
     "account_status_update": "Account status changed",
 }
@@ -2602,6 +2607,8 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/login", "purpose": "Rate-limited account sign-in with a twelve-hour signed session"},
             {"method": "GET", "path": "/api/v1/accounts/me", "purpose": "Signed-session account and assigned-license view"},
             {"method": "GET", "path": "/api/v1/accounts/activity", "purpose": "Authenticated privacy-safe account security activity from the HMAC-chained service log"},
+            {"method": "GET", "path": "/api/v1/accounts/support", "purpose": "List encrypted help requests linked to the signed-in account"},
+            {"method": "POST", "path": "/api/v1/accounts/support", "purpose": "Send a rate-limited encrypted help request from the signed-in account"},
             {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
             {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
@@ -5424,8 +5431,8 @@ def owner_portal_html():
     </section>
 
     <section>
-      <div class="record-head"><h2>Bug Inbox</h2><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH BUGS</button></div>
-      <div id="supportRecords"><div class="empty">Connect to load customer bug reports.</div></div>
+      <div class="record-head"><h2>Support Inbox</h2><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
+      <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
 
     <section>
@@ -5563,7 +5570,7 @@ def owner_portal_html():
       renderActivity();
       renderReleaseStatus(releaseStatus);
       setConnected(true);
-      if (!silent) setStatus(`Loaded ${accounts.count || 0} customer account(s), ${payload.count || 0} license(s), ${support.count || 0} bug report(s), ${audits.count || 0} audit log(s), ${announcements.count || 0} announcement(s), and ${activity.count || 0} activity event(s).`, "good");
+      if (!silent) setStatus(`Loaded ${accounts.count || 0} customer account(s), ${payload.count || 0} license(s), ${support.count || 0} help request(s), ${audits.count || 0} audit log(s), ${announcements.count || 0} announcement(s), and ${activity.count || 0} activity event(s).`, "good");
       } finally {
         state.loading = false;
       }
@@ -5774,7 +5781,7 @@ def owner_portal_html():
       if (!state.supportItems.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = "No customer bug reports yet.";
+        empty.textContent = "No customer help requests yet.";
         host.append(empty);
         return;
       }
@@ -5785,14 +5792,20 @@ def owner_portal_html():
         head.className = "record-head";
         const identity = document.createElement("div");
         const title = document.createElement("strong");
-        title.textContent = item.subject || item.ticket_id || "Bug report";
+        title.textContent = item.subject || item.ticket_id || "Help request";
         const meta = document.createElement("div");
         meta.className = "meta";
-        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${item.license_id || "unknown license"} | ${item.created_at_utc || "unknown time"}`;
+        const accountSource = item.source === "account";
+        const customer = accountSource
+          ? `${item.account_username || "unknown account"} | ${item.account_id || "missing account id"}`
+          : item.license_id || "unknown license";
+        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${customer} | ${item.created_at_utc || "unknown time"}`;
         identity.append(title, meta);
         const source = document.createElement("div");
         source.className = "meta";
-        source.textContent = `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
+        source.textContent = accountSource
+          ? "SIGNED-IN ACCOUNT"
+          : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = (item.status || "open").replace("_", " ");
@@ -8492,6 +8505,7 @@ def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     item = {
         "ticket_id": str(record.get("ticket_id", "")),
+        "source": str(record.get("source", "licensed_device")),
         "category": str(record.get("category", "other")),
         "status": str(record.get("status", "open")),
         "created_at_utc": str(record.get("created_at_utc", "")),
@@ -8507,8 +8521,19 @@ def support_ticket_view(record, audience="admin"):
         "history": list(record.get("history", []))[-50:],
     }
     if audience == "admin":
+        account_id = str(record.get("account_id", ""))
+        account_username = ""
+        if account_id:
+            try:
+                account_record = read_account_record(account_id)
+                if account_record:
+                    account_username = account_view(account_record).get("username", "")
+            except (InvalidTag, OSError, ValueError, json.JSONDecodeError):
+                account_username = ""
         item.update(
             {
+                "account_id": account_id,
+                "account_username": account_username,
                 "license_id": str(record.get("license_id", "")),
                 "plan_id": str(record.get("plan_id", "")),
                 "machine_hash": str(record.get("machine_hash", "")),
@@ -8581,6 +8606,8 @@ def create_support_ticket(payload):
         record = {
             "schema_version": 1,
             "ticket_id": ticket_id,
+            "source": "licensed_device",
+            "account_id": str(license_view.get("account_id", "")),
             "license_id": license_id,
             "plan_id": str(plan.get("id", ""))[:40],
             "machine_hash": machine_hash,
@@ -8596,12 +8623,118 @@ def create_support_ticket(payload):
             "private_blob": encrypt_support_private_fields(private),
         }
         write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_create",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
     return {
         "ok": True,
         "created": True,
         "ticket": support_ticket_view(record, audience="customer"),
         "message": "Bug report sent to the VaultLink owner.",
         "privacy_notice": "No files or local logs were attached automatically.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def create_account_support_ticket(payload, token):
+    category = str(payload.get("category", "bug") or "bug").strip().lower()
+    if category not in SUPPORT_TICKET_CATEGORIES:
+        raise ValueError("Choose a valid support category.")
+    subject = clean_support_text(payload.get("subject"), 160, "subject", required=True, minimum=3)
+    message = clean_support_text(payload.get("message"), 4000, "message", required=True, minimum=10)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=1)
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        recent_count = sum(
+            record.get("account_id") == account_id
+            and (parse_utc(record.get("created_at_utc")) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
+            for record in support_ticket_records()
+        )
+        if recent_count >= MAX_SUPPORT_TICKETS_PER_DAY:
+            raise RateLimitExceeded("This account has reached the daily help-request limit. Try again later.")
+        license_id = str(account.get("assigned_license_id", "")).strip()
+        plan_id = ""
+        if license_id:
+            license_record = read_license_record(license_id)
+            if license_record:
+                plan_id = str(license_record.get("plan_id", ""))[:40]
+        ticket_id = f"TKT-{secrets.token_hex(8).upper()}"
+        now_text = format_utc(now)
+        private = {
+            "subject": subject,
+            "message": message,
+            "steps": "",
+            "owner_reply": "",
+            "owner_note": "",
+        }
+        record = {
+            "schema_version": 1,
+            "ticket_id": ticket_id,
+            "source": "account",
+            "account_id": account_id,
+            "license_id": license_id,
+            "plan_id": plan_id,
+            "machine_hash": "",
+            "category": category,
+            "status": "open",
+            "app_version": "",
+            "created_at_utc": now_text,
+            "updated_at_utc": now_text,
+            "acknowledged_at_utc": "",
+            "resolved_at_utc": "",
+            "closed_at_utc": "",
+            "history": [{"time_utc": now_text, "action": "created", "status": "open"}],
+            "private_blob": encrypt_support_private_fields(private),
+        }
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_create",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
+    record_api_activity(
+        "account_support_create",
+        "ok",
+        "account",
+        account_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "created": True,
+        "ticket": support_ticket_view(record, audience="customer"),
+        "message": "Help request sent to the VaultLink owner.",
+        "privacy_notice": "No files, local logs, passwords, keys, device ids, or USB secrets were attached.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def list_account_support_tickets(token):
+    account = verify_account_session(token)
+    account_id = validated_account_id(account.get("account_id"))
+    items = []
+    for record in support_ticket_records():
+        if record.get("account_id") != account_id:
+            continue
+        try:
+            items.append(support_ticket_view(record, audience="customer"))
+        except (InvalidTag, OSError, ValueError, json.JSONDecodeError):
+            continue
+        if len(items) >= 50:
+            break
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+        "privacy_notice": "Only help requests linked to this signed-in account are returned.",
         "server_time_utc": utc_now(),
     }
 
@@ -10809,6 +10942,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "shop_enabled": True,
                     "customer_license_center_enabled": True,
                     "customer_accounts_enabled": True,
+                    "customer_account_support_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -10883,6 +11017,20 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/accounts/activity":
             try:
                 self.send_json(account_security_activity(self.account_session_token()))
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "unauthorized", "message": str(exc)},
+                    status=HTTPStatus.UNAUTHORIZED,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/v1/accounts/support":
+            try:
+                self.send_json(list_account_support_tickets(self.account_session_token()))
             except PermissionError as exc:
                 self.send_json(
                     {"ok": False, "error": "unauthorized", "message": str(exc)},
@@ -11430,6 +11578,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/change-username": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/change-password": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/logout-all": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
@@ -11496,6 +11645,23 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/accounts/logout-all":
                 self.send_json(logout_all_account_sessions(self.account_session_token()))
+                return
+            if path == "/api/v1/accounts/support":
+                try:
+                    self.send_json(
+                        create_account_support_ticket(payload, self.account_session_token()),
+                        status=HTTPStatus.CREATED,
+                    )
+                except RateLimitExceeded as exc:
+                    self.send_json(
+                        {"ok": False, "error": "rate_limited", "message": str(exc)},
+                        status=HTTPStatus.TOO_MANY_REQUESTS,
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
                 return
             if path == "/api/v1/admin/accounts/assign":
                 self.require_admin_token()

@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.66.0")
+        self.assertEqual(api.API_VERSION, "0.67.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.66.0")
+        self.assertEqual(payload["api_version"], "0.67.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.66.0")
+        self.assertEqual(payload["api_version"], "0.67.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3912,6 +3912,140 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"error.status===401||error.status===403", page)
         self.assertNotIn(b"COPY LICENSE KEY", page)
         self.assertNotIn(b'<a href="/customer"><button>', page)
+
+    def test_account_help_inbox_is_encrypted_isolated_and_rate_limited(self):
+        status, unauthorized = self.call("/api/v1/accounts/support")
+        self.assertEqual(status, 401)
+        self.assertEqual(unauthorized["error"], "unauthorized")
+        status, unauthorized = self.call(
+            "/api/v1/accounts/support",
+            method="POST",
+            payload={
+                "category": "bug",
+                "subject": "Cannot open vault",
+                "message": "The vault button does not open after sign-in.",
+            },
+        )
+        self.assertEqual(status, 401)
+        self.assertEqual(unauthorized["error"], "unauthorized")
+
+        status, first = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Help_User_67", "password": "HelpSecure67!"},
+        )
+        self.assertEqual(status, 201)
+        first_token = first["session_token"]
+        first_account_id = first["account"]["account_id"]
+        private_subject = "Cannot open personal vault"
+        private_message = "The personal vault button stays disabled after I sign in."
+        status, created = self.call(
+            "/api/v1/accounts/support",
+            method="POST",
+            payload={
+                "category": "bug",
+                "subject": private_subject,
+                "message": private_message,
+            },
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 201)
+        ticket_id = created["ticket"]["ticket_id"]
+        self.assertEqual(created["ticket"]["source"], "account")
+        stored_text = api.support_ticket_path(ticket_id).read_text(encoding="utf-8")
+        self.assertNotIn(private_subject, stored_text)
+        self.assertNotIn(private_message, stored_text)
+        self.assertNotIn("Help_User_67", stored_text)
+        self.assertNotIn("HelpSecure67!", stored_text)
+
+        status, mine = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine["count"], 1)
+        self.assertEqual(mine["items"][0]["message"], private_message)
+        self.assertNotIn("owner_note", mine["items"][0])
+
+        status, second = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={"username": "Other_Help_67", "password": "OtherSecure67!"},
+        )
+        self.assertEqual(status, 201)
+        status, other_mine = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {second['session_token']}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(other_mine["count"], 0)
+
+        status, owner_inbox = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        owner_ticket = next(item for item in owner_inbox["items"] if item["ticket_id"] == ticket_id)
+        self.assertEqual(owner_ticket["account_id"], first_account_id)
+        self.assertEqual(owner_ticket["account_username"], "Help_User_67")
+        self.assertEqual(owner_ticket["source"], "account")
+        self.assertEqual(owner_ticket["machine_hash"], "")
+
+        status, updated = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "in_progress",
+                "owner_reply": "I found the issue and am checking the fix.",
+                "owner_note": "Private owner-only note",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["ticket"]["status"], "in_progress")
+        status, mine = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine["items"][0]["owner_reply"], "I found the issue and am checking the fix.")
+        self.assertNotIn("owner_note", mine["items"][0])
+
+        status, activity = self.call(
+            "/api/v1/accounts/activity",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Help request sent", {item["label"] for item in activity["items"]})
+
+        with mock.patch.object(api, "MAX_SUPPORT_TICKETS_PER_DAY", 1):
+            status, limited = self.call(
+                "/api/v1/accounts/support",
+                method="POST",
+                payload={
+                    "category": "other",
+                    "subject": "Second request",
+                    "message": "This request should hit the daily account limit.",
+                },
+                headers={"Authorization": f"Bearer {first_token}"},
+            )
+        self.assertEqual(status, 429)
+        self.assertEqual(limited["error"], "rate_limited")
+
+        status, _headers, page = self.call_bytes("/account")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Help Inbox", page)
+        self.assertIn(b"SEND REQUEST", page)
+        self.assertIn(b"/api/v1/accounts/support", page)
+        self.assertIn(b"supportSubject", page)
+        self.assertIn(b"supportMessage", page)
+        self.assertIn(b"COPY FAILED", page)
+        status, _headers, owner_page = self.call_bytes("/owner")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Support Inbox", owner_page)
+        self.assertIn(b"SIGNED-IN ACCOUNT", owner_page)
+        self.assertIn(b"account_username", owner_page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(
