@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.69.0"
+API_VERSION = "0.70.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -2616,6 +2616,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/support/reply", "purpose": "Append an encrypted customer follow-up and reopen a resolved request"},
             {"method": "POST", "path": "/api/v1/accounts/support/close", "purpose": "Close a help request linked to the signed-in account"},
             {"method": "POST", "path": "/api/v1/accounts/support/read", "purpose": "Mark owner replies read for one help request linked to the signed-in account"},
+            {"method": "POST", "path": "/api/v1/accounts/support/read-all", "purpose": "Mark every owner reply read for help requests linked to the signed-in account"},
             {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
             {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
@@ -5267,13 +5268,14 @@ def owner_portal_html():
     .api-state { color:var(--muted); font-weight:700; }
     main { padding:24px 0 44px; }
     section { padding:20px 0 24px; border-bottom:1px solid var(--line); }
-    .auth, .grid, .latest, .record-head, .record-actions, .ticket-actions, .audit-row, .activity-row, .stats { display:grid; gap:10px; align-items:end; }
+    .auth, .grid, .latest, .record-head, .record-actions, .ticket-actions, .audit-row, .activity-row, .stats, .support-filters { display:grid; gap:10px; align-items:end; }
     .auth { grid-template-columns:minmax(220px,1fr) auto auto; }
     .grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .latest { grid-template-columns:minmax(0,1fr) auto; }
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
     .ticket-actions { grid-template-columns:minmax(130px,.45fr) minmax(200px,1fr) minmax(200px,1fr) auto auto; align-items:start; }
+    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(170px,.5fr); margin-top:12px; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
     .stats { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
@@ -5308,7 +5310,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5440,6 +5442,8 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div></div>
+      <div id="supportSummary" class="meta">No help requests loaded.</div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
 
@@ -5455,7 +5459,7 @@ def owner_portal_html():
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
+    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], supportSummary: {}, auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
     const AUTO_REFRESH_MS = 30000;
 
     function setStatus(message, kind="") {
@@ -5557,6 +5561,7 @@ def owner_portal_html():
       state.items = payload.items || [];
       state.accountItems = accounts.items || [];
       state.supportItems = support.items || [];
+      state.supportSummary = support.summary || {};
       state.auditItems = audits.items || [];
       state.announcementItems = announcements.items || [];
       state.serviceStatus = serviceStatus.service_status || null;
@@ -5784,17 +5789,38 @@ def owner_portal_html():
       }
     }
 
+    function visibleOwnerSupportItems() {
+      const query = $("supportSearch").value.trim().toLowerCase();
+      const view = $("supportFilter").value;
+      return state.supportItems.filter((item) => {
+        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
+        const active = !["resolved", "closed"].includes(item.status);
+        const matchesView = view === "all"
+          || (view === "unread" && item.has_unread_customer_message)
+          || (view === "active" && active)
+          || (view === "finished" && !active)
+          || (view === "account" && item.source === "account")
+          || (view === "device" && item.source !== "account");
+        return matchesView && (!query || text.includes(query));
+      });
+    }
+
     function renderSupport() {
       const host = $("supportRecords");
       host.replaceChildren();
-      if (!state.supportItems.length) {
+      const visible = visibleOwnerSupportItems();
+      const summary = state.supportSummary || {};
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Active ${summary.active_count || 0} | Finished ${summary.finished_count || 0} | Unread requests ${summary.unread_ticket_count || 0}`;
+      if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = "No customer help requests yet.";
+        empty.textContent = state.supportItems.length
+          ? "No customer help requests match these filters."
+          : "No customer help requests yet.";
         host.append(empty);
         return;
       }
-      for (const item of state.supportItems) {
+      for (const item of visible) {
         const record = document.createElement("article");
         record.className = "record";
         const head = document.createElement("div");
@@ -6284,11 +6310,13 @@ def owner_portal_html():
     }
 
     $("connect").addEventListener("click", connect);
-    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
+    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.supportSummary={}; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
     $("issue").addEventListener("click", issueLicense);
     $("issueGiveaway").addEventListener("click", issueGiveaway);
     $("refresh").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("refreshSupport").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
+    $("supportSearch").addEventListener("input", renderSupport);
+    $("supportFilter").addEventListener("change", renderSupport);
     $("refreshLogs").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("publishAnnouncement").addEventListener("click", publishAnnouncement);
     $("refreshAnnouncements").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
@@ -8865,6 +8893,30 @@ def create_account_support_ticket(payload, token):
     }
 
 
+def support_ticket_summary(items, unread_field):
+    status_counts = {status: 0 for status in SUPPORT_TICKET_STATUSES}
+    unread_ticket_count = 0
+    unread_message_count = 0
+    for item in items:
+        status = str(item.get("status", "open"))
+        if status in status_counts:
+            status_counts[status] += 1
+        unread_messages = max(0, int(item.get(unread_field, 0)))
+        unread_message_count += unread_messages
+        unread_ticket_count += unread_messages > 0
+    active_count = sum(
+        status_counts[status] for status in ("open", "acknowledged", "in_progress")
+    )
+    finished_count = status_counts["resolved"] + status_counts["closed"]
+    return {
+        "status_counts": status_counts,
+        "active_count": active_count,
+        "finished_count": finished_count,
+        "unread_ticket_count": unread_ticket_count,
+        "unread_message_count": unread_message_count,
+    }
+
+
 def list_account_support_tickets(token):
     account = verify_account_session(token)
     account_id = validated_account_id(account.get("account_id"))
@@ -8878,10 +8930,12 @@ def list_account_support_tickets(token):
             continue
         if len(items) >= 50:
             break
+    summary = support_ticket_summary(items, "unread_owner_messages")
     return {
         "ok": True,
         "count": len(items),
-        "unread_owner_count": sum(item.get("unread_owner_messages", 0) for item in items),
+        "unread_owner_count": summary["unread_message_count"],
+        "summary": summary,
         "items": items,
         "privacy_notice": "Only help requests linked to this signed-in account are returned.",
         "server_time_utc": utc_now(),
@@ -9051,6 +9105,51 @@ def mark_account_support_ticket_read(payload, token):
     }
 
 
+def mark_all_account_support_tickets_read(token):
+    marked_ticket_count = 0
+    marked_message_count = 0
+    now = utc_now()
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        for record in support_ticket_records():
+            if record.get("account_id") != account_id:
+                continue
+            private = support_ticket_private_fields(record)
+            conversation = support_ticket_conversation(record, private)
+            unread_owner_messages, _unread_customer_messages = support_ticket_unread_counts(
+                record,
+                conversation,
+            )
+            if unread_owner_messages <= 0:
+                continue
+            record["customer_last_read_at_utc"] = now
+            record["customer_read_owner_messages"] = sum(
+                entry.get("author") == "owner" for entry in conversation
+            )
+            write_private_json(support_ticket_path(record["ticket_id"]), record)
+            marked_ticket_count += 1
+            marked_message_count += unread_owner_messages
+    record_api_activity(
+        "account_support_read_all",
+        "ok",
+        "account",
+        account_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "marked_read": True,
+        "marked_ticket_count": marked_ticket_count,
+        "marked_message_count": marked_message_count,
+        "message": (
+            f"Marked {marked_message_count} owner message(s) read across "
+            f"{marked_ticket_count} help request(s)."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
 def list_my_support_tickets(payload):
     verification = require_active_support_license(payload)
     license_id = str((verification.get("license") or {}).get("license_id", ""))
@@ -9081,12 +9180,12 @@ def list_admin_support_tickets():
             items.append(support_ticket_view(record, audience="admin"))
         except (InvalidTag, OSError, ValueError, json.JSONDecodeError):
             damaged_count += 1
+    summary = support_ticket_summary(items, "unread_customer_messages")
     return {
         "ok": True,
         "count": len(items),
-        "unread_customer_count": sum(
-            item.get("unread_customer_messages", 0) for item in items
-        ),
+        "unread_customer_count": summary["unread_message_count"],
+        "summary": summary,
         "damaged_count": damaged_count,
         "items": items,
         "storage": "persistent_configured" if license_state_storage_is_persistent() else "local_ephemeral",
@@ -11288,6 +11387,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_account_support_enabled": True,
                     "customer_account_support_conversations_enabled": True,
                     "customer_account_support_unread_enabled": True,
+                    "customer_account_support_bulk_read_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -11927,6 +12027,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/support/reply": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/close": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/read": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
@@ -12050,6 +12151,19 @@ class ApiHandler(BaseHTTPRequestHandler):
                         mark_account_support_ticket_read(
                             payload,
                             self.account_session_token(),
+                        )
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/support/read-all":
+                try:
+                    self.send_json(
+                        mark_all_account_support_tickets_read(
+                            self.account_session_token()
                         )
                     )
                 except PermissionError as exc:
