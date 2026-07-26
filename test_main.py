@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.79.0")
+        self.assertEqual(api.API_VERSION, "0.80.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.79.0")
+        self.assertEqual(payload["api_version"], "0.80.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.79.0")
+        self.assertEqual(payload["api_version"], "0.80.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3077,6 +3077,34 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(timeline[1]["time_utc"], "2026-07-26T12:05:00Z")
         self.assertEqual(timeline[2]["time_utc"], "2026-07-26T12:10:00Z")
         self.assertNotIn("message", timeline[0])
+        sensitive_examples = {
+            "private_key": "-----BEGIN PRIVATE KEY-----",
+            "webhook_secret": "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz",
+            "vaultlink_secret": "vlk1.abcdefghijklmnop.qrstuvwxyzABCDEF",
+            "bearer_token": "Bearer abcdefghijklmnopqrstuvwxyz123456",
+            "labeled_secret": "password: SuperSecret123!",
+            "labeled_pin": "PIN: 123456",
+            "social_security_number": "123-45-6789",
+            "payment_card": "4111 1111 1111 1111",
+        }
+        for expected_reason, example in sensitive_examples.items():
+            self.assertEqual(
+                api.support_sensitive_content_reason(example),
+                expected_reason,
+            )
+        for safe_example in (
+            "The password reset button says the current password is incorrect.",
+            "The PIN entry field does not open.",
+            "The card layout has 16 columns.",
+            "The update token label is missing from the page.",
+        ):
+            self.assertEqual(api.support_sensitive_content_reason(safe_example), "")
+        with self.assertRaisesRegex(
+            ValueError,
+            "Remove possible sensitive information",
+        ) as sensitive_error:
+            api.reject_sensitive_support_content("password: DoNotStore123!")
+        self.assertNotIn("DoNotStore123", str(sensitive_error.exception))
         self.assertEqual(
             {
                 category: api.support_ticket_suggested_owner_queue(category)
@@ -4432,6 +4460,26 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         first_token = first["session_token"]
         first_account_id = first["account"]["account_id"]
+        blocked_secret = "password: DoNotStore123!"
+        status, sensitive_rejected = self.call(
+            "/api/v1/accounts/support",
+            method="POST",
+            payload={
+                "category": "security",
+                "subject": "Possible account issue",
+                "message": f"Please review this value {blocked_secret}",
+            },
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(sensitive_rejected["error"], "bad_request")
+        self.assertNotIn("DoNotStore123", sensitive_rejected["message"])
+        status, empty_after_sensitive = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(empty_after_sensitive["count"], 0)
         private_subject = "Cannot open personal vault"
         private_message = "The personal vault button stays disabled after I sign in."
         status, created = self.call(
@@ -4514,6 +4562,23 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("attention_score", mine["items"][0])
         self.assertNotIn("attention_reasons", mine["items"][0])
         self.assertNotIn("owner_note", mine["items"][0])
+        status, sensitive_reply = self.call(
+            "/api/v1/accounts/support/reply",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "message": "PIN: 123456",
+            },
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(sensitive_reply["error"], "bad_request")
+        status, mine_after_sensitive_reply = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(mine_after_sensitive_reply["items"][0]["message_count"], 1)
         status, early_feedback = self.call(
             "/api/v1/accounts/support/feedback",
             method="POST",
@@ -4793,6 +4858,24 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 400)
         self.assertEqual(invalid_priority["error"], "bad_request")
+        status, sensitive_owner_update = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "in_progress",
+                "priority": "urgent",
+                "owner_reply": "Bearer abcdefghijklmnopqrstuvwxyz123456",
+                "owner_note": "",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(sensitive_owner_update["error"], "bad_request")
+        self.assertNotIn(
+            "abcdefghijklmnopqrstuvwxyz123456",
+            sensitive_owner_update["message"],
+        )
         status, updated = self.call(
             "/api/v1/admin/support-tickets/action",
             method="POST",
@@ -5191,6 +5274,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(health["customer_support_next_action_enabled"])
         self.assertTrue(health["customer_support_timeline_enabled"])
         self.assertTrue(health["owner_support_queue_health_enabled"])
+        self.assertTrue(health["support_sensitive_content_guard_enabled"])
 
         status, _headers, page = self.call_bytes("/account")
         self.assertEqual(status, 200)
@@ -5235,6 +5319,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"progress-chip", page)
         self.assertIn(b"support-timeline", page)
         self.assertIn(b"YOUR NEXT ACTION", page)
+        self.assertIn(b"supportPrivacyStatus", page)
+        self.assertIn(b"LOCAL PRIVACY CHECK PASSED", page)
+        self.assertIn(b"REMOVE POSSIBLE SENSITIVE INFORMATION", page)
+        self.assertIn(b"supportSensitiveTextWarning", page)
+        self.assertIn(b"supportTextContainsPaymentCard", page)
         self.assertIn(b"RESOLUTION FEEDBACK NEEDED", page)
         self.assertIn(b"MARKED NOT RESOLVED", page)
         self.assertIn(b"Did this solve the issue?", page)
@@ -5290,6 +5379,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"supportQueueHealth", owner_page)
         self.assertIn(b"queue-health-button", owner_page)
         self.assertIn(b"renderOwnerQueueHealth", owner_page)
+        self.assertIn(b"Sensitive-information guard is active", owner_page)
+        self.assertIn(b"ownerSupportSensitiveTextWarning", owner_page)
+        self.assertIn(b"ownerSupportTextContainsPaymentCard", owner_page)
         self.assertIn(b"owner_queue", owner_page)
         self.assertIn(b"suggested_owner_queue", owner_page)
         self.assertIn(b"USE SUGGESTED", owner_page)

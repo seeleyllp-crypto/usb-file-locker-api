@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.79.0"
+API_VERSION = "0.80.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -5515,6 +5515,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
+      <div class="meta">Sensitive-information guard is active for customer messages, owner replies, and private notes. Never enter passwords, PINs, tokens, private keys, webhook secrets, payment-card numbers, or Social Security numbers.</div>
       <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="attention">HIGH ATTENTION</option><option value="pinned">PINNED REQUESTS</option><option value="unassigned">UNASSIGNED REQUESTS</option><option value="feedback_not_resolved">CUSTOMER SAYS NOT RESOLVED</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="review_due">REVIEW REMINDERS DUE</option><option value="review_scheduled">REVIEW REMINDERS SCHEDULED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportLabel">Owner label</label><select id="supportLabel"><option value="all">ALL LABELS</option><option value="needs_repro">NEEDS REPRO</option><option value="release_blocker">RELEASE BLOCKER</option><option value="billing_review">BILLING REVIEW</option><option value="security_review">SECURITY REVIEW</option><option value="follow_up">FOLLOW UP</option></select></div><div><label for="supportQueue">Owner queue</label><select id="supportQueue"><option value="all">ALL QUEUES</option><option value="unassigned">UNASSIGNED</option><option value="general">GENERAL</option><option value="technical">TECHNICAL</option><option value="licensing">LICENSING</option><option value="security">SECURITY</option><option value="billing">BILLING</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="attention_desc">ATTENTION FIRST</option><option value="queue_attention">QUEUE THEN ATTENTION</option><option value="priority_desc">PRIORITY FIRST</option><option value="review_asc">REVIEW REMINDER</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
       <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY PRIORITY</button><div><label for="bulkOwnerQueue">Filtered route</label><select id="bulkOwnerQueue"><option value="unassigned">UNASSIGNED</option><option value="general">GENERAL</option><option value="technical">TECHNICAL</option><option value="licensing">LICENSING</option><option value="security">SECURITY</option><option value="billing">BILLING</option></select></div><button id="applyFilteredQueue" class="primary" disabled>APPLY ROUTE</button><div class="meta">Updates only fixed metadata for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
@@ -6906,7 +6907,47 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
+    function ownerSupportTextContainsPaymentCard(value) {
+      const matches = String(value || "").match(/\\b(?:\\d[ -]?){12,18}\\d\\b/g) || [];
+      for (const match of matches) {
+        const digits = match.replace(/\\D/g, "");
+        if (digits.length < 13 || digits.length > 19 || new Set(digits).size < 2) continue;
+        let total = 0;
+        const parity = digits.length % 2;
+        for (let index = 0; index < digits.length; index++) {
+          let digit = Number(digits[index]);
+          if (index % 2 === parity) {
+            digit *= 2;
+            if (digit > 9) digit -= 9;
+          }
+          total += digit;
+        }
+        if (total % 10 === 0) return true;
+      }
+      return false;
+    }
+
+    function ownerSupportSensitiveTextWarning(...values) {
+      const text = values.map((value) => String(value || "")).join("\\n");
+      if (!text) return false;
+      const patterns = [
+        /-----BEGIN\\s+(?:RSA\\s+|EC\\s+|OPENSSH\\s+)?PRIVATE KEY-----/i,
+        /https?:\\/\\/(?:canary\\.|ptb\\.)?discord(?:app)?\\.com\\/api\\/webhooks\\/\\d+\\/[A-Za-z0-9._-]{8,}/i,
+        /\\b(?:vlk1|vlr1|vlas1|vla1|vlt1)\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}\\b/i,
+        /\\bBearer\\s+[A-Za-z0-9._~-]{16,}\\b/i,
+        /\\b(?:password|passcode|api[ _-]?key|access[ _-]?token|session[ _-]?token|secret)\\s*[:=]\\s*[^\\s"']{8,}/i,
+        /\\bpin\\s*[:=]\\s*\\d{4,8}\\b/i,
+        /(?:^|\\D)\\d{3}-\\d{2}-\\d{4}(?:\\D|$)/
+      ];
+      return patterns.some((pattern) => pattern.test(text))
+        || ownerSupportTextContainsPaymentCard(text);
+    }
+
     async function saveSupport(item, status, ownerReply, ownerNote, priority) {
+      if (ownerSupportSensitiveTextWarning(ownerReply, ownerNote)) {
+        setStatus("Remove possible sensitive information before saving. Do not store passwords, PINs, tokens, keys, payment-card numbers, or Social Security numbers.", "bad");
+        return;
+      }
       try {
         const result = await api("/api/v1/admin/support-tickets/action", { method:"POST", body:JSON.stringify({
           ticket_id:item.ticket_id,
@@ -9296,6 +9337,76 @@ def clean_support_text(value, limit, field_name, required=False, minimum=1):
     return text
 
 
+def support_text_contains_payment_card(value):
+    for match in re.finditer(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)", str(value or "")):
+        digits = "".join(character for character in match.group(0) if character.isdigit())
+        if not 13 <= len(digits) <= 19 or len(set(digits)) < 2:
+            continue
+        total = 0
+        parity = len(digits) % 2
+        for index, character in enumerate(digits):
+            digit = int(character)
+            if index % 2 == parity:
+                digit *= 2
+                if digit > 9:
+                    digit -= 9
+            total += digit
+        if total % 10 == 0:
+            return True
+    return False
+
+
+def support_sensitive_content_reason(*values):
+    text = "\n".join(str(value or "") for value in values)
+    if not text:
+        return ""
+    patterns = (
+        (
+            "private_key",
+            r"-----BEGIN\s+(?:RSA\s+|EC\s+|OPENSSH\s+)?PRIVATE KEY-----",
+        ),
+        (
+            "webhook_secret",
+            r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9._-]{8,}",
+        ),
+        (
+            "vaultlink_secret",
+            r"\b(?:vlk1|vlr1|vlas1|vla1|vlt1)\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b",
+        ),
+        (
+            "bearer_token",
+            r"\bBearer\s+[A-Za-z0-9._~-]{16,}\b",
+        ),
+        (
+            "labeled_secret",
+            r"\b(?:password|passcode|api[ _-]?key|access[ _-]?token|session[ _-]?token|secret)\s*[:=]\s*[^\s\"']{8,}",
+        ),
+        (
+            "labeled_pin",
+            r"\bpin\s*[:=]\s*\d{4,8}\b",
+        ),
+        (
+            "social_security_number",
+            r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)",
+        ),
+    )
+    for reason, pattern in patterns:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return reason
+    if support_text_contains_payment_card(text):
+        return "payment_card"
+    return ""
+
+
+def reject_sensitive_support_content(*values):
+    if support_sensitive_content_reason(*values):
+        raise ValueError(
+            "Remove possible sensitive information before sending. "
+            "VaultLink support does not accept passwords, PINs, tokens, private keys, "
+            "webhook secrets, payment-card numbers, or Social Security numbers."
+        )
+
+
 def validated_support_ticket_id(value):
     text = str(value or "").strip().upper()
     if (
@@ -9917,6 +10028,7 @@ def create_support_ticket(payload):
     message = clean_support_text(payload.get("message"), 4000, "message", required=True, minimum=10)
     steps = clean_support_text(payload.get("steps"), 6000, "steps")
     app_version = clean_support_text(payload.get("app_version"), 80, "app_version")
+    reject_sensitive_support_content(subject, message, steps)
     machine_hash = anonymous_machine_hash(payload.get("machine_id", ""))
     license_view = verification.get("license") or {}
     plan = verification.get("plan") or {}
@@ -9997,6 +10109,7 @@ def create_account_support_ticket(payload, token):
     with LICENSE_STATE_LOCK:
         account = verify_account_session(token)
         account_id = validated_account_id(account.get("account_id"))
+        reject_sensitive_support_content(subject, message)
         recent_count = sum(
             record.get("account_id") == account_id
             and (parse_utc(record.get("created_at_utc")) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
@@ -10346,6 +10459,7 @@ def reply_account_support_ticket(payload, token):
         record = read_support_ticket(ticket_id)
         if record.get("account_id") != account_id:
             raise FileNotFoundError("Help request was not found for this account.")
+        reject_sensitive_support_content(message)
         enforce_account_support_action_limit(account_id, now)
         private = support_ticket_private_fields(record)
         append_support_conversation(record, private, "customer", message, now_text)
@@ -10643,6 +10757,7 @@ def admin_update_support_ticket(payload):
             raise ValueError("Choose a valid support ticket priority.")
     owner_reply = clean_support_text(payload.get("owner_reply"), 4000, "owner_reply")
     owner_note = clean_support_text(payload.get("owner_note"), 4000, "owner_note")
+    reject_sensitive_support_content(owner_reply, owner_note)
     with LICENSE_STATE_LOCK:
         record = read_support_ticket(ticket_id)
         private = support_ticket_private_fields(record)
@@ -13072,6 +13187,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_support_next_action_enabled": True,
                     "customer_support_timeline_enabled": True,
                     "owner_support_queue_health_enabled": True,
+                    "support_sensitive_content_guard_enabled": True,
                     "customer_support_tab_drafts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
