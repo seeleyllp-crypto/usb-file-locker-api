@@ -94,6 +94,8 @@ Account sessions last twelve hours and include a server-checked session version.
 
 Version 0.76.0 adds owner-only fixed-preset review reminders, due and scheduled reminder views, review-time ordering, aggregate reminder counts, automatic reminder clearing when a request is resolved or closed, and version-four metadata-only owner queue exports. Review reminders are private planning metadata: they never trigger remote PC actions, notify or restrict customers, or appear in customer API responses.
 
+Version 0.77.0 adds owner-only pinning and five fixed triage labels, a derived 0-100 attention score with fixed reasons and queue levels, attention-first sorting, pin/label/negative-outcome filters, aggregate label and attention counts, fixed-choice customer resolution feedback, customer feedback-needed views, and expanded metadata-only exports. Customers can submit only `resolved`, `partly_resolved`, or `not_resolved` after a request is finished; there is no feedback comment field or automatic file/log collection. Owner pins, labels, scores, and reasons are never returned through customer ticket responses. Reopening a request clears its prior resolution outcome so stale feedback cannot silently follow an active case.
+
 Every new customer license requires an existing active `account_id`. The issue endpoint, main owner console, giveaway controls, and dedicated account console bind each new license to that account. Arbitrary labels and email fields can no longer create unattached licenses. Existing legacy licenses can still be deliberately assigned or transferred from `/owner/accounts`.
 
 ## Owner Maintenance Operations 0.39
@@ -340,6 +342,10 @@ Without `LICENSE_STATE_DIR`, Railway uses local ephemeral storage and a restart 
   - Admin-only priority update for up to 100 prevalidated ticket IDs. It returns aggregate counts only and never returns ticket text.
 - `POST /api/v1/admin/support-tickets/review-reminder`
   - Admin-only private review reminder using one fixed delay: clear, 1 hour, 4 hours, 1 day, 3 days, or 7 days.
+- `POST /api/v1/admin/support-tickets/triage`
+  - Admin-only pin and up to three labels selected from the fixed owner-label list. It accepts no free-form label text.
+- `POST /api/v1/accounts/support/feedback`
+  - Signed-in customer outcome for a resolved or closed account request. It accepts one fixed outcome and no comment or attachment.
 - `POST /api/v1/admin/support-tickets/read`
   - Admin-only mark-read action for customer messages. It stores only a numeric conversation cursor and a timestamp.
 - `POST /api/v1/admin/support-tickets/read-all`

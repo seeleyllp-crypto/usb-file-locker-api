@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.76.0"
+API_VERSION = "0.77.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -306,6 +306,19 @@ SUPPORT_RESPONSE_TARGET_SECONDS = {
 SUPPORT_RESPONSE_DUE_SOON_MAX_SECONDS = 2 * 60 * 60
 SUPPORT_REVIEW_DELAYS_SECONDS = frozenset(
     {0, 60 * 60, 4 * 60 * 60, 24 * 60 * 60, 3 * 24 * 60 * 60, 7 * 24 * 60 * 60}
+)
+SUPPORT_OWNER_LABELS = (
+    "needs_repro",
+    "release_blocker",
+    "billing_review",
+    "security_review",
+    "follow_up",
+)
+MAX_SUPPORT_OWNER_LABELS = 3
+SUPPORT_RESOLUTION_FEEDBACK = (
+    "resolved",
+    "partly_resolved",
+    "not_resolved",
 )
 ANNOUNCEMENT_SEVERITIES = frozenset({"info", "update", "maintenance", "security"})
 MAX_ANNOUNCEMENTS = 250
@@ -1954,6 +1967,7 @@ ACCOUNT_ACTIVITY_LABELS = {
     "account_support_create": "Help request sent",
     "account_support_reply": "Help request reply sent",
     "account_support_close": "Help request closed",
+    "account_support_feedback": "Help request outcome updated",
     "account_license_assign": "License assignment changed",
     "account_status_update": "Account status changed",
 }
@@ -2664,10 +2678,12 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/maintenance-operations", "purpose": "Admin-only approval-gate, decision-queue, review-lane, briefing, watch, planner, and fixed 40-check operations report"},
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
+            {"method": "POST", "path": "/api/v1/accounts/support/feedback", "purpose": "Signed-in customer fixed-choice resolution feedback"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only priority, acknowledge, resolve, close, note, and reply action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/priority-bulk", "purpose": "Admin-only aggregate priority update for up to 100 filtered ticket ids"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/review-reminder", "purpose": "Admin-only fixed-preset private review reminder"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/triage", "purpose": "Admin-only pin and fixed-label triage metadata"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read-all", "purpose": "Admin-only aggregate mark-all-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
@@ -5289,7 +5305,7 @@ def owner_portal_html():
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
     .ticket-actions { grid-template-columns:minmax(105px,.32fr) minmax(105px,.32fr) minmax(150px,.55fr) minmax(180px,1fr) minmax(180px,1fr) auto auto auto; align-items:start; }
-    .support-filters { grid-template-columns:minmax(210px,1fr) minmax(150px,.55fr) minmax(130px,.42fr) minmax(145px,.48fr); margin-top:12px; }
+    .support-filters { grid-template-columns:minmax(210px,1fr) minmax(150px,.55fr) minmax(130px,.42fr) minmax(145px,.48fr) minmax(145px,.48fr); margin-top:12px; }
     .support-bulk-priority { display:grid; grid-template-columns:minmax(150px,220px) auto minmax(180px,1fr); gap:10px; align-items:end; margin-top:10px; }
     .support-owner-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
@@ -5334,6 +5350,15 @@ def owner_portal_html():
     .review-chip.due { background:#392126; color:#ff9aa2; }
     .review-chip[hidden] { display:none; }
     .support-review-actions { display:grid; grid-template-columns:minmax(190px,320px) auto; gap:10px; align-items:end; margin-top:10px; }
+    .attention-chip { display:inline-block; margin-left:6px; padding:4px 8px; border-radius:4px; text-transform:uppercase; font-size:11px; font-weight:800; background:#252b33; color:var(--muted); }
+    .attention-chip.medium { background:#3a321c; color:var(--yellow); }
+    .attention-chip.high { background:#392126; color:#ff9aa2; }
+    .attention-chip[hidden] { display:none; }
+    .owner-label-chip { display:inline-block; margin:4px 4px 0 0; padding:3px 7px; border:1px solid var(--line); border-radius:4px; color:var(--blue); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .owner-label-chip[hidden] { display:none; }
+    .support-triage-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; padding:10px; border:1px solid var(--line); background:#0c0f13; }
+    .triage-option { display:inline-flex; gap:6px; align-items:center; min-height:36px; padding:0 8px; border:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:800; }
+    .triage-option input { width:auto; margin:0; }
     .ticket-copy { margin:10px 0 0; padding:10px; background:var(--field); color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; }
     .device-list { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
     .device-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(120px,.6fr) auto; gap:10px; align-items:center; padding:8px 0; }
@@ -5474,7 +5499,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="review_due">REVIEW REMINDERS DUE</option><option value="review_scheduled">REVIEW REMINDERS SCHEDULED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="review_asc">REVIEW REMINDER</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="attention">HIGH ATTENTION</option><option value="pinned">PINNED REQUESTS</option><option value="feedback_not_resolved">CUSTOMER SAYS NOT RESOLVED</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="review_due">REVIEW REMINDERS DUE</option><option value="review_scheduled">REVIEW REMINDERS SCHEDULED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportLabel">Owner label</label><select id="supportLabel"><option value="all">ALL LABELS</option><option value="needs_repro">NEEDS REPRO</option><option value="release_blocker">RELEASE BLOCKER</option><option value="billing_review">BILLING REVIEW</option><option value="security_review">SECURITY REVIEW</option><option value="follow_up">FOLLOW UP</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="attention_desc">ATTENTION FIRST</option><option value="priority_desc">PRIORITY FIRST</option><option value="review_asc">REVIEW REMINDER</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
       <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered queue priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY TO FILTERED</button><div class="meta">Updates priority only for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
@@ -5853,11 +5878,15 @@ def owner_portal_html():
       const query = $("supportSearch").value.trim().toLowerCase();
       const view = $("supportFilter").value;
       const priority = $("supportPriority").value;
+      const ownerLabel = $("supportLabel").value;
       const sort = $("supportSort").value;
       const items = state.supportItems.filter((item) => {
-        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.workflow_state || ""} ${item.priority || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
+        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.workflow_state || ""} ${item.priority || ""} ${(item.owner_labels || []).join(" ")} ${item.resolution_feedback || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
         const active = !["resolved", "closed"].includes(item.status);
         const matchesView = view === "all"
+          || (view === "attention" && item.attention_level === "high")
+          || (view === "pinned" && item.owner_pinned)
+          || (view === "feedback_not_resolved" && item.resolution_feedback === "not_resolved")
           || (view === "unread" && item.has_unread_customer_message)
           || (view === "owner_action" && item.workflow_state === "waiting_on_owner")
           || (view === "review_due" && item.review_state === "due")
@@ -5872,8 +5901,17 @@ def owner_portal_html():
           || (view === "device" && item.source !== "account");
         return matchesView
           && (priority === "all" || item.priority === priority)
+          && (ownerLabel === "all" || (item.owner_labels || []).includes(ownerLabel))
           && (!query || text.includes(query));
       });
+      if (sort === "attention_desc") {
+        return items.sort((a, b) =>
+          Number(b.attention_score || 0) - Number(a.attention_score || 0)
+          || Number(b.owner_pinned || 0) - Number(a.owner_pinned || 0)
+          || Number(b.wait_age_seconds || 0) - Number(a.wait_age_seconds || 0)
+          || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
+        );
+      }
       if (sort === "priority_desc") {
         const rank = { urgent:0, high:1, normal:2 };
         return items.sort((a, b) =>
@@ -5946,6 +5984,14 @@ def owner_portal_html():
       return "";
     }
 
+    function ownerFixedLabel(value) {
+      return String(value || "").replaceAll("_", " ").toUpperCase();
+    }
+
+    function ownerAttentionLabel(item) {
+      return `ATTENTION ${Number(item.attention_score || 0)}`;
+    }
+
     function ownerWorkflowLabel(item) {
       if (item.workflow_state === "waiting_on_owner") return "OWNER ACTION";
       if (item.workflow_state === "waiting_on_customer") return "WAITING ON CUSTOMER";
@@ -5992,6 +6038,8 @@ def owner_portal_html():
       state.supportExpandedIds.add(next.ticket_id);
       $("supportSearch").value = "";
       $("supportFilter").value = "unread";
+      $("supportPriority").value = "all";
+      $("supportLabel").value = "all";
       $("supportSort").value = "updated_desc";
       renderSupport();
       requestAnimationFrame(() => {
@@ -6023,10 +6071,12 @@ def owner_portal_html():
       const priorities = summary.priority_counts || {};
       const targets = summary.response_target_counts || {};
       const reviews = summary.review_counts || {};
+      const feedback = summary.feedback_counts || {};
+      const attention = summary.attention_counts || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("applyFilteredPriority").disabled = !state.connected || visible.length === 0;
-      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Review due ${reviews.due || 0} | Scheduled ${reviews.scheduled || 0} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Unread ${summary.unread_ticket_count || 0}`;
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | High attention ${attention.high || 0} | Pinned ${summary.pinned_count || 0} | Not resolved ${feedback.not_resolved || 0} | Review due ${reviews.due || 0} | Scheduled ${reviews.scheduled || 0} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -6070,12 +6120,30 @@ def owner_portal_html():
         reviewBadge.className = `review-chip ${item.review_state || "none"}`;
         reviewBadge.textContent = ownerReviewLabel(item);
         reviewBadge.hidden = item.review_state === "none";
+        const attentionBadge = document.createElement("span");
+        attentionBadge.className = `attention-chip ${item.attention_level || "normal"}`;
+        attentionBadge.textContent = ownerAttentionLabel(item);
+        attentionBadge.hidden = Number(item.attention_score || 0) === 0;
+        const pinnedBadge = document.createElement("span");
+        pinnedBadge.className = "owner-label-chip";
+        pinnedBadge.textContent = "PINNED";
+        pinnedBadge.hidden = !item.owner_pinned;
+        const ownerLabels = document.createElement("div");
+        for (const value of item.owner_labels || []) {
+          const labelChip = document.createElement("span");
+          labelChip.className = "owner-label-chip";
+          labelChip.textContent = ownerFixedLabel(value);
+          ownerLabels.append(labelChip);
+        }
         const sourceMeta = document.createElement("div");
         sourceMeta.className = "meta";
         sourceMeta.textContent = accountSource
           ? "SIGNED-IN ACCOUNT"
           : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
-        source.append(priorityBadge, targetBadge, reviewBadge, sourceMeta);
+        if (item.resolution_feedback) {
+          sourceMeta.textContent += ` | customer ${ownerFixedLabel(item.resolution_feedback)}`;
+        }
+        source.append(priorityBadge, targetBadge, reviewBadge, attentionBadge, pinnedBadge, ownerLabels, sourceMeta);
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = item.has_unread_customer_message
@@ -6182,7 +6250,40 @@ def owner_portal_html():
           scheduleSupportReview(item, Number(reviewDelay.value));
         });
         reviewActions.append(reviewDelay, setReview);
-        record.append(actions, reviewActions);
+        const triageActions = document.createElement("div");
+        triageActions.className = "support-triage-actions";
+        const triageBoxes = [];
+        const addTriageOption = (value, label, checked) => {
+          const wrapper = document.createElement("label");
+          wrapper.className = "triage-option";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = checked;
+          input.dataset.triageValue = value;
+          const text = document.createElement("span");
+          text.textContent = label;
+          wrapper.append(input, text);
+          triageActions.append(wrapper);
+          return input;
+        };
+        const pinned = addTriageOption("pinned", "PINNED", !!item.owner_pinned);
+        for (const value of ["needs_repro", "release_blocker", "billing_review", "security_review", "follow_up"]) {
+          const checkbox = addTriageOption(value, ownerFixedLabel(value), (item.owner_labels || []).includes(value));
+          checkbox.onchange = () => {
+            const selected = triageBoxes.filter((input) => input.checked);
+            if (selected.length > 3) {
+              checkbox.checked = false;
+              setStatus("Choose up to three private owner labels.", "bad");
+            }
+          };
+          triageBoxes.push(checkbox);
+        }
+        triageActions.append(actionButton("SAVE TRIAGE", "primary", () => saveSupportTriage(
+          item,
+          pinned.checked,
+          triageBoxes.filter((input) => input.checked).map((input) => input.dataset.triageValue)
+        )));
+        record.append(actions, reviewActions, triageActions);
         host.append(record);
       }
     }
@@ -6460,8 +6561,11 @@ def owner_portal_html():
       const priorities = summary.priority_counts || {};
       const targets = summary.response_target_counts || {};
       const reviews = summary.review_counts || {};
+      const feedback = summary.feedback_counts || {};
+      const ownerLabels = summary.owner_label_counts || {};
+      const attention = summary.attention_counts || {};
       downloadOwnerJson("vaultlink-owner-support-queue.json", {
-        schema:"vaultlink-owner-support-queue-v4",
+        schema:"vaultlink-owner-support-queue-v5",
         api_version:(state.dashboard?.release || {}).api_version || "",
         exported_at_utc:new Date().toISOString(),
         summary:{
@@ -6494,6 +6598,26 @@ def owner_portal_html():
           },
           next_review_seconds:Number(summary.next_review_seconds || 0),
           most_overdue_review_seconds:Number(summary.most_overdue_review_seconds || 0),
+          pinned_count:Number(summary.pinned_count || 0),
+          feedback_counts:{
+            none:Number(feedback.none || 0),
+            resolved:Number(feedback.resolved || 0),
+            partly_resolved:Number(feedback.partly_resolved || 0),
+            not_resolved:Number(feedback.not_resolved || 0)
+          },
+          owner_label_counts:{
+            needs_repro:Number(ownerLabels.needs_repro || 0),
+            release_blocker:Number(ownerLabels.release_blocker || 0),
+            billing_review:Number(ownerLabels.billing_review || 0),
+            security_review:Number(ownerLabels.security_review || 0),
+            follow_up:Number(ownerLabels.follow_up || 0)
+          },
+          attention_counts:{
+            normal:Number(attention.normal || 0),
+            medium:Number(attention.medium || 0),
+            high:Number(attention.high || 0)
+          },
+          max_attention_score:Number(summary.max_attention_score || 0),
           age_counts:{
             under_1h:Number(ages.under_1h || 0),
             "1h_24h":Number(ages["1h_24h"] || 0),
@@ -6533,6 +6657,13 @@ def owner_portal_html():
           review_remaining_seconds:Number(item.review_remaining_seconds || 0),
           review_overdue_seconds:Number(item.review_overdue_seconds || 0),
           review_state:item.review_state || "none",
+          owner_pinned:!!item.owner_pinned,
+          owner_labels:Array.isArray(item.owner_labels) ? item.owner_labels.slice(0,3) : [],
+          resolution_feedback:item.resolution_feedback || "",
+          resolution_feedback_at_utc:item.resolution_feedback_at_utc || "",
+          attention_score:Number(item.attention_score || 0),
+          attention_level:item.attention_level || "normal",
+          attention_reasons:Array.isArray(item.attention_reasons) ? item.attention_reasons.slice(0,12) : [],
           created_at_utc:item.created_at_utc || "",
           updated_at_utc:item.updated_at_utc || "",
           last_message_at_utc:item.last_message_at_utc || "",
@@ -6540,7 +6671,7 @@ def owner_portal_html():
           message_count:Number(item.message_count || 0),
           unread_customer_messages:Number(item.unread_customer_messages || 0)
         })),
-        privacy:"Metadata only. No customer username, account id, subject, message, conversation, owner reply, private note, license, machine id, device, file, path, PIN, password, admin token, or USB secret is included."
+        privacy:"Metadata only. Fixed owner labels and fixed customer resolution outcomes are included. No customer username, account id, subject, message, conversation, owner reply, private note, license, machine id, device, file, path, PIN, password, admin token, or USB secret is included."
       });
       setStatus("Privacy-safe owner support queue exported.", "good");
     }
@@ -6675,6 +6806,21 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
+    async function saveSupportTriage(item, pinned, labels) {
+      try {
+        const result = await api("/api/v1/admin/support-tickets/triage", {
+          method:"POST",
+          body:JSON.stringify({
+            ticket_id:item.ticket_id,
+            pinned,
+            labels
+          })
+        });
+        await loadLicenses(true);
+        setStatus(result.message || `Saved private triage metadata for ${item.ticket_id}.`, "good");
+      } catch (error) { setStatus(error.message, "bad"); }
+    }
+
     async function applyFilteredSupportPriority() {
       const items = visibleOwnerSupportItems().slice(0, 100);
       if (!items.length) return setStatus("No filtered help requests are available.", "bad");
@@ -6771,6 +6917,7 @@ def owner_portal_html():
     $("supportSearch").addEventListener("input", renderSupport);
     $("supportFilter").addEventListener("change", renderSupport);
     $("supportPriority").addEventListener("change", renderSupport);
+    $("supportLabel").addEventListener("change", renderSupport);
     $("supportSort").addEventListener("change", renderSupport);
     $("applyFilteredPriority").addEventListener("click", applyFilteredSupportPriority);
     $("nextOwnerUnread").addEventListener("click", focusNextOwnerUnread);
@@ -9144,6 +9291,41 @@ def support_ticket_priority(value):
     return priority if priority in SUPPORT_TICKET_PRIORITIES else "normal"
 
 
+def support_ticket_owner_labels(value):
+    if not isinstance(value, list):
+        return []
+    labels = []
+    for item in value:
+        label = str(item or "").strip().lower()
+        if label in SUPPORT_OWNER_LABELS and label not in labels:
+            labels.append(label)
+        if len(labels) >= MAX_SUPPORT_OWNER_LABELS:
+            break
+    return labels
+
+
+def validated_support_ticket_owner_labels(value):
+    if not isinstance(value, list):
+        raise ValueError("Choose support labels from the fixed list.")
+    labels = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("Choose support labels from the fixed list.")
+        label = item.strip().lower()
+        if label not in SUPPORT_OWNER_LABELS:
+            raise ValueError("Choose support labels from the fixed list.")
+        if label not in labels:
+            labels.append(label)
+    if len(labels) > MAX_SUPPORT_OWNER_LABELS:
+        raise ValueError(f"Choose {MAX_SUPPORT_OWNER_LABELS} support labels or fewer.")
+    return labels
+
+
+def support_ticket_resolution_feedback(value):
+    feedback = str(value or "").strip().lower()
+    return feedback if feedback in SUPPORT_RESOLUTION_FEEDBACK else ""
+
+
 def support_ticket_wait_metadata(status, workflow_state, started_at_utc, now=None):
     if str(status) in {"resolved", "closed"} or workflow_state == "finished":
         return {
@@ -9237,6 +9419,55 @@ def support_ticket_review_metadata(review_after_utc, now=None):
     }
 
 
+def support_ticket_attention_metadata(item):
+    score = 0
+    reasons = []
+
+    def add(points, reason):
+        nonlocal score
+        score += points
+        reasons.append(reason)
+
+    if bool(item.get("has_unread_customer_message")):
+        add(25, "unread_customer_message")
+    priority = support_ticket_priority(item.get("priority"))
+    if priority == "urgent":
+        add(20, "urgent_priority")
+    elif priority == "high":
+        add(10, "high_priority")
+    target_state = str(item.get("response_target_state", ""))
+    if target_state == "overdue":
+        add(25, "response_overdue")
+    elif target_state == "due_soon":
+        add(10, "response_due_soon")
+    if item.get("review_state") == "due":
+        add(15, "review_due")
+    if (
+        item.get("workflow_state") == "waiting_on_owner"
+        and int(item.get("wait_age_seconds", 0)) >= 24 * 60 * 60
+    ):
+        add(10, "owner_wait_24h")
+    feedback = support_ticket_resolution_feedback(item.get("resolution_feedback"))
+    if feedback == "not_resolved":
+        add(25, "customer_not_resolved")
+    elif feedback == "partly_resolved":
+        add(10, "customer_partly_resolved")
+    labels = set(support_ticket_owner_labels(item.get("owner_labels")))
+    if "release_blocker" in labels:
+        add(20, "release_blocker")
+    if "security_review" in labels:
+        add(15, "security_review")
+    if bool(item.get("owner_pinned")):
+        add(5, "pinned")
+    score = min(100, score)
+    level = "high" if score >= 60 else "medium" if score >= 30 else "normal"
+    return {
+        "attention_score": score,
+        "attention_level": level,
+        "attention_reasons": reasons,
+    }
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     conversation = support_ticket_conversation(record, private)
@@ -9267,6 +9498,12 @@ def support_ticket_view(record, audience="admin"):
         "last_author": str(last_message.get("author", "")),
         "last_message_at_utc": str(last_message.get("time_utc", "")),
         "workflow_state": workflow_state,
+        "resolution_feedback": support_ticket_resolution_feedback(
+            record.get("customer_resolution_feedback")
+        ),
+        "resolution_feedback_at_utc": str(
+            record.get("customer_feedback_at_utc", "")
+        ),
         "history": list(record.get("history", []))[-50:],
     }
     item.update(
@@ -9301,6 +9538,10 @@ def support_ticket_view(record, audience="admin"):
                 "plan_id": str(record.get("plan_id", "")),
                 "machine_hash": str(record.get("machine_hash", "")),
                 "priority": support_ticket_priority(record.get("priority")),
+                "owner_pinned": bool(record.get("owner_pinned", False)),
+                "owner_labels": support_ticket_owner_labels(
+                    record.get("owner_labels")
+                ),
                 "owner_note": str(private.get("owner_note", "")),
                 "unread_customer_messages": unread_customer_messages,
                 "has_unread_customer_message": unread_customer_messages > 0,
@@ -9317,6 +9558,7 @@ def support_ticket_view(record, audience="admin"):
         item.update(
             support_ticket_review_metadata(record.get("owner_review_after_utc"))
         )
+        item.update(support_ticket_attention_metadata(item))
     return item
 
 
@@ -9533,6 +9775,16 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "unknown": 0,
     }
     review_counts = {"none": 0, "scheduled": 0, "due": 0}
+    feedback_counts = {
+        "none": 0,
+        "resolved": 0,
+        "partly_resolved": 0,
+        "not_resolved": 0,
+    }
+    owner_label_counts = {label: 0 for label in SUPPORT_OWNER_LABELS}
+    attention_counts = {"normal": 0, "medium": 0, "high": 0}
+    pinned_count = 0
+    max_attention_score = 0
     unread_ticket_count = 0
     unread_message_count = 0
     oldest_waiting_on_owner_seconds = 0
@@ -9558,6 +9810,10 @@ def support_ticket_summary(items, unread_field, include_priority=False):
                 oldest_waiting_on_owner_seconds,
                 max(0, int(item.get("wait_age_seconds", 0))),
             )
+        feedback = support_ticket_resolution_feedback(
+            item.get("resolution_feedback")
+        )
+        feedback_counts[feedback or "none"] += 1
         if include_priority:
             priority_counts[support_ticket_priority(item.get("priority"))] += 1
             target_state = str(item.get("response_target_state", "unknown"))
@@ -9592,6 +9848,17 @@ def support_ticket_summary(items, unread_field, include_priority=False):
                     most_overdue_review_seconds,
                     max(0, int(item.get("review_overdue_seconds", 0))),
                 )
+            pinned_count += bool(item.get("owner_pinned"))
+            for label in support_ticket_owner_labels(item.get("owner_labels")):
+                owner_label_counts[label] += 1
+            attention_level = str(item.get("attention_level", "normal"))
+            if attention_level not in attention_counts:
+                attention_level = "normal"
+            attention_counts[attention_level] += 1
+            max_attention_score = max(
+                max_attention_score,
+                max(0, min(100, int(item.get("attention_score", 0)))),
+            )
     active_count = sum(
         status_counts[status] for status in ("open", "acknowledged", "in_progress")
     )
@@ -9607,6 +9874,7 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "unread_ticket_count": unread_ticket_count,
         "unread_message_count": unread_message_count,
         "oldest_waiting_on_owner_seconds": oldest_waiting_on_owner_seconds,
+        "feedback_counts": feedback_counts,
     }
     if include_priority:
         summary["priority_counts"] = priority_counts
@@ -9622,6 +9890,10 @@ def support_ticket_summary(items, unread_field, include_priority=False):
             0 if next_review_seconds is None else next_review_seconds
         )
         summary["most_overdue_review_seconds"] = most_overdue_review_seconds
+        summary["pinned_count"] = pinned_count
+        summary["owner_label_counts"] = owner_label_counts
+        summary["attention_counts"] = attention_counts
+        summary["max_attention_score"] = max_attention_score
     return summary
 
 
@@ -9657,7 +9929,11 @@ def enforce_account_support_action_limit(account_id, now):
         if record.get("account_id") != account_id:
             continue
         for event in list(record.get("history", [])):
-            if event.get("action") not in {"customer_reply", "customer_close"}:
+            if event.get("action") not in {
+                "customer_reply",
+                "customer_close",
+                "customer_feedback",
+            }:
                 continue
             event_time = parse_utc(event.get("time_utc"))
             if event_time and event_time >= cutoff:
@@ -9686,6 +9962,8 @@ def reply_account_support_ticket(payload, token):
             record["status"] = "open"
             record["resolved_at_utc"] = ""
             record["closed_at_utc"] = ""
+            record["customer_resolution_feedback"] = ""
+            record["customer_feedback_at_utc"] = ""
         record["updated_at_utc"] = now_text
         record["customer_last_read_at_utc"] = now_text
         record["customer_read_owner_messages"] = sum(
@@ -9779,6 +10057,60 @@ def close_account_support_ticket(payload, token):
         "already_closed": False,
         "ticket": support_ticket_view(record, audience="customer"),
         "message": "Help request closed.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def set_account_support_feedback(payload, token):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    feedback = support_ticket_resolution_feedback(payload.get("feedback"))
+    if not feedback:
+        raise ValueError("Choose a fixed resolution outcome.")
+    now = datetime.now(timezone.utc)
+    now_text = format_utc(now)
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        record = read_support_ticket(ticket_id)
+        if record.get("account_id") != account_id:
+            raise FileNotFoundError("Help request was not found for this account.")
+        if record.get("status") not in {"resolved", "closed"}:
+            raise ValueError(
+                "Resolution feedback is available after a request is resolved or closed."
+            )
+        enforce_account_support_action_limit(account_id, now)
+        record["customer_resolution_feedback"] = feedback
+        record["customer_feedback_at_utc"] = now_text
+        history = list(record.get("history", []))[-49:]
+        history.append(
+            {
+                "time_utc": now_text,
+                "action": "customer_feedback",
+                "status": record.get("status"),
+            }
+        )
+        record["history"] = history
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_customer_feedback",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
+    record_api_activity(
+        "account_support_feedback",
+        "ok",
+        "account",
+        account_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "saved": True,
+        "ticket": support_ticket_view(record, audience="customer"),
+        "message": "Resolution outcome saved.",
+        "privacy_notice": "Only the fixed outcome was saved. No comment or local data was uploaded.",
         "server_time_utc": utc_now(),
     }
 
@@ -9951,6 +10283,8 @@ def admin_update_support_ticket(payload):
         elif status in {"open", "acknowledged", "in_progress"}:
             record["resolved_at_utc"] = ""
             record["closed_at_utc"] = ""
+            record["customer_resolution_feedback"] = ""
+            record["customer_feedback_at_utc"] = ""
         history = list(record.get("history", []))[-49:]
         history.append({"time_utc": now, "action": "owner_update", "status": status})
         record["history"] = history
@@ -10067,6 +10401,36 @@ def admin_set_support_review_reminder(payload):
             if delay_seconds == 0
             else f"Review reminder set for {ticket_id}."
         ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def admin_update_support_triage(payload):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    pinned = payload.get("pinned")
+    if not isinstance(pinned, bool):
+        raise ValueError("Choose whether the support request is pinned.")
+    labels = validated_support_ticket_owner_labels(payload.get("labels"))
+    now = utc_now()
+    with LICENSE_STATE_LOCK:
+        record = read_support_ticket(ticket_id)
+        record["owner_pinned"] = pinned
+        record["owner_labels"] = labels
+        record["triage_updated_at_utc"] = now
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_triage",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="owner",
+    )
+    return {
+        "ok": True,
+        "saved": True,
+        "ticket": support_ticket_view(record, audience="admin"),
+        "message": f"Private triage metadata saved for {ticket_id}.",
+        "privacy_notice": "Pins and fixed owner labels are never returned to customers.",
         "server_time_utc": utc_now(),
     }
 
@@ -12253,6 +12617,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "support_ticket_safe_receipts_enabled": True,
                     "support_response_targets_enabled": True,
                     "owner_support_review_reminders_enabled": True,
+                    "owner_support_fixed_triage_enabled": True,
+                    "owner_support_attention_scoring_enabled": True,
+                    "customer_support_resolution_feedback_enabled": True,
                     "customer_support_tab_drafts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
@@ -12892,6 +13259,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/support": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/reply": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/close": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support/feedback": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
@@ -12920,6 +13288,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/admin/support-tickets/action": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/priority-bulk": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/review-reminder": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/admin/support-tickets/triage": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/delete": MAX_LICENSE_JSON_BODY_BYTES,
@@ -13002,6 +13371,25 @@ class ApiHandler(BaseHTTPRequestHandler):
                 try:
                     self.send_json(
                         close_account_support_ticket(payload, self.account_session_token())
+                    )
+                except RateLimitExceeded as exc:
+                    self.send_json(
+                        {"ok": False, "error": "rate_limited", "message": str(exc)},
+                        status=HTTPStatus.TOO_MANY_REQUESTS,
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/support/feedback":
+                try:
+                    self.send_json(
+                        set_account_support_feedback(
+                            payload,
+                            self.account_session_token(),
+                        )
                     )
                 except RateLimitExceeded as exc:
                     self.send_json(
@@ -13137,6 +13525,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/support-tickets/review-reminder":
                 self.require_admin_token()
                 self.send_json(admin_set_support_review_reminder(payload))
+                return
+            if path == "/api/v1/admin/support-tickets/triage":
+                self.require_admin_token()
+                self.send_json(admin_update_support_triage(payload))
                 return
             if path == "/api/v1/admin/support-tickets/read":
                 self.require_admin_token()

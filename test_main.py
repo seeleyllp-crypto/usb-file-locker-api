@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.76.0")
+        self.assertEqual(api.API_VERSION, "0.77.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.76.0")
+        self.assertEqual(payload["api_version"], "0.77.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.76.0")
+        self.assertEqual(payload["api_version"], "0.77.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2715,6 +2715,21 @@ class VaultLinkApiTests(unittest.TestCase):
                     )[index],
                     "review_remaining_seconds": (7200, 900, -3600, 0)[index],
                     "review_overdue_seconds": (0, 0, 3600, 0)[index],
+                    "owner_pinned": (False, True, False, True)[index],
+                    "owner_labels": (
+                        [],
+                        ["needs_repro"],
+                        ["security_review", "follow_up"],
+                        ["release_blocker"],
+                    )[index],
+                    "resolution_feedback": (
+                        "",
+                        "resolved",
+                        "partly_resolved",
+                        "not_resolved",
+                    )[index],
+                    "attention_score": (0, 35, 60, 90)[index],
+                    "attention_level": ("normal", "medium", "high", "high")[index],
                     "unread_customer_messages": index,
                 }
             )
@@ -2756,6 +2771,31 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(summary["next_review_seconds"], 900)
         self.assertEqual(summary["most_overdue_review_seconds"], 3600)
+        self.assertEqual(
+            summary["feedback_counts"],
+            {
+                "none": 1,
+                "resolved": 1,
+                "partly_resolved": 1,
+                "not_resolved": 1,
+            },
+        )
+        self.assertEqual(summary["pinned_count"], 2)
+        self.assertEqual(
+            summary["owner_label_counts"],
+            {
+                "needs_repro": 1,
+                "release_blocker": 1,
+                "billing_review": 0,
+                "security_review": 1,
+                "follow_up": 1,
+            },
+        )
+        self.assertEqual(
+            summary["attention_counts"],
+            {"normal": 1, "medium": 1, "high": 2},
+        )
+        self.assertEqual(summary["max_attention_score"], 90)
 
         on_track = api.support_ticket_response_target_metadata(
             "urgent",
@@ -2825,6 +2865,49 @@ class VaultLinkApiTests(unittest.TestCase):
                 "review_state": "none",
             },
         )
+        attention = api.support_ticket_attention_metadata(
+            {
+                "has_unread_customer_message": True,
+                "priority": "urgent",
+                "response_target_state": "overdue",
+                "review_state": "due",
+                "workflow_state": "waiting_on_owner",
+                "wait_age_seconds": 2 * 24 * 60 * 60,
+                "resolution_feedback": "not_resolved",
+                "owner_labels": ["release_blocker", "security_review"],
+                "owner_pinned": True,
+            }
+        )
+        self.assertEqual(attention["attention_score"], 100)
+        self.assertEqual(attention["attention_level"], "high")
+        self.assertEqual(
+            attention["attention_reasons"],
+            [
+                "unread_customer_message",
+                "urgent_priority",
+                "response_overdue",
+                "review_due",
+                "owner_wait_24h",
+                "customer_not_resolved",
+                "release_blocker",
+                "security_review",
+                "pinned",
+            ],
+        )
+        self.assertEqual(
+            api.validated_support_ticket_owner_labels(
+                ["follow_up", "needs_repro", "follow_up"]
+            ),
+            ["follow_up", "needs_repro"],
+        )
+        for invalid_labels in (
+            None,
+            ["unknown"],
+            ["follow_up", "needs_repro", "security_review", "release_blocker"],
+            [1],
+        ):
+            with self.assertRaises(ValueError):
+                api.validated_support_ticket_owner_labels(invalid_labels)
         self.assertEqual(
             api.validated_support_ticket_ids(
                 ["TKT-AAAAAAAA", "TKT-AAAAAAAA", "TKT-BBBBBBBB"]
@@ -4116,6 +4199,20 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(forbidden_review["error"], "forbidden")
+        status, forbidden_triage = self.call(
+            "/api/v1/admin/support-tickets/triage",
+            method="POST",
+            payload={"ticket_id": "TKT-00000000", "pinned": True, "labels": []},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(forbidden_triage["error"], "forbidden")
+        status, unauthorized_feedback = self.call(
+            "/api/v1/accounts/support/feedback",
+            method="POST",
+            payload={"ticket_id": "TKT-00000000", "feedback": "resolved"},
+        )
+        self.assertEqual(status, 401)
+        self.assertEqual(unauthorized_feedback["error"], "unauthorized")
         status, unauthorized = self.call(
             "/api/v1/accounts/support",
             method="POST",
@@ -4189,7 +4286,21 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("review_remaining_seconds", mine["items"][0])
         self.assertNotIn("review_overdue_seconds", mine["items"][0])
         self.assertNotIn("review_state", mine["items"][0])
+        self.assertEqual(mine["items"][0]["resolution_feedback"], "")
+        self.assertEqual(mine["items"][0]["resolution_feedback_at_utc"], "")
+        self.assertNotIn("owner_pinned", mine["items"][0])
+        self.assertNotIn("owner_labels", mine["items"][0])
+        self.assertNotIn("attention_score", mine["items"][0])
+        self.assertNotIn("attention_reasons", mine["items"][0])
         self.assertNotIn("owner_note", mine["items"][0])
+        status, early_feedback = self.call(
+            "/api/v1/accounts/support/feedback",
+            method="POST",
+            payload={"ticket_id": ticket_id, "feedback": "resolved"},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(early_feedback["error"], "bad_request")
 
         status, second = self.call(
             "/api/v1/accounts/register",
@@ -4236,6 +4347,68 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(owner_ticket["review_state"], "none")
         self.assertEqual(owner_ticket["review_after_utc"], "")
         self.assertGreaterEqual(owner_inbox["summary"]["review_counts"]["none"], 1)
+        self.assertFalse(owner_ticket["owner_pinned"])
+        self.assertEqual(owner_ticket["owner_labels"], [])
+        self.assertEqual(owner_ticket["resolution_feedback"], "")
+        self.assertEqual(owner_ticket["attention_score"], 25)
+        self.assertEqual(owner_ticket["attention_level"], "normal")
+        self.assertEqual(
+            owner_ticket["attention_reasons"],
+            ["unread_customer_message"],
+        )
+        self.assertEqual(owner_inbox["summary"]["pinned_count"], 0)
+        for invalid_triage in (
+            {"pinned": "yes", "labels": []},
+            {"pinned": True, "labels": ["unknown"]},
+            {
+                "pinned": True,
+                "labels": [
+                    "needs_repro",
+                    "release_blocker",
+                    "security_review",
+                    "follow_up",
+                ],
+            },
+        ):
+            status, invalid_triage_result = self.call(
+                "/api/v1/admin/support-tickets/triage",
+                method="POST",
+                payload={"ticket_id": ticket_id, **invalid_triage},
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
+            self.assertEqual(status, 400)
+            self.assertEqual(invalid_triage_result["error"], "bad_request")
+        status, triaged = self.call(
+            "/api/v1/admin/support-tickets/triage",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "pinned": True,
+                "labels": ["release_blocker", "security_review", "follow_up"],
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(triaged["ticket"]["owner_pinned"])
+        self.assertEqual(
+            triaged["ticket"]["owner_labels"],
+            ["release_blocker", "security_review", "follow_up"],
+        )
+        self.assertEqual(triaged["ticket"]["attention_score"], 65)
+        self.assertEqual(triaged["ticket"]["attention_level"], "high")
+        status, customer_after_triage = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        for hidden_field in (
+            "owner_pinned",
+            "owner_labels",
+            "attention_score",
+            "attention_level",
+            "attention_reasons",
+        ):
+            self.assertNotIn(hidden_field, customer_after_triage["items"][0])
         for invalid_delay in (True, 123, 3600.5, "3600"):
             status, invalid_review = self.call(
                 "/api/v1/admin/support-tickets/review-reminder",
@@ -4544,6 +4717,61 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(resolved["ticket"]["status"], "resolved")
         self.assertEqual(resolved["ticket"]["review_state"], "none")
         self.assertEqual(resolved["ticket"]["review_after_utc"], "")
+        status, invalid_feedback = self.call(
+            "/api/v1/accounts/support/feedback",
+            method="POST",
+            payload={"ticket_id": ticket_id, "feedback": "great"},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(invalid_feedback["error"], "bad_request")
+        status, hidden_feedback = self.call(
+            "/api/v1/accounts/support/feedback",
+            method="POST",
+            payload={"ticket_id": ticket_id, "feedback": "resolved"},
+            headers={"Authorization": f"Bearer {second['session_token']}"},
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(hidden_feedback["error"], "not_found")
+        status, feedback_saved = self.call(
+            "/api/v1/accounts/support/feedback",
+            method="POST",
+            payload={"ticket_id": ticket_id, "feedback": "not_resolved"},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(feedback_saved["saved"])
+        self.assertEqual(
+            feedback_saved["ticket"]["resolution_feedback"],
+            "not_resolved",
+        )
+        self.assertTrue(
+            feedback_saved["ticket"]["resolution_feedback_at_utc"]
+        )
+        self.assertNotIn("owner_labels", feedback_saved["ticket"])
+        status, owner_with_feedback = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        owner_feedback_ticket = next(
+            item
+            for item in owner_with_feedback["items"]
+            if item["ticket_id"] == ticket_id
+        )
+        self.assertEqual(
+            owner_feedback_ticket["resolution_feedback"],
+            "not_resolved",
+        )
+        self.assertEqual(owner_feedback_ticket["attention_level"], "high")
+        self.assertIn(
+            "customer_not_resolved",
+            owner_feedback_ticket["attention_reasons"],
+        )
+        self.assertGreaterEqual(
+            owner_with_feedback["summary"]["feedback_counts"]["not_resolved"],
+            1,
+        )
 
         customer_follow_up = "The fix helped, but the button still needs one extra click."
         status, replied = self.call(
@@ -4558,6 +4786,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(replied["ticket"]["conversation"][-1]["author"], "customer")
         self.assertEqual(replied["ticket"]["conversation"][-1]["message"], customer_follow_up)
         self.assertEqual(replied["ticket"]["unread_owner_messages"], 0)
+        self.assertEqual(replied["ticket"]["resolution_feedback"], "")
+        self.assertEqual(replied["ticket"]["resolution_feedback_at_utc"], "")
         self.assertNotIn(
             customer_follow_up,
             api.support_ticket_path(ticket_id).read_text(encoding="utf-8"),
@@ -4570,6 +4800,7 @@ class VaultLinkApiTests(unittest.TestCase):
         owner_ticket = next(item for item in owner_inbox["items"] if item["ticket_id"] == ticket_id)
         self.assertEqual(owner_ticket["unread_customer_messages"], 1)
         self.assertTrue(owner_ticket["has_unread_customer_message"])
+        self.assertEqual(owner_ticket["resolution_feedback"], "")
 
         for path in (
             "/api/v1/accounts/support/reply",
@@ -4625,6 +4856,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn("Help request sent", activity_labels)
         self.assertIn("Help request reply sent", activity_labels)
         self.assertIn("Help request closed", activity_labels)
+        self.assertIn("Help request outcome updated", activity_labels)
 
         with mock.patch.object(api, "MAX_SUPPORT_TICKETS_PER_DAY", 1):
             status, limited = self.call(
@@ -4640,6 +4872,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 429)
         self.assertEqual(limited["error"], "rate_limited")
 
+        status, health = self.call("/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["owner_support_fixed_triage_enabled"])
+        self.assertTrue(health["owner_support_attention_scoring_enabled"])
+        self.assertTrue(health["customer_support_resolution_feedback_enabled"])
+
         status, _headers, page = self.call_bytes("/account")
         self.assertEqual(status, 200)
         self.assertIn(b"Help Inbox", page)
@@ -4647,6 +4885,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"/api/v1/accounts/support", page)
         self.assertIn(b"/api/v1/accounts/support/reply", page)
         self.assertIn(b"/api/v1/accounts/support/close", page)
+        self.assertIn(b"/api/v1/accounts/support/feedback", page)
         self.assertIn(b"/api/v1/accounts/support/read", page)
         self.assertIn(b"/api/v1/accounts/support/read-all", page)
         self.assertIn(b"supportSubject", page)
@@ -4666,7 +4905,13 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"EXPAND UNREAD", page)
         self.assertIn(b"COLLAPSE ALL", page)
         self.assertIn(b"EXPORT SAFE QUEUE", page)
-        self.assertIn(b"vaultlink-support-queue-v2", page)
+        self.assertIn(b"vaultlink-support-queue-v3", page)
+        self.assertIn(b"RESOLUTION FEEDBACK NEEDED", page)
+        self.assertIn(b"MARKED NOT RESOLVED", page)
+        self.assertIn(b"Did this solve the issue?", page)
+        self.assertIn(b"Resolution outcome", page)
+        self.assertIn(b"ONLY THIS FIXED CHOICE", page.upper())
+        self.assertIn(b"submitSupportFeedback", page)
         self.assertIn(b"OWNER WAIT 24H+", page)
         self.assertIn(b"LONGEST WAIT", page)
         self.assertIn(b"wait_age_seconds", page)
@@ -4675,7 +4920,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"CLOSE REQUEST", page)
         self.assertIn(b"SAFE RECEIPT", page)
         self.assertIn(b"COPY ID", page)
-        self.assertIn(b"vaultlink-support-receipt-v1", page)
+        self.assertIn(b"vaultlink-support-receipt-v2", page)
         self.assertIn(b"SUPPORT_DRAFT_PREFIX", page)
         self.assertIn(b"DRAFT SAVED IN THIS TAB", page)
         self.assertIn(b"supportSubjectCount", page)
@@ -4702,7 +4947,20 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"markAllOwnerRead", owner_page)
         self.assertIn(b"expandOwnerUnread", owner_page)
         self.assertIn(b"collapseOwnerSupport", owner_page)
-        self.assertIn(b"vaultlink-owner-support-queue-v4", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v5", owner_page)
+        self.assertIn(b"HIGH ATTENTION", owner_page)
+        self.assertIn(b"PINNED REQUESTS", owner_page)
+        self.assertIn(b"CUSTOMER SAYS NOT RESOLVED", owner_page)
+        self.assertIn(b"supportLabel", owner_page)
+        self.assertIn(b"ATTENTION FIRST", owner_page)
+        self.assertIn(b"ownerAttentionLabel", owner_page)
+        self.assertIn(b"attention_counts", owner_page)
+        self.assertIn(b"owner_label_counts", owner_page)
+        self.assertIn(b"SAVE TRIAGE", owner_page)
+        self.assertIn(b"/api/v1/admin/support-tickets/triage", owner_page)
+        self.assertIn(b"saveSupportTriage", owner_page)
+        self.assertIn(b".attention-chip[hidden]", owner_page)
+        self.assertNotIn(b"/api/v1/admin/support-tickets/triage", page)
         self.assertIn(b"OWNER ACTION 24H+", owner_page)
         self.assertIn(b"PRIORITY FIRST", owner_page)
         self.assertIn(b"RESPONSE TARGET OVERDUE", owner_page)
