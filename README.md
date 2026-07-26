@@ -80,7 +80,7 @@ This repo contains a Railway-ready API service for the USB File Locker app.
 - It does not collect card numbers, store payment secrets, or treat a checkout receipt as a license key
 - Owner Maintenance Operations cannot control customer PCs and returns no customer maintenance history, license proof, identity, device identifiers, files, paths, PINs, or USB secrets
 
-## Account Security Workspace 0.67
+## Account Security Workspace 0.68
 
 `GET /account` provides registration, sign-in, live username availability, password-strength feedback, assigned-rank access, automatic twenty-second refresh, session-expiry status, privacy-safe account and recovery downloads, password-verified username changes, sign-out, sign-out-all, password change, a customer-only security activity view, and an account-authenticated Help Inbox. The page displays only the masked license key. The browser stores only a signed session token in `sessionStorage`; passwords are never persisted by the page and are cleared after each sensitive action. Draft help text is also cleared at sign-out. Remembering the username is an explicit browser-local choice. Usernames are encrypted in server storage, account filenames contain no username, and each password uses a unique salt with `scrypt`.
 
@@ -90,7 +90,7 @@ Account sessions last twelve hours and include a server-checked session version.
 
 `GET /api/v1/accounts/activity` returns at most twenty-five events for the authenticated account from the verified HMAC-SHA-256 service activity chain. It includes only anonymous event IDs, timestamps, safe action labels, results, and coarse actor labels. It excludes passwords, sessions, keys, notes, messages, devices, files, and paths. Temporary network failures no longer discard the browser session; only an expired or rejected session signs the customer out.
 
-`GET` and `POST /api/v1/accounts/support` let a signed-in customer send and review encrypted-at-rest help requests without copying a full license key into the browser. Requests are linked to the authenticated account, limited per account per day, and never attach files, logs, passwords, license keys, device identifiers, or USB secrets automatically. The owner support inbox receives the account ID and current username for account-originated requests, while customer responses exclude private owner notes.
+`GET` and `POST /api/v1/accounts/support` let a signed-in customer send and review encrypted-at-rest help requests without copying a full license key into the browser. `POST /api/v1/accounts/support/reply` appends a customer follow-up, and `POST /api/v1/accounts/support/close` closes a request. Follow-ups reopen resolved or closed requests, and both customer and owner views show the encrypted conversation history. Requests are linked to the authenticated account, creation and follow-up actions are rate-limited, and no files, logs, passwords, license keys, device identifiers, or USB secrets are attached automatically. The owner support inbox receives the account ID and current username for account-originated requests, while customer responses exclude private owner notes.
 
 Every new customer license requires an existing active `account_id`. The issue endpoint, main owner console, giveaway controls, and dedicated account console bind each new license to that account. Arbitrary labels and email fields can no longer create unattached licenses. Existing legacy licenses can still be deliberately assigned or transferred from `/owner/accounts`.
 

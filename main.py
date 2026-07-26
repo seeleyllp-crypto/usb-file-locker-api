@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.67.0"
+API_VERSION = "0.68.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -292,6 +292,8 @@ ACCOUNT_RATE_LOCK = threading.Lock()
 SUPPORT_TICKET_AAD = b"VaultLinkSupportTicketV1"
 MAX_SUPPORT_TICKETS = 1000
 MAX_SUPPORT_TICKETS_PER_DAY = 10
+MAX_ACCOUNT_SUPPORT_ACTIONS_PER_HOUR = 30
+MAX_SUPPORT_CONVERSATION_ITEMS = 50
 SUPPORT_TICKET_STATUSES = frozenset({"open", "acknowledged", "in_progress", "resolved", "closed"})
 SUPPORT_TICKET_CATEGORIES = frozenset({"bug", "crash", "licensing", "update", "security", "idea", "other"})
 ANNOUNCEMENT_SEVERITIES = frozenset({"info", "update", "maintenance", "security"})
@@ -1939,6 +1941,8 @@ ACCOUNT_ACTIVITY_LABELS = {
     "account_username_change": "Username changed",
     "account_password_change": "Password changed",
     "account_support_create": "Help request sent",
+    "account_support_reply": "Help request reply sent",
+    "account_support_close": "Help request closed",
     "account_license_assign": "License assignment changed",
     "account_status_update": "Account status changed",
 }
@@ -2609,6 +2613,8 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/accounts/activity", "purpose": "Authenticated privacy-safe account security activity from the HMAC-chained service log"},
             {"method": "GET", "path": "/api/v1/accounts/support", "purpose": "List encrypted help requests linked to the signed-in account"},
             {"method": "POST", "path": "/api/v1/accounts/support", "purpose": "Send a rate-limited encrypted help request from the signed-in account"},
+            {"method": "POST", "path": "/api/v1/accounts/support/reply", "purpose": "Append an encrypted customer follow-up and reopen a resolved request"},
+            {"method": "POST", "path": "/api/v1/accounts/support/close", "purpose": "Close a help request linked to the signed-in account"},
             {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
             {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
@@ -5811,10 +5817,17 @@ def owner_portal_html():
         badge.textContent = (item.status || "open").replace("_", " ");
         head.append(identity, source, badge);
 
-        const message = document.createElement("div");
-        message.className = "ticket-copy";
-        message.textContent = item.message || "No description supplied.";
-        record.append(head, message);
+        const conversation = document.createElement("div");
+        const messages = Array.isArray(item.conversation) && item.conversation.length
+          ? item.conversation
+          : [{ author:"customer", time_utc:item.created_at_utc, message:item.message || "No description supplied." }];
+        for (const entry of messages) {
+          const message = document.createElement("div");
+          message.className = "ticket-copy";
+          message.textContent = `${entry.author === "owner" ? "OWNER" : "CUSTOMER"} | ${entry.time_utc || "unknown time"}\n${entry.message || ""}`;
+          conversation.append(message);
+        }
+        record.append(head, conversation);
         if (item.steps) {
           const stepsLabel = document.createElement("label");
           stepsLabel.textContent = "Steps to reproduce";
@@ -8501,6 +8514,57 @@ def support_ticket_private_fields(record):
     return decrypt_support_private_fields(record)
 
 
+def support_ticket_conversation(record, private):
+    conversation = []
+    for item in list(private.get("conversation", []))[-MAX_SUPPORT_CONVERSATION_ITEMS:]:
+        if not isinstance(item, dict):
+            continue
+        author = str(item.get("author", "")).strip().lower()
+        message = str(item.get("message", "")).strip()
+        if author not in {"customer", "owner"} or not message:
+            continue
+        conversation.append(
+            {
+                "time_utc": str(item.get("time_utc", "")),
+                "author": author,
+                "message": message[:4000],
+            }
+        )
+    if conversation:
+        return conversation
+    original = str(private.get("message", "")).strip()
+    if original:
+        conversation.append(
+            {
+                "time_utc": str(record.get("created_at_utc", "")),
+                "author": "customer",
+                "message": original,
+            }
+        )
+    owner_reply = str(private.get("owner_reply", "")).strip()
+    if owner_reply:
+        conversation.append(
+            {
+                "time_utc": str(record.get("updated_at_utc", "")),
+                "author": "owner",
+                "message": owner_reply,
+            }
+        )
+    return conversation
+
+
+def append_support_conversation(record, private, author, message, time_utc):
+    conversation = support_ticket_conversation(record, private)
+    conversation.append(
+        {
+            "time_utc": str(time_utc),
+            "author": str(author),
+            "message": str(message),
+        }
+    )
+    private["conversation"] = conversation[-MAX_SUPPORT_CONVERSATION_ITEMS:]
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     item = {
@@ -8518,6 +8582,7 @@ def support_ticket_view(record, audience="admin"):
         "message": str(private.get("message", "")),
         "steps": str(private.get("steps", "")),
         "owner_reply": str(private.get("owner_reply", "")),
+        "conversation": support_ticket_conversation(record, private),
         "history": list(record.get("history", []))[-50:],
     }
     if audience == "admin":
@@ -8602,6 +8667,9 @@ def create_support_ticket(payload):
             "steps": steps,
             "owner_reply": "",
             "owner_note": "",
+            "conversation": [
+                {"time_utc": now_text, "author": "customer", "message": message}
+            ],
         }
         record = {
             "schema_version": 1,
@@ -8672,6 +8740,9 @@ def create_account_support_ticket(payload, token):
             "steps": "",
             "owner_reply": "",
             "owner_note": "",
+            "conversation": [
+                {"time_utc": now_text, "author": "customer", "message": message}
+            ],
         }
         record = {
             "schema_version": 1,
@@ -8739,6 +8810,128 @@ def list_account_support_tickets(token):
     }
 
 
+def enforce_account_support_action_limit(account_id, now):
+    cutoff = now - timedelta(hours=1)
+    recent_actions = 0
+    for record in support_ticket_records():
+        if record.get("account_id") != account_id:
+            continue
+        for event in list(record.get("history", [])):
+            if event.get("action") not in {"customer_reply", "customer_close"}:
+                continue
+            event_time = parse_utc(event.get("time_utc"))
+            if event_time and event_time >= cutoff:
+                recent_actions += 1
+    if recent_actions >= MAX_ACCOUNT_SUPPORT_ACTIONS_PER_HOUR:
+        raise RateLimitExceeded("This account has reached the hourly help-inbox action limit.")
+
+
+def reply_account_support_ticket(payload, token):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    message = clean_support_text(payload.get("message"), 4000, "message", required=True, minimum=2)
+    now = datetime.now(timezone.utc)
+    now_text = format_utc(now)
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        record = read_support_ticket(ticket_id)
+        if record.get("account_id") != account_id:
+            raise FileNotFoundError("Help request was not found for this account.")
+        enforce_account_support_action_limit(account_id, now)
+        private = support_ticket_private_fields(record)
+        append_support_conversation(record, private, "customer", message, now_text)
+        previous_status = str(record.get("status", "open"))
+        reopened = previous_status in {"resolved", "closed"}
+        if reopened:
+            record["status"] = "open"
+            record["resolved_at_utc"] = ""
+            record["closed_at_utc"] = ""
+        record["updated_at_utc"] = now_text
+        history = list(record.get("history", []))[-49:]
+        history.append(
+            {
+                "time_utc": now_text,
+                "action": "customer_reply",
+                "status": record.get("status", "open"),
+            }
+        )
+        record["history"] = history
+        record["private_blob"] = encrypt_support_private_fields(private)
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_customer_reply",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
+    record_api_activity(
+        "account_support_reply",
+        "ok",
+        "account",
+        account_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "replied": True,
+        "reopened": reopened,
+        "ticket": support_ticket_view(record, audience="customer"),
+        "message": "Follow-up sent to the VaultLink owner.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def close_account_support_ticket(payload, token):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    now = datetime.now(timezone.utc)
+    now_text = format_utc(now)
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        record = read_support_ticket(ticket_id)
+        if record.get("account_id") != account_id:
+            raise FileNotFoundError("Help request was not found for this account.")
+        if record.get("status") == "closed":
+            return {
+                "ok": True,
+                "closed": True,
+                "already_closed": True,
+                "ticket": support_ticket_view(record, audience="customer"),
+                "server_time_utc": utc_now(),
+            }
+        enforce_account_support_action_limit(account_id, now)
+        record["status"] = "closed"
+        record["updated_at_utc"] = now_text
+        record["closed_at_utc"] = now_text
+        history = list(record.get("history", []))[-49:]
+        history.append({"time_utc": now_text, "action": "customer_close", "status": "closed"})
+        record["history"] = history
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_customer_close",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
+    record_api_activity(
+        "account_support_close",
+        "ok",
+        "account",
+        account_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "closed": True,
+        "already_closed": False,
+        "ticket": support_ticket_view(record, audience="customer"),
+        "message": "Help request closed.",
+        "server_time_utc": utc_now(),
+    }
+
+
 def list_my_support_tickets(payload):
     verification = require_active_support_license(payload)
     license_id = str((verification.get("license") or {}).get("license_id", ""))
@@ -8790,9 +8983,12 @@ def admin_update_support_ticket(payload):
     with LICENSE_STATE_LOCK:
         record = read_support_ticket(ticket_id)
         private = support_ticket_private_fields(record)
+        previous_reply = str(private.get("owner_reply", ""))
+        now = utc_now()
+        if owner_reply and owner_reply != previous_reply:
+            append_support_conversation(record, private, "owner", owner_reply, now)
         private["owner_reply"] = owner_reply
         private["owner_note"] = owner_note
-        now = utc_now()
         record["status"] = status
         record["updated_at_utc"] = now
         if status != "open" and not record.get("acknowledged_at_utc"):
@@ -10943,6 +11139,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_license_center_enabled": True,
                     "customer_accounts_enabled": True,
                     "customer_account_support_enabled": True,
+                    "customer_account_support_conversations_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -11579,6 +11776,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/change-password": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/logout-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/support": MAX_SUPPORT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support/reply": MAX_SUPPORT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support/close": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
@@ -11651,6 +11850,38 @@ class ApiHandler(BaseHTTPRequestHandler):
                     self.send_json(
                         create_account_support_ticket(payload, self.account_session_token()),
                         status=HTTPStatus.CREATED,
+                    )
+                except RateLimitExceeded as exc:
+                    self.send_json(
+                        {"ok": False, "error": "rate_limited", "message": str(exc)},
+                        status=HTTPStatus.TOO_MANY_REQUESTS,
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/support/reply":
+                try:
+                    self.send_json(
+                        reply_account_support_ticket(payload, self.account_session_token())
+                    )
+                except RateLimitExceeded as exc:
+                    self.send_json(
+                        {"ok": False, "error": "rate_limited", "message": str(exc)},
+                        status=HTTPStatus.TOO_MANY_REQUESTS,
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/support/close":
+                try:
+                    self.send_json(
+                        close_account_support_ticket(payload, self.account_session_token())
                     )
                 except RateLimitExceeded as exc:
                     self.send_json(

@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.67.0")
+        self.assertEqual(api.API_VERSION, "0.68.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.67.0")
+        self.assertEqual(payload["api_version"], "0.68.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.67.0")
+        self.assertEqual(payload["api_version"], "0.68.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -4011,13 +4011,96 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(mine["items"][0]["owner_reply"], "I found the issue and am checking the fix.")
         self.assertNotIn("owner_note", mine["items"][0])
+        self.assertEqual(
+            [entry["author"] for entry in mine["items"][0]["conversation"]],
+            ["customer", "owner"],
+        )
+
+        status, resolved = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "resolved",
+                "owner_reply": "I found the issue and am checking the fix.",
+                "owner_note": "Private owner-only note",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(resolved["ticket"]["status"], "resolved")
+
+        customer_follow_up = "The fix helped, but the button still needs one extra click."
+        status, replied = self.call(
+            "/api/v1/accounts/support/reply",
+            method="POST",
+            payload={"ticket_id": ticket_id, "message": customer_follow_up},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(replied["reopened"])
+        self.assertEqual(replied["ticket"]["status"], "open")
+        self.assertEqual(replied["ticket"]["conversation"][-1]["author"], "customer")
+        self.assertEqual(replied["ticket"]["conversation"][-1]["message"], customer_follow_up)
+        self.assertNotIn(
+            customer_follow_up,
+            api.support_ticket_path(ticket_id).read_text(encoding="utf-8"),
+        )
+
+        for path in (
+            "/api/v1/accounts/support/reply",
+            "/api/v1/accounts/support/close",
+        ):
+            status, hidden = self.call(
+                path,
+                method="POST",
+                payload={
+                    "ticket_id": ticket_id,
+                    "message": "Another account must not be able to reply.",
+                },
+                headers={"Authorization": f"Bearer {second['session_token']}"},
+            )
+            self.assertEqual(status, 404)
+            self.assertEqual(hidden["error"], "not_found")
+
+        status, closed = self.call(
+            "/api/v1/accounts/support/close",
+            method="POST",
+            payload={"ticket_id": ticket_id},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(closed["closed"])
+        self.assertFalse(closed["already_closed"])
+        self.assertEqual(closed["ticket"]["status"], "closed")
+        status, closed_again = self.call(
+            "/api/v1/accounts/support/close",
+            method="POST",
+            payload={"ticket_id": ticket_id},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(closed_again["already_closed"])
+
+        with mock.patch.object(api, "MAX_ACCOUNT_SUPPORT_ACTIONS_PER_HOUR", 2):
+            status, action_limited = self.call(
+                "/api/v1/accounts/support/reply",
+                method="POST",
+                payload={"ticket_id": ticket_id, "message": "One action too many."},
+                headers={"Authorization": f"Bearer {first_token}"},
+            )
+        self.assertEqual(status, 429)
+        self.assertEqual(action_limited["error"], "rate_limited")
 
         status, activity = self.call(
             "/api/v1/accounts/activity",
             headers={"Authorization": f"Bearer {first_token}"},
         )
         self.assertEqual(status, 200)
-        self.assertIn("Help request sent", {item["label"] for item in activity["items"]})
+        activity_labels = {item["label"] for item in activity["items"]}
+        self.assertIn("Help request sent", activity_labels)
+        self.assertIn("Help request reply sent", activity_labels)
+        self.assertIn("Help request closed", activity_labels)
 
         with mock.patch.object(api, "MAX_SUPPORT_TICKETS_PER_DAY", 1):
             status, limited = self.call(
@@ -4038,8 +4121,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"Help Inbox", page)
         self.assertIn(b"SEND REQUEST", page)
         self.assertIn(b"/api/v1/accounts/support", page)
+        self.assertIn(b"/api/v1/accounts/support/reply", page)
+        self.assertIn(b"/api/v1/accounts/support/close", page)
         self.assertIn(b"supportSubject", page)
         self.assertIn(b"supportMessage", page)
+        self.assertIn(b"SEND FOLLOW-UP", page)
+        self.assertIn(b"CLOSE REQUEST", page)
         self.assertIn(b"COPY FAILED", page)
         status, _headers, owner_page = self.call_bytes("/owner")
         self.assertEqual(status, 200)
