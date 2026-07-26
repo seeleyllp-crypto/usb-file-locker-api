@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.73.0")
+        self.assertEqual(api.API_VERSION, "0.74.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.73.0")
+        self.assertEqual(payload["api_version"], "0.74.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.73.0")
+        self.assertEqual(payload["api_version"], "0.74.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2722,6 +2722,15 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(summary["age_counts"]["over_3d"], 1)
         self.assertEqual(summary["priority_counts"], {"normal": 1, "high": 1, "urgent": 2})
         self.assertEqual(summary["oldest_waiting_on_owner_seconds"], 5 * 24 * 60 * 60)
+        self.assertEqual(
+            api.validated_support_ticket_ids(
+                ["TKT-AAAAAAAA", "TKT-AAAAAAAA", "TKT-BBBBBBBB"]
+            ),
+            ["TKT-AAAAAAAA", "TKT-BBBBBBBB"],
+        )
+        for invalid_ids in (None, [], ["TKT-AAAAAAAA"] * 101):
+            with self.assertRaises(ValueError):
+                api.validated_support_ticket_ids(invalid_ids)
 
     def test_damaged_support_ticket_does_not_break_owner_dashboard(self):
         issued, activated = self.issue_and_activate("starter", "DAMAGED-TICKET-PC")
@@ -3990,6 +3999,13 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(forbidden_owner_bulk["error"], "forbidden")
+        status, forbidden_priority_bulk = self.call(
+            "/api/v1/admin/support-tickets/priority-bulk",
+            method="POST",
+            payload={"ticket_ids": ["TKT-00000000"], "priority": "high"},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(forbidden_priority_bulk["error"], "forbidden")
         status, unauthorized = self.call(
             "/api/v1/accounts/support",
             method="POST",
@@ -4237,6 +4253,60 @@ class VaultLinkApiTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(bulk_replied["ticket"]["unread_customer_messages"], 0)
 
+        for payload in (
+            {"ticket_ids": [], "priority": "high"},
+            {"ticket_ids": ["TKT-00000000"] * 101, "priority": "high"},
+            {"ticket_ids": [bulk_ticket_ids[0]], "priority": "critical"},
+        ):
+            status, invalid_bulk_priority = self.call(
+                "/api/v1/admin/support-tickets/priority-bulk",
+                method="POST",
+                payload=payload,
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
+            self.assertEqual(status, 400)
+            self.assertEqual(invalid_bulk_priority["error"], "bad_request")
+
+        status, bulk_priority = self.call(
+            "/api/v1/admin/support-tickets/priority-bulk",
+            method="POST",
+            payload={
+                "ticket_ids": [
+                    bulk_ticket_ids[0],
+                    bulk_ticket_ids[0],
+                    "TKT-00000000",
+                ],
+                "priority": "high",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(bulk_priority["requested_count"], 2)
+        self.assertEqual(bulk_priority["updated_count"], 1)
+        self.assertEqual(bulk_priority["unchanged_count"], 0)
+        self.assertEqual(bulk_priority["skipped_count"], 1)
+        status, unchanged_bulk_priority = self.call(
+            "/api/v1/admin/support-tickets/priority-bulk",
+            method="POST",
+            payload={"ticket_ids": [bulk_ticket_ids[0]], "priority": "high"},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(unchanged_bulk_priority["updated_count"], 0)
+        self.assertEqual(unchanged_bulk_priority["unchanged_count"], 1)
+        self.assertEqual(unchanged_bulk_priority["skipped_count"], 0)
+        status, owner_after_priority_bulk = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        bulk_owner_ticket = next(
+            item
+            for item in owner_after_priority_bulk["items"]
+            if item["ticket_id"] == bulk_ticket_ids[0]
+        )
+        self.assertEqual(bulk_owner_ticket["priority"], "high")
+
         status, mine = self.call(
             "/api/v1/accounts/support",
             headers={"Authorization": f"Bearer {first_token}"},
@@ -4415,6 +4485,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b'createElement("details")', page)
         self.assertIn(b"SEND FOLLOW-UP", page)
         self.assertIn(b"CLOSE REQUEST", page)
+        self.assertIn(b"SAFE RECEIPT", page)
+        self.assertIn(b"COPY ID", page)
+        self.assertIn(b"vaultlink-support-receipt-v1", page)
         self.assertIn(b"COPY FAILED", page)
         status, _headers, owner_page = self.call_bytes("/owner")
         self.assertEqual(status, 200)
@@ -4440,6 +4513,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"PRIORITY FIRST", owner_page)
         self.assertIn(b"supportPriority", owner_page)
         self.assertIn(b"Ticket priority", owner_page)
+        self.assertIn(b"applyFilteredPriority", owner_page)
+        self.assertIn(b"APPLY TO FILTERED", owner_page)
+        self.assertIn(b"/api/v1/admin/support-tickets/priority-bulk", owner_page)
+        self.assertIn(b"Reply template", owner_page)
+        self.assertIn(b"CHOOSE REPLY TEMPLATE", owner_page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(

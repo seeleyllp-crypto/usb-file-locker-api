@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.73.0"
+API_VERSION = "0.74.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -294,6 +294,7 @@ MAX_SUPPORT_TICKETS = 1000
 MAX_SUPPORT_TICKETS_PER_DAY = 10
 MAX_ACCOUNT_SUPPORT_ACTIONS_PER_HOUR = 30
 MAX_SUPPORT_CONVERSATION_ITEMS = 50
+MAX_SUPPORT_BULK_TICKETS = 100
 SUPPORT_TICKET_STATUSES = frozenset({"open", "acknowledged", "in_progress", "resolved", "closed"})
 SUPPORT_TICKET_CATEGORIES = frozenset({"bug", "crash", "licensing", "update", "security", "idea", "other"})
 SUPPORT_TICKET_PRIORITIES = ("normal", "high", "urgent")
@@ -2656,6 +2657,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only priority, acknowledge, resolve, close, note, and reply action"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/priority-bulk", "purpose": "Admin-only aggregate priority update for up to 100 filtered ticket ids"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read-all", "purpose": "Admin-only aggregate mark-all-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
@@ -5276,8 +5278,9 @@ def owner_portal_html():
     .latest { grid-template-columns:minmax(0,1fr) auto; }
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
-    .ticket-actions { grid-template-columns:minmax(110px,.35fr) minmax(110px,.35fr) minmax(190px,1fr) minmax(190px,1fr) auto auto auto; align-items:start; }
+    .ticket-actions { grid-template-columns:minmax(105px,.32fr) minmax(105px,.32fr) minmax(150px,.55fr) minmax(180px,1fr) minmax(180px,1fr) auto auto auto; align-items:start; }
     .support-filters { grid-template-columns:minmax(210px,1fr) minmax(150px,.55fr) minmax(130px,.42fr) minmax(145px,.48fr); margin-top:12px; }
+    .support-bulk-priority { display:grid; grid-template-columns:minmax(150px,220px) auto minmax(180px,1fr); gap:10px; align-items:end; margin-top:10px; }
     .support-owner-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
@@ -5321,7 +5324,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters,.support-bulk-priority { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5454,6 +5457,7 @@ def owner_portal_html():
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
       <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered queue priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY TO FILTERED</button><div class="meta">Updates priority only for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
@@ -5496,6 +5500,7 @@ def owner_portal_html():
       $("testRelease").disabled = !value || state.busy;
       $("nextOwnerUnread").disabled = !value || !(state.supportSummary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !value || !(state.supportSummary.unread_message_count > 0);
+      $("applyFilteredPriority").disabled = !value || state.supportItems.length === 0;
     }
 
     async function api(path, options={}) {
@@ -5960,6 +5965,7 @@ def owner_portal_html():
       const priorities = summary.priority_counts || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
+      $("applyFilteredPriority").disabled = !state.connected || visible.length === 0;
       $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Oldest owner wait ${ownerSupportAgeLabel(summary.oldest_waiting_on_owner_seconds || 0)} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
@@ -6055,11 +6061,32 @@ def owner_portal_html():
         reply.maxLength = 4000;
         reply.placeholder = "Reply visible to the customer";
         reply.value = item.owner_reply || "";
+        const template = document.createElement("select");
+        template.setAttribute("aria-label", "Reply template");
+        const templates = [
+          ["", "CHOOSE REPLY TEMPLATE"],
+          ["Thanks for the report. I have acknowledged it and will review the details.", "ACKNOWLEDGED"],
+          ["Please reply with the exact step where the issue happens and the error text you can safely share. Do not send passwords, keys, PINs, file contents, or personal information.", "NEED MORE DETAILS"],
+          ["I am still working on this request and will post another update when the next check is complete.", "IN PROGRESS"],
+          ["The requested fix is ready. Please retry the original action and reply if the issue continues.", "READY TO RETEST"],
+        ];
+        for (const [value, label] of templates) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          template.append(option);
+        }
+        template.onchange = () => {
+          if (!template.value) return;
+          reply.value = template.value;
+          template.value = "";
+          reply.focus();
+        };
         const note = document.createElement("textarea");
         note.maxLength = 4000;
         note.placeholder = "Private owner note";
         note.value = item.owner_note || "";
-        actions.append(priority, status, reply, note);
+        actions.append(priority, status, template, reply, note);
         if (item.has_unread_customer_message) {
           actions.append(actionButton("MARK READ", "primary", () => markOwnerSupportRead(item)));
         }
@@ -6517,6 +6544,30 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
+    async function applyFilteredSupportPriority() {
+      const items = visibleOwnerSupportItems().slice(0, 100);
+      if (!items.length) return setStatus("No filtered help requests are available.", "bad");
+      const priority = $("bulkOwnerPriority").value;
+      if (!confirm(`Set ${items.length} filtered help request${items.length === 1 ? "" : "s"} to ${priority.toUpperCase()} priority?`)) return;
+      const button = $("applyFilteredPriority");
+      button.disabled = true;
+      try {
+        const result = await api("/api/v1/admin/support-tickets/priority-bulk", {
+          method:"POST",
+          body:JSON.stringify({
+            ticket_ids:items.map((item) => item.ticket_id),
+            priority
+          })
+        });
+        await loadLicenses(true);
+        setStatus(result.message || "Filtered priorities updated.", "good");
+      } catch (error) {
+        setStatus(error.message, "bad");
+      } finally {
+        button.disabled = !state.connected || visibleOwnerSupportItems().length === 0;
+      }
+    }
+
     async function markOwnerSupportRead(item) {
       try {
         const result = await api("/api/v1/admin/support-tickets/read", {
@@ -6590,6 +6641,7 @@ def owner_portal_html():
     $("supportFilter").addEventListener("change", renderSupport);
     $("supportPriority").addEventListener("change", renderSupport);
     $("supportSort").addEventListener("change", renderSupport);
+    $("applyFilteredPriority").addEventListener("click", applyFilteredSupportPriority);
     $("nextOwnerUnread").addEventListener("click", focusNextOwnerUnread);
     $("markAllOwnerRead").addEventListener("click", markAllOwnerSupportRead);
     $("expandOwnerUnread").addEventListener("click", expandOwnerUnread);
@@ -8822,6 +8874,26 @@ def validated_support_ticket_id(value):
     return text
 
 
+def validated_support_ticket_ids(value):
+    if not isinstance(value, list) or not value:
+        raise ValueError("Choose at least one support ticket.")
+    if len(value) > MAX_SUPPORT_BULK_TICKETS:
+        raise ValueError(
+            f"Choose {MAX_SUPPORT_BULK_TICKETS} support tickets or fewer."
+        )
+    ticket_ids = []
+    seen = set()
+    for item in value:
+        ticket_id = validated_support_ticket_id(item)
+        if ticket_id in seen:
+            continue
+        seen.add(ticket_id)
+        ticket_ids.append(ticket_id)
+    if not ticket_ids:
+        raise ValueError("Choose at least one support ticket.")
+    return ticket_ids
+
+
 def support_ticket_path(ticket_id):
     return LICENSE_STATE_DIR / "support_tickets" / f"{validated_support_ticket_id(ticket_id)}.json"
 
@@ -9644,6 +9716,52 @@ def admin_mark_support_ticket_read(payload):
         "ok": True,
         "marked_read": True,
         "ticket": support_ticket_view(record, audience="admin"),
+        "server_time_utc": utc_now(),
+    }
+
+
+def admin_bulk_update_support_priority(payload):
+    priority = str(payload.get("priority", "")).strip().lower()
+    if priority not in SUPPORT_TICKET_PRIORITIES:
+        raise ValueError("Choose a valid support ticket priority.")
+    ticket_ids = validated_support_ticket_ids(payload.get("ticket_ids"))
+    updated_count = 0
+    unchanged_count = 0
+    skipped_count = 0
+    now = utc_now()
+    with LICENSE_STATE_LOCK:
+        for ticket_id in ticket_ids:
+            try:
+                record = read_support_ticket(ticket_id)
+            except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                skipped_count += 1
+                continue
+            if support_ticket_priority(record.get("priority")) == priority:
+                unchanged_count += 1
+                continue
+            record["priority"] = priority
+            record["triage_updated_at_utc"] = now
+            write_private_json(support_ticket_path(ticket_id), record)
+            updated_count += 1
+    record_api_activity(
+        "support_ticket_priority_bulk",
+        "ok",
+        "support_ticket",
+        "aggregate",
+        actor="owner",
+    )
+    return {
+        "ok": True,
+        "saved": True,
+        "priority": priority,
+        "requested_count": len(ticket_ids),
+        "updated_count": updated_count,
+        "unchanged_count": unchanged_count,
+        "skipped_count": skipped_count,
+        "message": (
+            f"Set {updated_count} filtered help request(s) to {priority} priority. "
+            f"{unchanged_count} were already set and {skipped_count} could not be updated."
+        ),
         "server_time_utc": utc_now(),
     }
 
@@ -11826,6 +11944,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "support_queue_safe_export_enabled": True,
                     "support_ticket_priorities_enabled": True,
                     "support_queue_age_bands_enabled": True,
+                    "support_ticket_bulk_priority_enabled": True,
+                    "support_ticket_safe_receipts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -12490,6 +12610,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/support-tickets": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/support-tickets/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/action": MAX_SUPPORT_JSON_BODY_BYTES,
+            "/api/v1/admin/support-tickets/priority-bulk": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/delete": MAX_LICENSE_JSON_BODY_BYTES,
@@ -12699,6 +12820,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/support-tickets/action":
                 self.require_admin_token()
                 self.send_json(admin_update_support_ticket(payload))
+                return
+            if path == "/api/v1/admin/support-tickets/priority-bulk":
+                self.require_admin_token()
+                self.send_json(admin_bulk_update_support_priority(payload))
                 return
             if path == "/api/v1/admin/support-tickets/read":
                 self.require_admin_token()
