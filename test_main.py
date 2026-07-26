@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.74.0")
+        self.assertEqual(api.API_VERSION, "0.75.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.74.0")
+        self.assertEqual(payload["api_version"], "0.75.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.74.0")
+        self.assertEqual(payload["api_version"], "0.75.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2699,6 +2699,14 @@ class VaultLinkApiTests(unittest.TestCase):
                     "wait_age_band": metadata["wait_age_band"],
                     "wait_age_seconds": metadata["wait_age_seconds"],
                     "priority": ("normal", "high", "urgent", "urgent")[index],
+                    "response_target_state": (
+                        "on_track",
+                        "due_soon",
+                        "overdue",
+                        "not_waiting",
+                    )[index],
+                    "response_remaining_seconds": (7200, 900, -3600, 0)[index],
+                    "response_overdue_seconds": (0, 0, 3600, 0)[index],
                     "unread_customer_messages": index,
                 }
             )
@@ -2722,6 +2730,65 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(summary["age_counts"]["over_3d"], 1)
         self.assertEqual(summary["priority_counts"], {"normal": 1, "high": 1, "urgent": 2})
         self.assertEqual(summary["oldest_waiting_on_owner_seconds"], 5 * 24 * 60 * 60)
+        self.assertEqual(
+            summary["response_target_counts"],
+            {
+                "on_track": 1,
+                "due_soon": 1,
+                "overdue": 1,
+                "not_waiting": 1,
+                "unknown": 0,
+            },
+        )
+        self.assertEqual(summary["next_response_due_seconds"], 900)
+        self.assertEqual(summary["most_overdue_response_seconds"], 3600)
+
+        on_track = api.support_ticket_response_target_metadata(
+            "urgent",
+            "open",
+            "waiting_on_owner",
+            api.format_utc(now - timedelta(minutes=30)),
+            now=now,
+        )
+        self.assertEqual(on_track["response_target_seconds"], 2 * 60 * 60)
+        self.assertEqual(on_track["response_remaining_seconds"], 90 * 60)
+        self.assertEqual(on_track["response_target_state"], "on_track")
+        due_soon = api.support_ticket_response_target_metadata(
+            "urgent",
+            "open",
+            "waiting_on_owner",
+            api.format_utc(now - timedelta(hours=1, minutes=45)),
+            now=now,
+        )
+        self.assertEqual(due_soon["response_remaining_seconds"], 15 * 60)
+        self.assertEqual(due_soon["response_target_state"], "due_soon")
+        overdue = api.support_ticket_response_target_metadata(
+            "urgent",
+            "open",
+            "waiting_on_owner",
+            api.format_utc(now - timedelta(hours=3)),
+            now=now,
+        )
+        self.assertEqual(overdue["response_remaining_seconds"], -60 * 60)
+        self.assertEqual(overdue["response_overdue_seconds"], 60 * 60)
+        self.assertEqual(overdue["response_target_state"], "overdue")
+        paused = api.support_ticket_response_target_metadata(
+            "high",
+            "open",
+            "waiting_on_customer",
+            api.format_utc(now - timedelta(days=1)),
+            now=now,
+        )
+        self.assertEqual(paused["response_target_state"], "not_waiting")
+        self.assertEqual(paused["response_due_at_utc"], "")
+        unknown = api.support_ticket_response_target_metadata(
+            "normal",
+            "open",
+            "waiting_on_owner",
+            "",
+            now=now,
+        )
+        self.assertEqual(unknown["response_target_state"], "unknown")
         self.assertEqual(
             api.validated_support_ticket_ids(
                 ["TKT-AAAAAAAA", "TKT-AAAAAAAA", "TKT-BBBBBBBB"]
@@ -4072,6 +4139,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["items"][0]["unread_owner_messages"], 0)
         self.assertFalse(mine["items"][0]["has_unread_owner_reply"])
         self.assertNotIn("priority", mine["items"][0])
+        self.assertNotIn("response_target_state", mine["items"][0])
+        self.assertNotIn("response_due_at_utc", mine["items"][0])
+        self.assertNotIn("response_remaining_seconds", mine["items"][0])
         self.assertNotIn("owner_note", mine["items"][0])
 
         status, second = self.call(
@@ -4103,11 +4173,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertGreaterEqual(owner_inbox["summary"]["waiting_on_owner_count"], 1)
         self.assertGreaterEqual(owner_inbox["summary"]["priority_counts"]["normal"], 1)
         self.assertEqual(owner_inbox["summary"]["priority_counts"]["urgent"], 0)
+        self.assertGreaterEqual(
+            owner_inbox["summary"]["response_target_counts"]["on_track"],
+            1,
+        )
         self.assertEqual(owner_ticket["unread_customer_messages"], 1)
         self.assertTrue(owner_ticket["has_unread_customer_message"])
         self.assertEqual(owner_ticket["workflow_state"], "waiting_on_owner")
         self.assertEqual(owner_ticket["priority"], "normal")
         self.assertEqual(owner_ticket["wait_age_band"], "under_1h")
+        self.assertEqual(owner_ticket["response_target_seconds"], 24 * 60 * 60)
+        self.assertEqual(owner_ticket["response_target_state"], "on_track")
+        self.assertGreater(owner_ticket["response_remaining_seconds"], 0)
+        self.assertTrue(owner_ticket["response_due_at_utc"])
         status, owner_bulk_read = self.call(
             "/api/v1/admin/support-tickets/read-all",
             method="POST",
@@ -4488,6 +4566,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"SAFE RECEIPT", page)
         self.assertIn(b"COPY ID", page)
         self.assertIn(b"vaultlink-support-receipt-v1", page)
+        self.assertIn(b"SUPPORT_DRAFT_PREFIX", page)
+        self.assertIn(b"DRAFT SAVED IN THIS TAB", page)
+        self.assertIn(b"supportSubjectCount", page)
+        self.assertIn(b"supportMessageCount", page)
+        self.assertIn(b"clearSupportDraft", page)
+        self.assertIn(b"restoreReplySupportDraft", page)
         self.assertIn(b"COPY FAILED", page)
         status, _headers, owner_page = self.call_bytes("/owner")
         self.assertEqual(status, 200)
@@ -4508,9 +4592,14 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"markAllOwnerRead", owner_page)
         self.assertIn(b"expandOwnerUnread", owner_page)
         self.assertIn(b"collapseOwnerSupport", owner_page)
-        self.assertIn(b"vaultlink-owner-support-queue-v2", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v3", owner_page)
         self.assertIn(b"OWNER ACTION 24H+", owner_page)
         self.assertIn(b"PRIORITY FIRST", owner_page)
+        self.assertIn(b"RESPONSE TARGET OVERDUE", owner_page)
+        self.assertIn(b"RESPONSE TARGET DUE SOON", owner_page)
+        self.assertIn(b"response_due_asc", owner_page)
+        self.assertIn(b"response_target_counts", owner_page)
+        self.assertIn(b"ownerResponseTargetLabel", owner_page)
         self.assertIn(b"supportPriority", owner_page)
         self.assertIn(b"Ticket priority", owner_page)
         self.assertIn(b"applyFilteredPriority", owner_page)

@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.74.0"
+API_VERSION = "0.75.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -298,6 +298,12 @@ MAX_SUPPORT_BULK_TICKETS = 100
 SUPPORT_TICKET_STATUSES = frozenset({"open", "acknowledged", "in_progress", "resolved", "closed"})
 SUPPORT_TICKET_CATEGORIES = frozenset({"bug", "crash", "licensing", "update", "security", "idea", "other"})
 SUPPORT_TICKET_PRIORITIES = ("normal", "high", "urgent")
+SUPPORT_RESPONSE_TARGET_SECONDS = {
+    "normal": 24 * 60 * 60,
+    "high": 8 * 60 * 60,
+    "urgent": 2 * 60 * 60,
+}
+SUPPORT_RESPONSE_DUE_SOON_MAX_SECONDS = 2 * 60 * 60
 ANNOUNCEMENT_SEVERITIES = frozenset({"info", "update", "maintenance", "security"})
 MAX_ANNOUNCEMENTS = 250
 SERVICE_STATUS_MODES = frozenset({"normal", "degraded", "maintenance"})
@@ -5316,6 +5322,10 @@ def owner_portal_html():
     .priority-chip { display:inline-block; min-width:68px; padding:4px 8px; border-radius:4px; text-align:center; text-transform:uppercase; font-size:11px; font-weight:800; background:#252b33; color:var(--muted); }
     .priority-chip.high { background:#3a321c; color:var(--yellow); }
     .priority-chip.urgent { background:#392126; color:#ff9aa2; }
+    .target-chip { display:inline-block; margin-left:6px; padding:4px 8px; border-radius:4px; text-transform:uppercase; font-size:11px; font-weight:800; background:#1d3039; color:var(--blue); }
+    .target-chip.due_soon { background:#3a321c; color:var(--yellow); }
+    .target-chip.overdue { background:#392126; color:#ff9aa2; }
+    .target-chip.not_waiting, .target-chip.unknown { background:#252b33; color:var(--muted); }
     .ticket-copy { margin:10px 0 0; padding:10px; background:var(--field); color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; }
     .device-list { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
     .device-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(120px,.6fr) auto; gap:10px; align-items:center; padding:8px 0; }
@@ -5456,7 +5466,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
       <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered queue priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY TO FILTERED</button><div class="meta">Updates priority only for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
@@ -5842,6 +5852,8 @@ def owner_portal_html():
         const matchesView = view === "all"
           || (view === "unread" && item.has_unread_customer_message)
           || (view === "owner_action" && item.workflow_state === "waiting_on_owner")
+          || (view === "response_overdue" && item.response_target_state === "overdue")
+          || (view === "response_due" && item.response_target_state === "due_soon")
           || (view === "stale_owner" && item.workflow_state === "waiting_on_owner" && Number(item.wait_age_seconds || 0) >= 86400)
           || (view === "waiting_customer" && item.workflow_state === "waiting_on_customer")
           || (view === "active" && active)
@@ -5866,6 +5878,13 @@ def owner_portal_html():
           || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
         );
       }
+      if (sort === "response_due_asc") {
+        return items.sort((a, b) =>
+          Number(a.workflow_state !== "waiting_on_owner") - Number(b.workflow_state !== "waiting_on_owner")
+          || Number(a.response_remaining_seconds || 0) - Number(b.response_remaining_seconds || 0)
+          || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
+        );
+      }
       const field = sort.startsWith("created") ? "created_at_utc" : "updated_at_utc";
       const direction = sort.endsWith("_asc") ? 1 : -1;
       return items.sort((a, b) => direction * (ownerSupportTime(a, field) - ownerSupportTime(b, field)) || String(a.ticket_id || "").localeCompare(String(b.ticket_id || "")));
@@ -5886,6 +5905,17 @@ def owner_portal_html():
       if (item.workflow_state === "finished") return "finished";
       const actor = item.workflow_state === "waiting_on_customer" ? "customer" : "owner";
       return `waiting on ${actor} ${ownerSupportAgeLabel(item.wait_age_seconds)}`;
+    }
+
+    function ownerResponseTargetLabel(item) {
+      if (item.response_target_state === "overdue") {
+        return `OVERDUE ${ownerSupportAgeLabel(item.response_overdue_seconds)}`;
+      }
+      if (item.response_target_state === "due_soon" || item.response_target_state === "on_track") {
+        return `DUE IN ${ownerSupportAgeLabel(item.response_remaining_seconds)}`;
+      }
+      if (item.response_target_state === "unknown") return "TARGET UNKNOWN";
+      return "TARGET PAUSED";
     }
 
     function ownerWorkflowLabel(item) {
@@ -5963,10 +5993,11 @@ def owner_portal_html():
       const visible = visibleOwnerSupportItems();
       const summary = state.supportSummary || {};
       const priorities = summary.priority_counts || {};
+      const targets = summary.response_target_counts || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("applyFilteredPriority").disabled = !state.connected || visible.length === 0;
-      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Oldest owner wait ${ownerSupportAgeLabel(summary.oldest_waiting_on_owner_seconds || 0)} | Unread ${summary.unread_ticket_count || 0}`;
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -6003,12 +6034,15 @@ def owner_portal_html():
         const priorityBadge = document.createElement("span");
         priorityBadge.className = `priority-chip ${item.priority || "normal"}`;
         priorityBadge.textContent = item.priority || "normal";
+        const targetBadge = document.createElement("span");
+        targetBadge.className = `target-chip ${item.response_target_state || "unknown"}`;
+        targetBadge.textContent = ownerResponseTargetLabel(item);
         const sourceMeta = document.createElement("div");
         sourceMeta.className = "meta";
         sourceMeta.textContent = accountSource
           ? "SIGNED-IN ACCOUNT"
           : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
-        source.append(priorityBadge, sourceMeta);
+        source.append(priorityBadge, targetBadge, sourceMeta);
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = item.has_unread_customer_message
@@ -6368,8 +6402,9 @@ def owner_portal_html():
       const workflow = summary.workflow_counts || {};
       const ages = summary.age_counts || {};
       const priorities = summary.priority_counts || {};
+      const targets = summary.response_target_counts || {};
       downloadOwnerJson("vaultlink-owner-support-queue.json", {
-        schema:"vaultlink-owner-support-queue-v2",
+        schema:"vaultlink-owner-support-queue-v3",
         api_version:(state.dashboard?.release || {}).api_version || "",
         exported_at_utc:new Date().toISOString(),
         summary:{
@@ -6386,6 +6421,15 @@ def owner_portal_html():
             high:Number(priorities.high || 0),
             urgent:Number(priorities.urgent || 0)
           },
+          response_target_counts:{
+            on_track:Number(targets.on_track || 0),
+            due_soon:Number(targets.due_soon || 0),
+            overdue:Number(targets.overdue || 0),
+            not_waiting:Number(targets.not_waiting || 0),
+            unknown:Number(targets.unknown || 0)
+          },
+          next_response_due_seconds:Number(summary.next_response_due_seconds || 0),
+          most_overdue_response_seconds:Number(summary.most_overdue_response_seconds || 0),
           age_counts:{
             under_1h:Number(ages.under_1h || 0),
             "1h_24h":Number(ages["1h_24h"] || 0),
@@ -6416,6 +6460,11 @@ def owner_portal_html():
           wait_started_at_utc:item.wait_started_at_utc || "",
           wait_age_seconds:Number(item.wait_age_seconds || 0),
           wait_age_band:item.wait_age_band || "",
+          response_target_seconds:Number(item.response_target_seconds || 0),
+          response_due_at_utc:item.response_due_at_utc || "",
+          response_remaining_seconds:Number(item.response_remaining_seconds || 0),
+          response_overdue_seconds:Number(item.response_overdue_seconds || 0),
+          response_target_state:item.response_target_state || "",
           created_at_utc:item.created_at_utc || "",
           updated_at_utc:item.updated_at_utc || "",
           last_message_at_utc:item.last_message_at_utc || "",
@@ -9038,6 +9087,55 @@ def support_ticket_wait_metadata(status, workflow_state, started_at_utc, now=Non
     }
 
 
+def support_ticket_response_target_metadata(
+    priority,
+    status,
+    workflow_state,
+    started_at_utc,
+    now=None,
+):
+    target_seconds = SUPPORT_RESPONSE_TARGET_SECONDS[
+        support_ticket_priority(priority)
+    ]
+    if str(status) in {"resolved", "closed"} or workflow_state != "waiting_on_owner":
+        return {
+            "response_target_seconds": target_seconds,
+            "response_due_at_utc": "",
+            "response_remaining_seconds": 0,
+            "response_overdue_seconds": 0,
+            "response_target_state": "not_waiting",
+        }
+    started = parse_utc(started_at_utc)
+    if started is None:
+        return {
+            "response_target_seconds": target_seconds,
+            "response_due_at_utc": "",
+            "response_remaining_seconds": 0,
+            "response_overdue_seconds": 0,
+            "response_target_state": "unknown",
+        }
+    current = now or datetime.now(timezone.utc)
+    due = started + timedelta(seconds=target_seconds)
+    remaining_seconds = int((due - current).total_seconds())
+    due_soon_seconds = min(
+        SUPPORT_RESPONSE_DUE_SOON_MAX_SECONDS,
+        max(15 * 60, target_seconds // 4),
+    )
+    if remaining_seconds <= 0:
+        target_state = "overdue"
+    elif remaining_seconds <= due_soon_seconds:
+        target_state = "due_soon"
+    else:
+        target_state = "on_track"
+    return {
+        "response_target_seconds": target_seconds,
+        "response_due_at_utc": format_utc(due),
+        "response_remaining_seconds": remaining_seconds,
+        "response_overdue_seconds": max(0, -remaining_seconds),
+        "response_target_state": target_state,
+    }
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     conversation = support_ticket_conversation(record, private)
@@ -9106,6 +9204,14 @@ def support_ticket_view(record, audience="admin"):
                 "unread_customer_messages": unread_customer_messages,
                 "has_unread_customer_message": unread_customer_messages > 0,
             }
+        )
+        item.update(
+            support_ticket_response_target_metadata(
+                item["priority"],
+                status,
+                workflow_state,
+                item.get("wait_started_at_utc"),
+            )
         )
     return item
 
@@ -9315,9 +9421,18 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "finished": 0,
     }
     priority_counts = {priority: 0 for priority in SUPPORT_TICKET_PRIORITIES}
+    response_target_counts = {
+        "on_track": 0,
+        "due_soon": 0,
+        "overdue": 0,
+        "not_waiting": 0,
+        "unknown": 0,
+    }
     unread_ticket_count = 0
     unread_message_count = 0
     oldest_waiting_on_owner_seconds = 0
+    next_response_due_seconds = None
+    most_overdue_response_seconds = 0
     for item in items:
         status = str(item.get("status", "open"))
         if status in status_counts:
@@ -9338,6 +9453,22 @@ def support_ticket_summary(items, unread_field, include_priority=False):
             )
         if include_priority:
             priority_counts[support_ticket_priority(item.get("priority"))] += 1
+            target_state = str(item.get("response_target_state", "unknown"))
+            if target_state not in response_target_counts:
+                target_state = "unknown"
+            response_target_counts[target_state] += 1
+            remaining_seconds = int(item.get("response_remaining_seconds", 0))
+            if target_state in {"on_track", "due_soon"} and remaining_seconds >= 0:
+                next_response_due_seconds = (
+                    remaining_seconds
+                    if next_response_due_seconds is None
+                    else min(next_response_due_seconds, remaining_seconds)
+                )
+            if target_state == "overdue":
+                most_overdue_response_seconds = max(
+                    most_overdue_response_seconds,
+                    max(0, int(item.get("response_overdue_seconds", 0))),
+                )
     active_count = sum(
         status_counts[status] for status in ("open", "acknowledged", "in_progress")
     )
@@ -9358,6 +9489,11 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         summary["priority_counts"] = priority_counts
         summary["urgent_count"] = priority_counts["urgent"]
         summary["high_priority_count"] = priority_counts["high"]
+        summary["response_target_counts"] = response_target_counts
+        summary["next_response_due_seconds"] = (
+            0 if next_response_due_seconds is None else next_response_due_seconds
+        )
+        summary["most_overdue_response_seconds"] = most_overdue_response_seconds
     return summary
 
 
@@ -11946,6 +12082,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "support_queue_age_bands_enabled": True,
                     "support_ticket_bulk_priority_enabled": True,
                     "support_ticket_safe_receipts_enabled": True,
+                    "support_response_targets_enabled": True,
+                    "customer_support_tab_drafts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
