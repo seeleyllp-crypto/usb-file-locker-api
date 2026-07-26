@@ -90,7 +90,7 @@ Account sessions last twelve hours and include a server-checked session version.
 
 `GET /api/v1/accounts/activity` returns at most twenty-five events for the authenticated account from the verified HMAC-SHA-256 service activity chain. It includes only anonymous event IDs, timestamps, safe action labels, results, and coarse actor labels. It excludes passwords, sessions, keys, notes, messages, devices, files, and paths. Temporary network failures no longer discard the browser session; only an expired or rejected session signs the customer out.
 
-`GET` and `POST /api/v1/accounts/support` let a signed-in customer send and review encrypted-at-rest help requests without copying a full license key into the browser. `POST /api/v1/accounts/support/reply` appends a customer follow-up, and `POST /api/v1/accounts/support/close` closes a request. Follow-ups reopen resolved or closed requests, and both customer and owner views show the encrypted conversation history. Requests are linked to the authenticated account, creation and follow-up actions are rate-limited, and no files, logs, passwords, license keys, device identifiers, or USB secrets are attached automatically. The owner support inbox receives the account ID and current username for account-originated requests, while customer responses exclude private owner notes.
+`GET` and `POST /api/v1/accounts/support` let a signed-in customer send and review encrypted-at-rest help requests without copying a full license key into the browser. `POST /api/v1/accounts/support/reply` appends a customer follow-up, `POST /api/v1/accounts/support/close` closes a request, and `POST /api/v1/accounts/support/read` clears the signed-in customer's unread-owner-reply count for one request. Follow-ups reopen resolved or closed requests, and both customer and owner views show the encrypted conversation history. Version 0.69.0 adds privacy-safe numeric unread counters, clear new-message badges, and protected mark-read controls to both inboxes. Requests are linked to the authenticated account, creation and follow-up actions are rate-limited, and no files, logs, passwords, license keys, device identifiers, or USB secrets are attached automatically. The owner support inbox receives the account ID and current username for account-originated requests, while customer responses exclude private owner notes.
 
 Every new customer license requires an existing active `account_id`. The issue endpoint, main owner console, giveaway controls, and dedicated account console bind each new license to that account. Arbitrary labels and email fields can no longer create unattached licenses. Existing legacy licenses can still be deliberately assigned or transferred from `/owner/accounts`.
 
@@ -330,6 +330,8 @@ Without `LICENSE_STATE_DIR`, Railway uses local ephemeral storage and a restart 
   - Admin-only Bug Inbox listing.
 - `POST /api/v1/admin/support-tickets/action`
   - Admin-only status, customer reply, and private owner-note update.
+- `POST /api/v1/admin/support-tickets/read`
+  - Admin-only mark-read action for customer messages. It stores only a numeric conversation cursor and a timestamp.
 - `POST /api/v1/admin/support-tickets/delete`
   - Admin-only permanent ticket deletion.
 

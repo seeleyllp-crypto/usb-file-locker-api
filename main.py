@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.68.0"
+API_VERSION = "0.69.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -2615,6 +2615,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/accounts/support", "purpose": "Send a rate-limited encrypted help request from the signed-in account"},
             {"method": "POST", "path": "/api/v1/accounts/support/reply", "purpose": "Append an encrypted customer follow-up and reopen a resolved request"},
             {"method": "POST", "path": "/api/v1/accounts/support/close", "purpose": "Close a help request linked to the signed-in account"},
+            {"method": "POST", "path": "/api/v1/accounts/support/read", "purpose": "Mark owner replies read for one help request linked to the signed-in account"},
             {"method": "GET", "path": "/api/v1/accounts/username-availability", "purpose": "Validate a proposed username and report whether it is available"},
             {"method": "POST", "path": "/api/v1/accounts/change-username", "purpose": "Change the authenticated username after current-password verification"},
             {"method": "POST", "path": "/api/v1/accounts/change-password", "purpose": "Authenticated password change with session invalidation"},
@@ -2653,6 +2654,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only acknowledge, resolve, close, note, and reply action"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
             {"method": "POST", "path": "/api/v1/announcements/mine", "purpose": "Licensed read-only owner announcements for this plan rank"},
             {"method": "GET", "path": "/api/v1/admin/announcements", "purpose": "Admin-only announcement inventory"},
@@ -5437,7 +5439,7 @@ def owner_portal_html():
     </section>
 
     <section>
-      <div class="record-head"><h2>Support Inbox</h2><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
+      <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
 
@@ -5563,6 +5565,7 @@ def owner_portal_html():
       state.dashboard = dashboard;
       state.releaseStatus = releaseStatus;
       $("storage").textContent = payload.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE";
+      $("supportUnread").textContent = `${support.unread_customer_count || 0} NEW`;
       $("supportStorage").textContent = support.storage === "persistent_configured" ? "ENCRYPTED PERSISTENT STORAGE" : "TEMPORARY STORAGE";
       $("auditStorage").textContent = `${audits.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE"} | ${audits.retention_hours || 0}H RETENTION`;
       $("announcementStorage").textContent = announcements.storage === "persistent_configured" ? "PERSISTENT STORAGE" : "TEMPORARY STORAGE";
@@ -5814,7 +5817,9 @@ def owner_portal_html():
           : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
-        badge.textContent = (item.status || "open").replace("_", " ");
+        badge.textContent = item.has_unread_customer_message
+          ? "NEW MESSAGE"
+          : (item.status || "open").replace("_", " ");
         head.append(identity, source, badge);
 
         const conversation = document.createElement("div");
@@ -5856,6 +5861,9 @@ def owner_portal_html():
         note.placeholder = "Private owner note";
         note.value = item.owner_note || "";
         actions.append(status, reply, note);
+        if (item.has_unread_customer_message) {
+          actions.append(actionButton("MARK READ", "primary", () => markOwnerSupportRead(item)));
+        }
         actions.append(actionButton("SAVE ACTION", "blue", () => saveSupport(item, status.value, reply.value, note.value)));
         actions.append(actionButton("DELETE", "danger", () => deleteSupport(item)));
         record.append(actions);
@@ -6228,6 +6236,17 @@ def owner_portal_html():
         }) });
         await loadLicenses(true);
         setStatus(result.message || `Updated ${item.ticket_id}.`, "good");
+      } catch (error) { setStatus(error.message, "bad"); }
+    }
+
+    async function markOwnerSupportRead(item) {
+      try {
+        const result = await api("/api/v1/admin/support-tickets/read", {
+          method:"POST",
+          body:JSON.stringify({ ticket_id:item.ticket_id })
+        });
+        await loadLicenses(true);
+        setStatus(result.message || `${item.ticket_id} marked read.`, "good");
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
@@ -8565,8 +8584,49 @@ def append_support_conversation(record, private, author, message, time_utc):
     private["conversation"] = conversation[-MAX_SUPPORT_CONVERSATION_ITEMS:]
 
 
+def support_ticket_unread_counts(record, conversation):
+    owner_message_count = sum(
+        entry.get("author") == "owner" for entry in conversation
+    )
+    customer_message_count = sum(
+        entry.get("author") == "customer" for entry in conversation
+    )
+    if "customer_read_owner_messages" in record:
+        customer_read_count = max(
+            0,
+            min(owner_message_count, int(record.get("customer_read_owner_messages", 0))),
+        )
+    else:
+        customer_last_read = parse_utc(record.get("customer_last_read_at_utc"))
+        customer_read_count = sum(
+            entry.get("author") == "owner"
+            and (parse_utc(entry.get("time_utc")) or datetime.max.replace(tzinfo=timezone.utc))
+            <= customer_last_read
+            for entry in conversation
+        ) if customer_last_read else 0
+    if "owner_read_customer_messages" in record:
+        owner_read_count = max(
+            0,
+            min(customer_message_count, int(record.get("owner_read_customer_messages", 0))),
+        )
+    else:
+        owner_last_read = parse_utc(record.get("owner_last_read_at_utc"))
+        owner_read_count = sum(
+            entry.get("author") == "customer"
+            and (parse_utc(entry.get("time_utc")) or datetime.max.replace(tzinfo=timezone.utc))
+            <= owner_last_read
+            for entry in conversation
+        ) if owner_last_read else 0
+    return owner_message_count - customer_read_count, customer_message_count - owner_read_count
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
+    conversation = support_ticket_conversation(record, private)
+    unread_owner_messages, unread_customer_messages = support_ticket_unread_counts(
+        record,
+        conversation,
+    )
     item = {
         "ticket_id": str(record.get("ticket_id", "")),
         "source": str(record.get("source", "licensed_device")),
@@ -8582,9 +8642,16 @@ def support_ticket_view(record, audience="admin"):
         "message": str(private.get("message", "")),
         "steps": str(private.get("steps", "")),
         "owner_reply": str(private.get("owner_reply", "")),
-        "conversation": support_ticket_conversation(record, private),
+        "conversation": conversation,
         "history": list(record.get("history", []))[-50:],
     }
+    if audience == "customer":
+        item.update(
+            {
+                "unread_owner_messages": unread_owner_messages,
+                "has_unread_owner_reply": unread_owner_messages > 0,
+            }
+        )
     if audience == "admin":
         account_id = str(record.get("account_id", ""))
         account_username = ""
@@ -8603,6 +8670,8 @@ def support_ticket_view(record, audience="admin"):
                 "plan_id": str(record.get("plan_id", "")),
                 "machine_hash": str(record.get("machine_hash", "")),
                 "owner_note": str(private.get("owner_note", "")),
+                "unread_customer_messages": unread_customer_messages,
+                "has_unread_customer_message": unread_customer_messages > 0,
             }
         )
     return item
@@ -8687,6 +8756,10 @@ def create_support_ticket(payload):
             "acknowledged_at_utc": "",
             "resolved_at_utc": "",
             "closed_at_utc": "",
+            "customer_last_read_at_utc": now_text,
+            "owner_last_read_at_utc": "",
+            "customer_read_owner_messages": 0,
+            "owner_read_customer_messages": 0,
             "history": [{"time_utc": now_text, "action": "created", "status": "open"}],
             "private_blob": encrypt_support_private_fields(private),
         }
@@ -8760,6 +8833,10 @@ def create_account_support_ticket(payload, token):
             "acknowledged_at_utc": "",
             "resolved_at_utc": "",
             "closed_at_utc": "",
+            "customer_last_read_at_utc": now_text,
+            "owner_last_read_at_utc": "",
+            "customer_read_owner_messages": 0,
+            "owner_read_customer_messages": 0,
             "history": [{"time_utc": now_text, "action": "created", "status": "open"}],
             "private_blob": encrypt_support_private_fields(private),
         }
@@ -8804,6 +8881,7 @@ def list_account_support_tickets(token):
     return {
         "ok": True,
         "count": len(items),
+        "unread_owner_count": sum(item.get("unread_owner_messages", 0) for item in items),
         "items": items,
         "privacy_notice": "Only help requests linked to this signed-in account are returned.",
         "server_time_utc": utc_now(),
@@ -8847,6 +8925,11 @@ def reply_account_support_ticket(payload, token):
             record["resolved_at_utc"] = ""
             record["closed_at_utc"] = ""
         record["updated_at_utc"] = now_text
+        record["customer_last_read_at_utc"] = now_text
+        record["customer_read_owner_messages"] = sum(
+            entry.get("author") == "owner"
+            for entry in support_ticket_conversation(record, private)
+        )
         history = list(record.get("history", []))[-49:]
         history.append(
             {
@@ -8904,6 +8987,12 @@ def close_account_support_ticket(payload, token):
         record["status"] = "closed"
         record["updated_at_utc"] = now_text
         record["closed_at_utc"] = now_text
+        record["customer_last_read_at_utc"] = now_text
+        private = support_ticket_private_fields(record)
+        record["customer_read_owner_messages"] = sum(
+            entry.get("author") == "owner"
+            for entry in support_ticket_conversation(record, private)
+        )
         history = list(record.get("history", []))[-49:]
         history.append({"time_utc": now_text, "action": "customer_close", "status": "closed"})
         record["history"] = history
@@ -8928,6 +9017,36 @@ def close_account_support_ticket(payload, token):
         "already_closed": False,
         "ticket": support_ticket_view(record, audience="customer"),
         "message": "Help request closed.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def mark_account_support_ticket_read(payload, token):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        account_id = validated_account_id(account.get("account_id"))
+        record = read_support_ticket(ticket_id)
+        if record.get("account_id") != account_id:
+            raise FileNotFoundError("Help request was not found for this account.")
+        private = support_ticket_private_fields(record)
+        record["customer_last_read_at_utc"] = utc_now()
+        record["customer_read_owner_messages"] = sum(
+            entry.get("author") == "owner"
+            for entry in support_ticket_conversation(record, private)
+        )
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_customer_read",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "marked_read": True,
+        "ticket": support_ticket_view(record, audience="customer"),
         "server_time_utc": utc_now(),
     }
 
@@ -8965,6 +9084,9 @@ def list_admin_support_tickets():
     return {
         "ok": True,
         "count": len(items),
+        "unread_customer_count": sum(
+            item.get("unread_customer_messages", 0) for item in items
+        ),
         "damaged_count": damaged_count,
         "items": items,
         "storage": "persistent_configured" if license_state_storage_is_persistent() else "local_ephemeral",
@@ -8991,6 +9113,11 @@ def admin_update_support_ticket(payload):
         private["owner_note"] = owner_note
         record["status"] = status
         record["updated_at_utc"] = now
+        record["owner_last_read_at_utc"] = now
+        record["owner_read_customer_messages"] = sum(
+            entry.get("author") == "customer"
+            for entry in support_ticket_conversation(record, private)
+        )
         if status != "open" and not record.get("acknowledged_at_utc"):
             record["acknowledged_at_utc"] = now
         if status == "resolved":
@@ -9012,6 +9139,26 @@ def admin_update_support_ticket(payload):
         "saved": True,
         "ticket": support_ticket_view(record, audience="admin"),
         "message": f"Support ticket {ticket_id} updated.",
+        "server_time_utc": utc_now(),
+    }
+
+
+def admin_mark_support_ticket_read(payload):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    with LICENSE_STATE_LOCK:
+        record = read_support_ticket(ticket_id)
+        private = support_ticket_private_fields(record)
+        record["owner_last_read_at_utc"] = utc_now()
+        record["owner_read_customer_messages"] = sum(
+            entry.get("author") == "customer"
+            for entry in support_ticket_conversation(record, private)
+        )
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity("support_ticket_owner_read", "ok", "support_ticket", ticket_id)
+    return {
+        "ok": True,
+        "marked_read": True,
+        "ticket": support_ticket_view(record, audience="admin"),
         "server_time_utc": utc_now(),
     }
 
@@ -11140,6 +11287,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_accounts_enabled": True,
                     "customer_account_support_enabled": True,
                     "customer_account_support_conversations_enabled": True,
+                    "customer_account_support_unread_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -11778,6 +11926,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/support": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/reply": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/close": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/support/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
@@ -11802,6 +11951,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/support-tickets": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/support-tickets/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/action": MAX_SUPPORT_JSON_BODY_BYTES,
+            "/api/v1/admin/support-tickets/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/delete": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/announcements/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/announcements/create": MAX_SUPPORT_JSON_BODY_BYTES,
@@ -11887,6 +12037,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                     self.send_json(
                         {"ok": False, "error": "rate_limited", "message": str(exc)},
                         status=HTTPStatus.TOO_MANY_REQUESTS,
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/support/read":
+                try:
+                    self.send_json(
+                        mark_account_support_ticket_read(
+                            payload,
+                            self.account_session_token(),
+                        )
                     )
                 except PermissionError as exc:
                     self.send_json(
@@ -11982,6 +12146,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/support-tickets/action":
                 self.require_admin_token()
                 self.send_json(admin_update_support_ticket(payload))
+                return
+            if path == "/api/v1/admin/support-tickets/read":
+                self.require_admin_token()
+                self.send_json(admin_mark_support_ticket_read(payload))
                 return
             if path == "/api/v1/admin/support-tickets/delete":
                 self.require_admin_token()
