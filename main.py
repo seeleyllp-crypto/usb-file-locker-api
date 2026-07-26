@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.75.0"
+API_VERSION = "0.76.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -304,6 +304,9 @@ SUPPORT_RESPONSE_TARGET_SECONDS = {
     "urgent": 2 * 60 * 60,
 }
 SUPPORT_RESPONSE_DUE_SOON_MAX_SECONDS = 2 * 60 * 60
+SUPPORT_REVIEW_DELAYS_SECONDS = frozenset(
+    {0, 60 * 60, 4 * 60 * 60, 24 * 60 * 60, 3 * 24 * 60 * 60, 7 * 24 * 60 * 60}
+)
 ANNOUNCEMENT_SEVERITIES = frozenset({"info", "update", "maintenance", "security"})
 MAX_ANNOUNCEMENTS = 250
 SERVICE_STATUS_MODES = frozenset({"normal", "degraded", "maintenance"})
@@ -2664,6 +2667,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only priority, acknowledge, resolve, close, note, and reply action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/priority-bulk", "purpose": "Admin-only aggregate priority update for up to 100 filtered ticket ids"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/review-reminder", "purpose": "Admin-only fixed-preset private review reminder"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read-all", "purpose": "Admin-only aggregate mark-all-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
@@ -5326,6 +5330,10 @@ def owner_portal_html():
     .target-chip.due_soon { background:#3a321c; color:var(--yellow); }
     .target-chip.overdue { background:#392126; color:#ff9aa2; }
     .target-chip.not_waiting, .target-chip.unknown { background:#252b33; color:var(--muted); }
+    .review-chip { display:inline-block; margin-left:6px; padding:4px 8px; border-radius:4px; text-transform:uppercase; font-size:11px; font-weight:800; background:#243126; color:var(--green); }
+    .review-chip.due { background:#392126; color:#ff9aa2; }
+    .review-chip[hidden] { display:none; }
+    .support-review-actions { display:grid; grid-template-columns:minmax(190px,320px) auto; gap:10px; align-items:end; margin-top:10px; }
     .ticket-copy { margin:10px 0 0; padding:10px; background:var(--field); color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; }
     .device-list { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
     .device-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(120px,.6fr) auto; gap:10px; align-items:center; padding:8px 0; }
@@ -5334,7 +5342,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters,.support-bulk-priority { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters,.support-bulk-priority,.support-review-actions { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5466,7 +5474,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="review_due">REVIEW REMINDERS DUE</option><option value="review_scheduled">REVIEW REMINDERS SCHEDULED</option><option value="response_overdue">RESPONSE TARGET OVERDUE</option><option value="response_due">RESPONSE TARGET DUE SOON</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="review_asc">REVIEW REMINDER</option><option value="response_due_asc">RESPONSE TARGET</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
       <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered queue priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY TO FILTERED</button><div class="meta">Updates priority only for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
@@ -5852,6 +5860,8 @@ def owner_portal_html():
         const matchesView = view === "all"
           || (view === "unread" && item.has_unread_customer_message)
           || (view === "owner_action" && item.workflow_state === "waiting_on_owner")
+          || (view === "review_due" && item.review_state === "due")
+          || (view === "review_scheduled" && item.review_state === "scheduled")
           || (view === "response_overdue" && item.response_target_state === "overdue")
           || (view === "response_due" && item.response_target_state === "due_soon")
           || (view === "stale_owner" && item.workflow_state === "waiting_on_owner" && Number(item.wait_age_seconds || 0) >= 86400)
@@ -5882,6 +5892,14 @@ def owner_portal_html():
         return items.sort((a, b) =>
           Number(a.workflow_state !== "waiting_on_owner") - Number(b.workflow_state !== "waiting_on_owner")
           || Number(a.response_remaining_seconds || 0) - Number(b.response_remaining_seconds || 0)
+          || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
+        );
+      }
+      if (sort === "review_asc") {
+        const rank = { due:0, scheduled:1, none:2 };
+        return items.sort((a, b) =>
+          (rank[a.review_state] ?? 2) - (rank[b.review_state] ?? 2)
+          || ownerSupportTime(a, "review_after_utc") - ownerSupportTime(b, "review_after_utc")
           || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
         );
       }
@@ -5916,6 +5934,16 @@ def owner_portal_html():
       }
       if (item.response_target_state === "unknown") return "TARGET UNKNOWN";
       return "TARGET PAUSED";
+    }
+
+    function ownerReviewLabel(item) {
+      if (item.review_state === "due") {
+        return `REVIEW DUE ${ownerSupportAgeLabel(item.review_overdue_seconds)} AGO`;
+      }
+      if (item.review_state === "scheduled") {
+        return `REVIEW IN ${ownerSupportAgeLabel(item.review_remaining_seconds)}`;
+      }
+      return "";
     }
 
     function ownerWorkflowLabel(item) {
@@ -5994,10 +6022,11 @@ def owner_portal_html():
       const summary = state.supportSummary || {};
       const priorities = summary.priority_counts || {};
       const targets = summary.response_target_counts || {};
+      const reviews = summary.review_counts || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("applyFilteredPriority").disabled = !state.connected || visible.length === 0;
-      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Unread ${summary.unread_ticket_count || 0}`;
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Review due ${reviews.due || 0} | Scheduled ${reviews.scheduled || 0} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -6037,12 +6066,16 @@ def owner_portal_html():
         const targetBadge = document.createElement("span");
         targetBadge.className = `target-chip ${item.response_target_state || "unknown"}`;
         targetBadge.textContent = ownerResponseTargetLabel(item);
+        const reviewBadge = document.createElement("span");
+        reviewBadge.className = `review-chip ${item.review_state || "none"}`;
+        reviewBadge.textContent = ownerReviewLabel(item);
+        reviewBadge.hidden = item.review_state === "none";
         const sourceMeta = document.createElement("div");
         sourceMeta.className = "meta";
         sourceMeta.textContent = accountSource
           ? "SIGNED-IN ACCOUNT"
           : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
-        source.append(priorityBadge, targetBadge, sourceMeta);
+        source.append(priorityBadge, targetBadge, reviewBadge, sourceMeta);
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = item.has_unread_customer_message
@@ -6126,7 +6159,30 @@ def owner_portal_html():
         }
         actions.append(actionButton("SAVE ACTION", "blue", () => saveSupport(item, status.value, reply.value, note.value, priority.value)));
         actions.append(actionButton("DELETE", "danger", () => deleteSupport(item)));
-        record.append(actions);
+        const reviewActions = document.createElement("div");
+        reviewActions.className = "support-review-actions";
+        const reviewDelay = document.createElement("select");
+        reviewDelay.setAttribute("aria-label", "Private review reminder");
+        for (const [value, label] of [
+          ["", "CHOOSE PRIVATE REVIEW REMINDER"],
+          ["3600", "REVIEW IN 1 HOUR"],
+          ["14400", "REVIEW IN 4 HOURS"],
+          ["86400", "REVIEW IN 1 DAY"],
+          ["259200", "REVIEW IN 3 DAYS"],
+          ["604800", "REVIEW IN 7 DAYS"],
+          ["0", "CLEAR REVIEW REMINDER"],
+        ]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          reviewDelay.append(option);
+        }
+        const setReview = actionButton("SET REVIEW", "warn", () => {
+          if (reviewDelay.value === "") return setStatus("Choose a review reminder first.", "bad");
+          scheduleSupportReview(item, Number(reviewDelay.value));
+        });
+        reviewActions.append(reviewDelay, setReview);
+        record.append(actions, reviewActions);
         host.append(record);
       }
     }
@@ -6403,8 +6459,9 @@ def owner_portal_html():
       const ages = summary.age_counts || {};
       const priorities = summary.priority_counts || {};
       const targets = summary.response_target_counts || {};
+      const reviews = summary.review_counts || {};
       downloadOwnerJson("vaultlink-owner-support-queue.json", {
-        schema:"vaultlink-owner-support-queue-v3",
+        schema:"vaultlink-owner-support-queue-v4",
         api_version:(state.dashboard?.release || {}).api_version || "",
         exported_at_utc:new Date().toISOString(),
         summary:{
@@ -6430,6 +6487,13 @@ def owner_portal_html():
           },
           next_response_due_seconds:Number(summary.next_response_due_seconds || 0),
           most_overdue_response_seconds:Number(summary.most_overdue_response_seconds || 0),
+          review_counts:{
+            none:Number(reviews.none || 0),
+            scheduled:Number(reviews.scheduled || 0),
+            due:Number(reviews.due || 0)
+          },
+          next_review_seconds:Number(summary.next_review_seconds || 0),
+          most_overdue_review_seconds:Number(summary.most_overdue_review_seconds || 0),
           age_counts:{
             under_1h:Number(ages.under_1h || 0),
             "1h_24h":Number(ages["1h_24h"] || 0),
@@ -6465,6 +6529,10 @@ def owner_portal_html():
           response_remaining_seconds:Number(item.response_remaining_seconds || 0),
           response_overdue_seconds:Number(item.response_overdue_seconds || 0),
           response_target_state:item.response_target_state || "",
+          review_after_utc:item.review_after_utc || "",
+          review_remaining_seconds:Number(item.review_remaining_seconds || 0),
+          review_overdue_seconds:Number(item.review_overdue_seconds || 0),
+          review_state:item.review_state || "none",
           created_at_utc:item.created_at_utc || "",
           updated_at_utc:item.updated_at_utc || "",
           last_message_at_utc:item.last_message_at_utc || "",
@@ -6590,6 +6658,20 @@ def owner_portal_html():
         }) });
         await loadLicenses(true);
         setStatus(result.message || `Updated ${item.ticket_id}.`, "good");
+      } catch (error) { setStatus(error.message, "bad"); }
+    }
+
+    async function scheduleSupportReview(item, delaySeconds) {
+      try {
+        const result = await api("/api/v1/admin/support-tickets/review-reminder", {
+          method:"POST",
+          body:JSON.stringify({
+            ticket_id:item.ticket_id,
+            delay_seconds:delaySeconds
+          })
+        });
+        await loadLicenses(true);
+        setStatus(result.message || `Updated the review reminder for ${item.ticket_id}.`, "good");
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
@@ -9136,6 +9218,25 @@ def support_ticket_response_target_metadata(
     }
 
 
+def support_ticket_review_metadata(review_after_utc, now=None):
+    review_at = parse_utc(review_after_utc)
+    if review_at is None:
+        return {
+            "review_after_utc": "",
+            "review_remaining_seconds": 0,
+            "review_overdue_seconds": 0,
+            "review_state": "none",
+        }
+    current = now or datetime.now(timezone.utc)
+    remaining_seconds = int((review_at - current).total_seconds())
+    return {
+        "review_after_utc": format_utc(review_at),
+        "review_remaining_seconds": remaining_seconds,
+        "review_overdue_seconds": max(0, -remaining_seconds),
+        "review_state": "scheduled" if remaining_seconds > 0 else "due",
+    }
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     conversation = support_ticket_conversation(record, private)
@@ -9212,6 +9313,9 @@ def support_ticket_view(record, audience="admin"):
                 workflow_state,
                 item.get("wait_started_at_utc"),
             )
+        )
+        item.update(
+            support_ticket_review_metadata(record.get("owner_review_after_utc"))
         )
     return item
 
@@ -9428,11 +9532,14 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "not_waiting": 0,
         "unknown": 0,
     }
+    review_counts = {"none": 0, "scheduled": 0, "due": 0}
     unread_ticket_count = 0
     unread_message_count = 0
     oldest_waiting_on_owner_seconds = 0
     next_response_due_seconds = None
     most_overdue_response_seconds = 0
+    next_review_seconds = None
+    most_overdue_review_seconds = 0
     for item in items:
         status = str(item.get("status", "open"))
         if status in status_counts:
@@ -9469,6 +9576,22 @@ def support_ticket_summary(items, unread_field, include_priority=False):
                     most_overdue_response_seconds,
                     max(0, int(item.get("response_overdue_seconds", 0))),
                 )
+            review_state = str(item.get("review_state", "none"))
+            if review_state not in review_counts:
+                review_state = "none"
+            review_counts[review_state] += 1
+            review_remaining_seconds = int(item.get("review_remaining_seconds", 0))
+            if review_state == "scheduled" and review_remaining_seconds >= 0:
+                next_review_seconds = (
+                    review_remaining_seconds
+                    if next_review_seconds is None
+                    else min(next_review_seconds, review_remaining_seconds)
+                )
+            if review_state == "due":
+                most_overdue_review_seconds = max(
+                    most_overdue_review_seconds,
+                    max(0, int(item.get("review_overdue_seconds", 0))),
+                )
     active_count = sum(
         status_counts[status] for status in ("open", "acknowledged", "in_progress")
     )
@@ -9494,6 +9617,11 @@ def support_ticket_summary(items, unread_field, include_priority=False):
             0 if next_response_due_seconds is None else next_response_due_seconds
         )
         summary["most_overdue_response_seconds"] = most_overdue_response_seconds
+        summary["review_counts"] = review_counts
+        summary["next_review_seconds"] = (
+            0 if next_review_seconds is None else next_review_seconds
+        )
+        summary["most_overdue_review_seconds"] = most_overdue_review_seconds
     return summary
 
 
@@ -9816,8 +9944,10 @@ def admin_update_support_ticket(payload):
         if status == "resolved":
             record["resolved_at_utc"] = now
             record["closed_at_utc"] = ""
+            record["owner_review_after_utc"] = ""
         elif status == "closed":
             record["closed_at_utc"] = now
+            record["owner_review_after_utc"] = ""
         elif status in {"open", "acknowledged", "in_progress"}:
             record["resolved_at_utc"] = ""
             record["closed_at_utc"] = ""
@@ -9897,6 +10027,45 @@ def admin_bulk_update_support_priority(payload):
         "message": (
             f"Set {updated_count} filtered help request(s) to {priority} priority. "
             f"{unchanged_count} were already set and {skipped_count} could not be updated."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def admin_set_support_review_reminder(payload):
+    ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
+    delay_seconds = payload.get("delay_seconds")
+    if isinstance(delay_seconds, bool) or not isinstance(delay_seconds, int):
+        raise ValueError("Choose a fixed review reminder.")
+    if delay_seconds not in SUPPORT_REVIEW_DELAYS_SECONDS:
+        raise ValueError("Choose a fixed review reminder.")
+    now = datetime.now(timezone.utc)
+    review_after_utc = (
+        ""
+        if delay_seconds == 0
+        else format_utc(now + timedelta(seconds=delay_seconds))
+    )
+    with LICENSE_STATE_LOCK:
+        record = read_support_ticket(ticket_id)
+        record["owner_review_after_utc"] = review_after_utc
+        record["owner_review_updated_at_utc"] = format_utc(now)
+        write_private_json(support_ticket_path(ticket_id), record)
+    record_api_activity(
+        "support_ticket_review_reminder",
+        "ok",
+        "support_ticket",
+        ticket_id,
+        actor="owner",
+    )
+    return {
+        "ok": True,
+        "saved": True,
+        "cleared": delay_seconds == 0,
+        "ticket": support_ticket_view(record, audience="admin"),
+        "message": (
+            f"Review reminder cleared for {ticket_id}."
+            if delay_seconds == 0
+            else f"Review reminder set for {ticket_id}."
         ),
         "server_time_utc": utc_now(),
     }
@@ -12083,6 +12252,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "support_ticket_bulk_priority_enabled": True,
                     "support_ticket_safe_receipts_enabled": True,
                     "support_response_targets_enabled": True,
+                    "owner_support_review_reminders_enabled": True,
                     "customer_support_tab_drafts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
@@ -12749,6 +12919,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/support-tickets/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/action": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/priority-bulk": MAX_SUPPORT_JSON_BODY_BYTES,
+            "/api/v1/admin/support-tickets/review-reminder": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/delete": MAX_LICENSE_JSON_BODY_BYTES,
@@ -12962,6 +13133,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/support-tickets/priority-bulk":
                 self.require_admin_token()
                 self.send_json(admin_bulk_update_support_priority(payload))
+                return
+            if path == "/api/v1/admin/support-tickets/review-reminder":
+                self.require_admin_token()
+                self.send_json(admin_set_support_review_reminder(payload))
                 return
             if path == "/api/v1/admin/support-tickets/read":
                 self.require_admin_token()

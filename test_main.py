@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.75.0")
+        self.assertEqual(api.API_VERSION, "0.76.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.75.0")
+        self.assertEqual(payload["api_version"], "0.76.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.75.0")
+        self.assertEqual(payload["api_version"], "0.76.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2707,6 +2707,14 @@ class VaultLinkApiTests(unittest.TestCase):
                     )[index],
                     "response_remaining_seconds": (7200, 900, -3600, 0)[index],
                     "response_overdue_seconds": (0, 0, 3600, 0)[index],
+                    "review_state": (
+                        "scheduled",
+                        "scheduled",
+                        "due",
+                        "none",
+                    )[index],
+                    "review_remaining_seconds": (7200, 900, -3600, 0)[index],
+                    "review_overdue_seconds": (0, 0, 3600, 0)[index],
                     "unread_customer_messages": index,
                 }
             )
@@ -2742,6 +2750,12 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(summary["next_response_due_seconds"], 900)
         self.assertEqual(summary["most_overdue_response_seconds"], 3600)
+        self.assertEqual(
+            summary["review_counts"],
+            {"none": 1, "scheduled": 2, "due": 1},
+        )
+        self.assertEqual(summary["next_review_seconds"], 900)
+        self.assertEqual(summary["most_overdue_review_seconds"], 3600)
 
         on_track = api.support_ticket_response_target_metadata(
             "urgent",
@@ -2789,6 +2803,28 @@ class VaultLinkApiTests(unittest.TestCase):
             now=now,
         )
         self.assertEqual(unknown["response_target_state"], "unknown")
+        scheduled_review = api.support_ticket_review_metadata(
+            api.format_utc(now + timedelta(hours=4)),
+            now=now,
+        )
+        self.assertEqual(scheduled_review["review_state"], "scheduled")
+        self.assertEqual(scheduled_review["review_remaining_seconds"], 4 * 60 * 60)
+        due_review = api.support_ticket_review_metadata(
+            api.format_utc(now - timedelta(hours=2)),
+            now=now,
+        )
+        self.assertEqual(due_review["review_state"], "due")
+        self.assertEqual(due_review["review_overdue_seconds"], 2 * 60 * 60)
+        no_review = api.support_ticket_review_metadata("", now=now)
+        self.assertEqual(
+            no_review,
+            {
+                "review_after_utc": "",
+                "review_remaining_seconds": 0,
+                "review_overdue_seconds": 0,
+                "review_state": "none",
+            },
+        )
         self.assertEqual(
             api.validated_support_ticket_ids(
                 ["TKT-AAAAAAAA", "TKT-AAAAAAAA", "TKT-BBBBBBBB"]
@@ -4073,6 +4109,13 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(forbidden_priority_bulk["error"], "forbidden")
+        status, forbidden_review = self.call(
+            "/api/v1/admin/support-tickets/review-reminder",
+            method="POST",
+            payload={"ticket_id": "TKT-00000000", "delay_seconds": 3600},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(forbidden_review["error"], "forbidden")
         status, unauthorized = self.call(
             "/api/v1/accounts/support",
             method="POST",
@@ -4142,6 +4185,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertNotIn("response_target_state", mine["items"][0])
         self.assertNotIn("response_due_at_utc", mine["items"][0])
         self.assertNotIn("response_remaining_seconds", mine["items"][0])
+        self.assertNotIn("review_after_utc", mine["items"][0])
+        self.assertNotIn("review_remaining_seconds", mine["items"][0])
+        self.assertNotIn("review_overdue_seconds", mine["items"][0])
+        self.assertNotIn("review_state", mine["items"][0])
         self.assertNotIn("owner_note", mine["items"][0])
 
         status, second = self.call(
@@ -4186,6 +4233,67 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(owner_ticket["response_target_state"], "on_track")
         self.assertGreater(owner_ticket["response_remaining_seconds"], 0)
         self.assertTrue(owner_ticket["response_due_at_utc"])
+        self.assertEqual(owner_ticket["review_state"], "none")
+        self.assertEqual(owner_ticket["review_after_utc"], "")
+        self.assertGreaterEqual(owner_inbox["summary"]["review_counts"]["none"], 1)
+        for invalid_delay in (True, 123, 3600.5, "3600"):
+            status, invalid_review = self.call(
+                "/api/v1/admin/support-tickets/review-reminder",
+                method="POST",
+                payload={
+                    "ticket_id": ticket_id,
+                    "delay_seconds": invalid_delay,
+                },
+                headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+            )
+            self.assertEqual(status, 400)
+            self.assertEqual(invalid_review["error"], "bad_request")
+        status, scheduled_review = self.call(
+            "/api/v1/admin/support-tickets/review-reminder",
+            method="POST",
+            payload={"ticket_id": ticket_id, "delay_seconds": 3600},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(scheduled_review["cleared"])
+        self.assertEqual(scheduled_review["ticket"]["review_state"], "scheduled")
+        self.assertGreater(scheduled_review["ticket"]["review_remaining_seconds"], 3500)
+        status, mine_after_review = self.call(
+            "/api/v1/accounts/support",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        for hidden_field in (
+            "review_after_utc",
+            "review_remaining_seconds",
+            "review_overdue_seconds",
+            "review_state",
+        ):
+            self.assertNotIn(hidden_field, mine_after_review["items"][0])
+        status, owner_with_review = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(owner_with_review["summary"]["review_counts"]["scheduled"], 1)
+        self.assertGreater(owner_with_review["summary"]["next_review_seconds"], 3500)
+        status, cleared_review = self.call(
+            "/api/v1/admin/support-tickets/review-reminder",
+            method="POST",
+            payload={"ticket_id": ticket_id, "delay_seconds": 0},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(cleared_review["cleared"])
+        self.assertEqual(cleared_review["ticket"]["review_state"], "none")
+        status, rescheduled_review = self.call(
+            "/api/v1/admin/support-tickets/review-reminder",
+            method="POST",
+            payload={"ticket_id": ticket_id, "delay_seconds": 14400},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(rescheduled_review["ticket"]["review_state"], "scheduled")
         status, owner_bulk_read = self.call(
             "/api/v1/admin/support-tickets/read-all",
             method="POST",
@@ -4434,6 +4542,8 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(resolved["ticket"]["status"], "resolved")
+        self.assertEqual(resolved["ticket"]["review_state"], "none")
+        self.assertEqual(resolved["ticket"]["review_after_utc"], "")
 
         customer_follow_up = "The fix helped, but the button still needs one extra click."
         status, replied = self.call(
@@ -4592,7 +4702,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"markAllOwnerRead", owner_page)
         self.assertIn(b"expandOwnerUnread", owner_page)
         self.assertIn(b"collapseOwnerSupport", owner_page)
-        self.assertIn(b"vaultlink-owner-support-queue-v3", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v4", owner_page)
         self.assertIn(b"OWNER ACTION 24H+", owner_page)
         self.assertIn(b"PRIORITY FIRST", owner_page)
         self.assertIn(b"RESPONSE TARGET OVERDUE", owner_page)
@@ -4600,6 +4710,16 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"response_due_asc", owner_page)
         self.assertIn(b"response_target_counts", owner_page)
         self.assertIn(b"ownerResponseTargetLabel", owner_page)
+        self.assertIn(b"REVIEW REMINDERS DUE", owner_page)
+        self.assertIn(b"REVIEW REMINDERS SCHEDULED", owner_page)
+        self.assertIn(b"REVIEW REMINDER", owner_page)
+        self.assertIn(b"ownerReviewLabel", owner_page)
+        self.assertIn(b".review-chip[hidden]", owner_page)
+        self.assertIn(b"review_counts", owner_page)
+        self.assertIn(b"CHOOSE PRIVATE REVIEW REMINDER", owner_page)
+        self.assertIn(b"SET REVIEW", owner_page)
+        self.assertIn(b"/api/v1/admin/support-tickets/review-reminder", owner_page)
+        self.assertIn(b"scheduleSupportReview", owner_page)
         self.assertIn(b"supportPriority", owner_page)
         self.assertIn(b"Ticket priority", owner_page)
         self.assertIn(b"applyFilteredPriority", owner_page)
