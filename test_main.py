@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.72.0")
+        self.assertEqual(api.API_VERSION, "0.73.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.72.0")
+        self.assertEqual(payload["api_version"], "0.73.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.72.0")
+        self.assertEqual(payload["api_version"], "0.73.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2674,6 +2674,55 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(mine["count"], 0)
 
+    def test_support_wait_age_bands_and_priority_summary_are_fixed(self):
+        now = datetime(2026, 7, 25, 18, 0, tzinfo=timezone.utc)
+        cases = (
+            (timedelta(minutes=30), "under_1h"),
+            (timedelta(hours=4), "1h_24h"),
+            (timedelta(days=2), "1d_3d"),
+            (timedelta(days=5), "over_3d"),
+        )
+        items = []
+        for index, (age, expected_band) in enumerate(cases):
+            metadata = api.support_ticket_wait_metadata(
+                "open",
+                "waiting_on_owner",
+                api.format_utc(now - age),
+                now=now,
+            )
+            self.assertEqual(metadata["wait_age_band"], expected_band)
+            self.assertEqual(metadata["wait_age_seconds"], int(age.total_seconds()))
+            items.append(
+                {
+                    "status": "open",
+                    "workflow_state": "waiting_on_owner",
+                    "wait_age_band": metadata["wait_age_band"],
+                    "wait_age_seconds": metadata["wait_age_seconds"],
+                    "priority": ("normal", "high", "urgent", "urgent")[index],
+                    "unread_customer_messages": index,
+                }
+            )
+        finished = api.support_ticket_wait_metadata(
+            "closed",
+            "finished",
+            api.format_utc(now - timedelta(days=20)),
+            now=now,
+        )
+        self.assertEqual(finished["wait_age_band"], "finished")
+        self.assertEqual(finished["wait_age_seconds"], 0)
+
+        summary = api.support_ticket_summary(
+            items,
+            "unread_customer_messages",
+            include_priority=True,
+        )
+        self.assertEqual(summary["age_counts"]["under_1h"], 1)
+        self.assertEqual(summary["age_counts"]["1h_24h"], 1)
+        self.assertEqual(summary["age_counts"]["1d_3d"], 1)
+        self.assertEqual(summary["age_counts"]["over_3d"], 1)
+        self.assertEqual(summary["priority_counts"], {"normal": 1, "high": 1, "urgent": 2})
+        self.assertEqual(summary["oldest_waiting_on_owner_seconds"], 5 * 24 * 60 * 60)
+
     def test_damaged_support_ticket_does_not_break_owner_dashboard(self):
         issued, activated = self.issue_and_activate("starter", "DAMAGED-TICKET-PC")
         status, created = self.call(
@@ -3996,12 +4045,17 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["summary"]["waiting_on_customer_count"], 0)
         self.assertEqual(mine["summary"]["status_counts"]["open"], 1)
         self.assertEqual(mine["summary"]["workflow_counts"]["waiting_on_owner"], 1)
+        self.assertEqual(mine["summary"]["age_counts"]["under_1h"], 1)
+        self.assertGreaterEqual(mine["summary"]["oldest_waiting_on_owner_seconds"], 0)
         self.assertEqual(mine["items"][0]["message"], private_message)
         self.assertEqual(mine["items"][0]["message_count"], 1)
         self.assertEqual(mine["items"][0]["last_author"], "customer")
         self.assertEqual(mine["items"][0]["workflow_state"], "waiting_on_owner")
+        self.assertEqual(mine["items"][0]["wait_age_band"], "under_1h")
+        self.assertGreaterEqual(mine["items"][0]["wait_age_seconds"], 0)
         self.assertEqual(mine["items"][0]["unread_owner_messages"], 0)
         self.assertFalse(mine["items"][0]["has_unread_owner_reply"])
+        self.assertNotIn("priority", mine["items"][0])
         self.assertNotIn("owner_note", mine["items"][0])
 
         status, second = self.call(
@@ -4031,9 +4085,13 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertGreaterEqual(owner_inbox["summary"]["active_count"], 1)
         self.assertGreaterEqual(owner_inbox["summary"]["unread_ticket_count"], 1)
         self.assertGreaterEqual(owner_inbox["summary"]["waiting_on_owner_count"], 1)
+        self.assertGreaterEqual(owner_inbox["summary"]["priority_counts"]["normal"], 1)
+        self.assertEqual(owner_inbox["summary"]["priority_counts"]["urgent"], 0)
         self.assertEqual(owner_ticket["unread_customer_messages"], 1)
         self.assertTrue(owner_ticket["has_unread_customer_message"])
         self.assertEqual(owner_ticket["workflow_state"], "waiting_on_owner")
+        self.assertEqual(owner_ticket["priority"], "normal")
+        self.assertEqual(owner_ticket["wait_age_band"], "under_1h")
         status, owner_bulk_read = self.call(
             "/api/v1/admin/support-tickets/read-all",
             method="POST",
@@ -4071,7 +4129,36 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(owner_read["marked_read"])
         self.assertEqual(owner_read["ticket"]["unread_customer_messages"], 0)
 
+        status, invalid_priority = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "in_progress",
+                "priority": "critical",
+                "owner_reply": "",
+                "owner_note": "",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(invalid_priority["error"], "bad_request")
         status, updated = self.call(
+            "/api/v1/admin/support-tickets/action",
+            method="POST",
+            payload={
+                "ticket_id": ticket_id,
+                "status": "in_progress",
+                "priority": "urgent",
+                "owner_reply": "I found the issue and am checking the fix.",
+                "owner_note": "Private owner-only note",
+            },
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["ticket"]["status"], "in_progress")
+        self.assertEqual(updated["ticket"]["priority"], "urgent")
+        status, compatible_update = self.call(
             "/api/v1/admin/support-tickets/action",
             method="POST",
             payload={
@@ -4083,7 +4170,7 @@ class VaultLinkApiTests(unittest.TestCase):
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(updated["ticket"]["status"], "in_progress")
+        self.assertEqual(compatible_update["ticket"]["priority"], "urgent")
         status, mine = self.call(
             "/api/v1/accounts/support",
             headers={"Authorization": f"Bearer {first_token}"},
@@ -4096,6 +4183,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["items"][0]["message_count"], 2)
         self.assertEqual(mine["items"][0]["last_author"], "owner")
         self.assertEqual(mine["items"][0]["workflow_state"], "waiting_on_customer")
+        self.assertNotIn("priority", mine["items"][0])
         self.assertGreaterEqual(mine["summary"]["waiting_on_customer_count"], 1)
         self.assertNotIn("owner_note", mine["items"][0])
         self.assertEqual(
@@ -4320,7 +4408,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"EXPAND UNREAD", page)
         self.assertIn(b"COLLAPSE ALL", page)
         self.assertIn(b"EXPORT SAFE QUEUE", page)
-        self.assertIn(b"vaultlink-support-queue-v1", page)
+        self.assertIn(b"vaultlink-support-queue-v2", page)
+        self.assertIn(b"OWNER WAIT 24H+", page)
+        self.assertIn(b"LONGEST WAIT", page)
+        self.assertIn(b"wait_age_seconds", page)
         self.assertIn(b'createElement("details")', page)
         self.assertIn(b"SEND FOLLOW-UP", page)
         self.assertIn(b"CLOSE REQUEST", page)
@@ -4344,7 +4435,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"markAllOwnerRead", owner_page)
         self.assertIn(b"expandOwnerUnread", owner_page)
         self.assertIn(b"collapseOwnerSupport", owner_page)
-        self.assertIn(b"vaultlink-owner-support-queue-v1", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v2", owner_page)
+        self.assertIn(b"OWNER ACTION 24H+", owner_page)
+        self.assertIn(b"PRIORITY FIRST", owner_page)
+        self.assertIn(b"supportPriority", owner_page)
+        self.assertIn(b"Ticket priority", owner_page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(

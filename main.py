@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.72.0"
+API_VERSION = "0.73.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -296,6 +296,7 @@ MAX_ACCOUNT_SUPPORT_ACTIONS_PER_HOUR = 30
 MAX_SUPPORT_CONVERSATION_ITEMS = 50
 SUPPORT_TICKET_STATUSES = frozenset({"open", "acknowledged", "in_progress", "resolved", "closed"})
 SUPPORT_TICKET_CATEGORIES = frozenset({"bug", "crash", "licensing", "update", "security", "idea", "other"})
+SUPPORT_TICKET_PRIORITIES = ("normal", "high", "urgent")
 ANNOUNCEMENT_SEVERITIES = frozenset({"info", "update", "maintenance", "security"})
 MAX_ANNOUNCEMENTS = 250
 SERVICE_STATUS_MODES = frozenset({"normal", "degraded", "maintenance"})
@@ -2654,7 +2655,7 @@ def docs_payload():
             {"method": "POST", "path": "/api/v1/support-tickets", "purpose": "Licensed privacy-safe customer bug report submission"},
             {"method": "POST", "path": "/api/v1/support-tickets/mine", "purpose": "Licensed customer ticket status and owner replies"},
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
-            {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only acknowledge, resolve, close, note, and reply action"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only priority, acknowledge, resolve, close, note, and reply action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read-all", "purpose": "Admin-only aggregate mark-all-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
@@ -5275,8 +5276,8 @@ def owner_portal_html():
     .latest { grid-template-columns:minmax(0,1fr) auto; }
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
-    .ticket-actions { grid-template-columns:minmax(130px,.45fr) minmax(200px,1fr) minmax(200px,1fr) auto auto; align-items:start; }
-    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(160px,.55fr) minmax(150px,.5fr); margin-top:12px; }
+    .ticket-actions { grid-template-columns:minmax(110px,.35fr) minmax(110px,.35fr) minmax(190px,1fr) minmax(190px,1fr) auto auto auto; align-items:start; }
+    .support-filters { grid-template-columns:minmax(210px,1fr) minmax(150px,.55fr) minmax(130px,.42fr) minmax(145px,.48fr); margin-top:12px; }
     .support-owner-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
@@ -5309,6 +5310,9 @@ def owner_portal_html():
     .badge.open { background:#352f1d; color:var(--yellow); }
     .badge.acknowledged, .badge.in_progress { background:#1d3039; color:var(--blue); }
     .badge.resolved, .badge.closed { background:#25302a; color:var(--green); }
+    .priority-chip { display:inline-block; min-width:68px; padding:4px 8px; border-radius:4px; text-align:center; text-transform:uppercase; font-size:11px; font-weight:800; background:#252b33; color:var(--muted); }
+    .priority-chip.high { background:#3a321c; color:var(--yellow); }
+    .priority-chip.urgent { background:#392126; color:#ff9aa2; }
     .ticket-copy { margin:10px 0 0; padding:10px; background:var(--field); color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; }
     .device-list { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
     .device-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(120px,.6fr) auto; gap:10px; align-items:center; padding:8px 0; }
@@ -5449,7 +5453,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="stale_owner">OWNER ACTION 24H+</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportPriority">Priority</label><select id="supportPriority"><option value="all">ALL PRIORITIES</option><option value="urgent">URGENT</option><option value="high">HIGH</option><option value="normal">NORMAL</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="priority_desc">PRIORITY FIRST</option><option value="waiting_desc">LONGEST WAIT</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
@@ -5825,23 +5829,58 @@ def owner_portal_html():
     function visibleOwnerSupportItems() {
       const query = $("supportSearch").value.trim().toLowerCase();
       const view = $("supportFilter").value;
+      const priority = $("supportPriority").value;
       const sort = $("supportSort").value;
       const items = state.supportItems.filter((item) => {
-        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.workflow_state || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
+        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.workflow_state || ""} ${item.priority || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
         const active = !["resolved", "closed"].includes(item.status);
         const matchesView = view === "all"
           || (view === "unread" && item.has_unread_customer_message)
           || (view === "owner_action" && item.workflow_state === "waiting_on_owner")
+          || (view === "stale_owner" && item.workflow_state === "waiting_on_owner" && Number(item.wait_age_seconds || 0) >= 86400)
           || (view === "waiting_customer" && item.workflow_state === "waiting_on_customer")
           || (view === "active" && active)
           || (view === "finished" && !active)
           || (view === "account" && item.source === "account")
           || (view === "device" && item.source !== "account");
-        return matchesView && (!query || text.includes(query));
+        return matchesView
+          && (priority === "all" || item.priority === priority)
+          && (!query || text.includes(query));
       });
+      if (sort === "priority_desc") {
+        const rank = { urgent:0, high:1, normal:2 };
+        return items.sort((a, b) =>
+          (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9)
+          || Number(b.wait_age_seconds || 0) - Number(a.wait_age_seconds || 0)
+          || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
+        );
+      }
+      if (sort === "waiting_desc") {
+        return items.sort((a, b) =>
+          Number(b.wait_age_seconds || 0) - Number(a.wait_age_seconds || 0)
+          || String(a.ticket_id || "").localeCompare(String(b.ticket_id || ""))
+        );
+      }
       const field = sort.startsWith("created") ? "created_at_utc" : "updated_at_utc";
       const direction = sort.endsWith("_asc") ? 1 : -1;
       return items.sort((a, b) => direction * (ownerSupportTime(a, field) - ownerSupportTime(b, field)) || String(a.ticket_id || "").localeCompare(String(b.ticket_id || "")));
+    }
+
+    function ownerSupportAgeLabel(seconds) {
+      const value = Math.max(0, Number(seconds || 0));
+      if (value < 3600) return "< 1 hour";
+      if (value < 86400) {
+        const hours = Math.floor(value / 3600);
+        return `${hours} hour${hours === 1 ? "" : "s"}`;
+      }
+      const days = Math.floor(value / 86400);
+      return `${days} day${days === 1 ? "" : "s"}`;
+    }
+
+    function ownerSupportWaitLabel(item) {
+      if (item.workflow_state === "finished") return "finished";
+      const actor = item.workflow_state === "waiting_on_customer" ? "customer" : "owner";
+      return `waiting on ${actor} ${ownerSupportAgeLabel(item.wait_age_seconds)}`;
     }
 
     function ownerWorkflowLabel(item) {
@@ -5918,9 +5957,10 @@ def owner_portal_html():
       host.replaceChildren();
       const visible = visibleOwnerSupportItems();
       const summary = state.supportSummary || {};
+      const priorities = summary.priority_counts || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
-      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Owner action ${summary.waiting_on_owner_count || 0} | Waiting on customer ${summary.waiting_on_customer_count || 0} | Finished ${summary.finished_count || 0} | Unread ${summary.unread_ticket_count || 0}`;
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Owner action ${summary.waiting_on_owner_count || 0} | 24h+ ${Number((summary.age_counts || {})["1d_3d"] || 0) + Number((summary.age_counts || {}).over_3d || 0)} | Oldest owner wait ${ownerSupportAgeLabel(summary.oldest_waiting_on_owner_seconds || 0)} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -5951,13 +5991,18 @@ def owner_portal_html():
         const customer = accountSource
           ? `${item.account_username || "unknown account"} | ${item.account_id || "missing account id"}`
           : item.license_id || "unknown license";
-        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${item.message_count || 0} messages | ${customer} | updated ${item.updated_at_utc || "unknown time"}`;
+        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${item.message_count || 0} messages | ${ownerSupportWaitLabel(item)} | ${customer} | updated ${item.updated_at_utc || "unknown time"}`;
         identity.append(title, meta);
         const source = document.createElement("div");
-        source.className = "meta";
-        source.textContent = accountSource
+        const priorityBadge = document.createElement("span");
+        priorityBadge.className = `priority-chip ${item.priority || "normal"}`;
+        priorityBadge.textContent = item.priority || "normal";
+        const sourceMeta = document.createElement("div");
+        sourceMeta.className = "meta";
+        sourceMeta.textContent = accountSource
           ? "SIGNED-IN ACCOUNT"
           : `device ${item.machine_hash || "anonymous"} | app ${item.app_version || "unknown"}`;
+        source.append(priorityBadge, sourceMeta);
         const badge = document.createElement("span");
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = item.has_unread_customer_message
@@ -5988,7 +6033,17 @@ def owner_portal_html():
 
         const actions = document.createElement("div");
         actions.className = "ticket-actions";
+        const priority = document.createElement("select");
+        priority.setAttribute("aria-label", "Ticket priority");
+        for (const value of ["normal", "high", "urgent"]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = `${value.toUpperCase()} PRIORITY`;
+          option.selected = value === (item.priority || "normal");
+          priority.append(option);
+        }
         const status = document.createElement("select");
+        status.setAttribute("aria-label", "Ticket status");
         for (const value of ["open", "acknowledged", "in_progress", "resolved", "closed"]) {
           const option = document.createElement("option");
           option.value = value;
@@ -6004,11 +6059,11 @@ def owner_portal_html():
         note.maxLength = 4000;
         note.placeholder = "Private owner note";
         note.value = item.owner_note || "";
-        actions.append(status, reply, note);
+        actions.append(priority, status, reply, note);
         if (item.has_unread_customer_message) {
           actions.append(actionButton("MARK READ", "primary", () => markOwnerSupportRead(item)));
         }
-        actions.append(actionButton("SAVE ACTION", "blue", () => saveSupport(item, status.value, reply.value, note.value)));
+        actions.append(actionButton("SAVE ACTION", "blue", () => saveSupport(item, status.value, reply.value, note.value, priority.value)));
         actions.append(actionButton("DELETE", "danger", () => deleteSupport(item)));
         record.append(actions);
         host.append(record);
@@ -6284,8 +6339,10 @@ def owner_portal_html():
       const summary = state.supportSummary || {};
       const status = summary.status_counts || {};
       const workflow = summary.workflow_counts || {};
+      const ages = summary.age_counts || {};
+      const priorities = summary.priority_counts || {};
       downloadOwnerJson("vaultlink-owner-support-queue.json", {
-        schema:"vaultlink-owner-support-queue-v1",
+        schema:"vaultlink-owner-support-queue-v2",
         api_version:(state.dashboard?.release || {}).api_version || "",
         exported_at_utc:new Date().toISOString(),
         summary:{
@@ -6296,6 +6353,19 @@ def owner_portal_html():
           unread_message_count:Number(summary.unread_message_count || 0),
           waiting_on_owner_count:Number(summary.waiting_on_owner_count || 0),
           waiting_on_customer_count:Number(summary.waiting_on_customer_count || 0),
+          oldest_waiting_on_owner_seconds:Number(summary.oldest_waiting_on_owner_seconds || 0),
+          priority_counts:{
+            normal:Number(priorities.normal || 0),
+            high:Number(priorities.high || 0),
+            urgent:Number(priorities.urgent || 0)
+          },
+          age_counts:{
+            under_1h:Number(ages.under_1h || 0),
+            "1h_24h":Number(ages["1h_24h"] || 0),
+            "1d_3d":Number(ages["1d_3d"] || 0),
+            over_3d:Number(ages.over_3d || 0),
+            finished:Number(ages.finished || 0)
+          },
           status_counts:{
             open:Number(status.open || 0),
             acknowledged:Number(status.acknowledged || 0),
@@ -6314,7 +6384,11 @@ def owner_portal_html():
           source:item.source || "",
           category:item.category || "other",
           status:item.status || "open",
+          priority:item.priority || "normal",
           workflow_state:item.workflow_state || "",
+          wait_started_at_utc:item.wait_started_at_utc || "",
+          wait_age_seconds:Number(item.wait_age_seconds || 0),
+          wait_age_band:item.wait_age_band || "",
           created_at_utc:item.created_at_utc || "",
           updated_at_utc:item.updated_at_utc || "",
           last_message_at_utc:item.last_message_at_utc || "",
@@ -6429,11 +6503,12 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
-    async function saveSupport(item, status, ownerReply, ownerNote) {
+    async function saveSupport(item, status, ownerReply, ownerNote, priority) {
       try {
         const result = await api("/api/v1/admin/support-tickets/action", { method:"POST", body:JSON.stringify({
           ticket_id:item.ticket_id,
           status,
+          priority,
           owner_reply:ownerReply,
           owner_note:ownerNote
         }) });
@@ -6513,6 +6588,7 @@ def owner_portal_html():
     $("refreshSupport").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("supportSearch").addEventListener("input", renderSupport);
     $("supportFilter").addEventListener("change", renderSupport);
+    $("supportPriority").addEventListener("change", renderSupport);
     $("supportSort").addEventListener("change", renderSupport);
     $("nextOwnerUnread").addEventListener("click", focusNextOwnerUnread);
     $("markAllOwnerRead").addEventListener("click", markAllOwnerSupportRead);
@@ -8860,6 +8936,36 @@ def support_ticket_workflow_state(status, conversation):
     return "waiting_on_owner"
 
 
+def support_ticket_priority(value):
+    priority = str(value or "normal").strip().lower()
+    return priority if priority in SUPPORT_TICKET_PRIORITIES else "normal"
+
+
+def support_ticket_wait_metadata(status, workflow_state, started_at_utc, now=None):
+    if str(status) in {"resolved", "closed"} or workflow_state == "finished":
+        return {
+            "wait_started_at_utc": "",
+            "wait_age_seconds": 0,
+            "wait_age_band": "finished",
+        }
+    started = parse_utc(started_at_utc)
+    current = now or datetime.now(timezone.utc)
+    age_seconds = max(0, int((current - started).total_seconds())) if started else 0
+    if age_seconds < 60 * 60:
+        age_band = "under_1h"
+    elif age_seconds < 24 * 60 * 60:
+        age_band = "1h_24h"
+    elif age_seconds < 3 * 24 * 60 * 60:
+        age_band = "1d_3d"
+    else:
+        age_band = "over_3d"
+    return {
+        "wait_started_at_utc": str(started_at_utc or ""),
+        "wait_age_seconds": age_seconds,
+        "wait_age_band": age_band,
+    }
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     conversation = support_ticket_conversation(record, private)
@@ -8869,6 +8975,7 @@ def support_ticket_view(record, audience="admin"):
     )
     status = str(record.get("status", "open"))
     last_message = conversation[-1] if conversation else {}
+    workflow_state = support_ticket_workflow_state(status, conversation)
     item = {
         "ticket_id": str(record.get("ticket_id", "")),
         "source": str(record.get("source", "licensed_device")),
@@ -8888,9 +8995,16 @@ def support_ticket_view(record, audience="admin"):
         "message_count": len(conversation),
         "last_author": str(last_message.get("author", "")),
         "last_message_at_utc": str(last_message.get("time_utc", "")),
-        "workflow_state": support_ticket_workflow_state(status, conversation),
+        "workflow_state": workflow_state,
         "history": list(record.get("history", []))[-50:],
     }
+    item.update(
+        support_ticket_wait_metadata(
+            status,
+            workflow_state,
+            last_message.get("time_utc") or record.get("updated_at_utc") or record.get("created_at_utc"),
+        )
+    )
     if audience == "customer":
         item.update(
             {
@@ -8915,6 +9029,7 @@ def support_ticket_view(record, audience="admin"):
                 "license_id": str(record.get("license_id", "")),
                 "plan_id": str(record.get("plan_id", "")),
                 "machine_hash": str(record.get("machine_hash", "")),
+                "priority": support_ticket_priority(record.get("priority")),
                 "owner_note": str(private.get("owner_note", "")),
                 "unread_customer_messages": unread_customer_messages,
                 "has_unread_customer_message": unread_customer_messages > 0,
@@ -8996,6 +9111,7 @@ def create_support_ticket(payload):
             "machine_hash": machine_hash,
             "category": category,
             "status": "open",
+            "priority": "normal",
             "app_version": app_version,
             "created_at_utc": now_text,
             "updated_at_utc": now_text,
@@ -9073,6 +9189,7 @@ def create_account_support_ticket(payload, token):
             "machine_hash": "",
             "category": category,
             "status": "open",
+            "priority": "normal",
             "app_version": "",
             "created_at_utc": now_text,
             "updated_at_utc": now_text,
@@ -9111,15 +9228,24 @@ def create_account_support_ticket(payload, token):
     }
 
 
-def support_ticket_summary(items, unread_field):
+def support_ticket_summary(items, unread_field, include_priority=False):
     status_counts = {status: 0 for status in SUPPORT_TICKET_STATUSES}
     workflow_counts = {
         "waiting_on_owner": 0,
         "waiting_on_customer": 0,
         "finished": 0,
     }
+    age_counts = {
+        "under_1h": 0,
+        "1h_24h": 0,
+        "1d_3d": 0,
+        "over_3d": 0,
+        "finished": 0,
+    }
+    priority_counts = {priority: 0 for priority in SUPPORT_TICKET_PRIORITIES}
     unread_ticket_count = 0
     unread_message_count = 0
+    oldest_waiting_on_owner_seconds = 0
     for item in items:
         status = str(item.get("status", "open"))
         if status in status_counts:
@@ -9130,20 +9256,37 @@ def support_ticket_summary(items, unread_field):
         workflow_state = str(item.get("workflow_state", ""))
         if workflow_state in workflow_counts:
             workflow_counts[workflow_state] += 1
+        age_band = str(item.get("wait_age_band", ""))
+        if age_band in age_counts:
+            age_counts[age_band] += 1
+        if workflow_state == "waiting_on_owner":
+            oldest_waiting_on_owner_seconds = max(
+                oldest_waiting_on_owner_seconds,
+                max(0, int(item.get("wait_age_seconds", 0))),
+            )
+        if include_priority:
+            priority_counts[support_ticket_priority(item.get("priority"))] += 1
     active_count = sum(
         status_counts[status] for status in ("open", "acknowledged", "in_progress")
     )
     finished_count = status_counts["resolved"] + status_counts["closed"]
-    return {
+    summary = {
         "status_counts": status_counts,
         "workflow_counts": workflow_counts,
+        "age_counts": age_counts,
         "active_count": active_count,
         "finished_count": finished_count,
         "waiting_on_owner_count": workflow_counts["waiting_on_owner"],
         "waiting_on_customer_count": workflow_counts["waiting_on_customer"],
         "unread_ticket_count": unread_ticket_count,
         "unread_message_count": unread_message_count,
+        "oldest_waiting_on_owner_seconds": oldest_waiting_on_owner_seconds,
     }
+    if include_priority:
+        summary["priority_counts"] = priority_counts
+        summary["urgent_count"] = priority_counts["urgent"]
+        summary["high_priority_count"] = priority_counts["high"]
+    return summary
 
 
 def list_account_support_tickets(token):
@@ -9409,7 +9552,11 @@ def list_admin_support_tickets():
             items.append(support_ticket_view(record, audience="admin"))
         except (InvalidTag, OSError, ValueError, json.JSONDecodeError):
             damaged_count += 1
-    summary = support_ticket_summary(items, "unread_customer_messages")
+    summary = support_ticket_summary(
+        items,
+        "unread_customer_messages",
+        include_priority=True,
+    )
     return {
         "ok": True,
         "count": len(items),
@@ -9428,6 +9575,11 @@ def admin_update_support_ticket(payload):
     status = str(payload.get("status", "") or "").strip().lower()
     if status not in SUPPORT_TICKET_STATUSES:
         raise ValueError("Choose a valid support ticket status.")
+    requested_priority = payload.get("priority")
+    if requested_priority is not None:
+        requested_priority = str(requested_priority).strip().lower()
+        if requested_priority not in SUPPORT_TICKET_PRIORITIES:
+            raise ValueError("Choose a valid support ticket priority.")
     owner_reply = clean_support_text(payload.get("owner_reply"), 4000, "owner_reply")
     owner_note = clean_support_text(payload.get("owner_note"), 4000, "owner_note")
     with LICENSE_STATE_LOCK:
@@ -9440,6 +9592,11 @@ def admin_update_support_ticket(payload):
         private["owner_reply"] = owner_reply
         private["owner_note"] = owner_note
         record["status"] = status
+        record["priority"] = (
+            requested_priority
+            if requested_priority is not None
+            else support_ticket_priority(record.get("priority"))
+        )
         record["updated_at_utc"] = now
         record["owner_last_read_at_utc"] = now
         record["owner_read_customer_messages"] = sum(
@@ -11667,6 +11824,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_account_support_workflow_enabled": True,
                     "owner_support_bulk_read_enabled": True,
                     "support_queue_safe_export_enabled": True,
+                    "support_ticket_priorities_enabled": True,
+                    "support_queue_age_bands_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
