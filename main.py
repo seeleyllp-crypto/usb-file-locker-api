@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.71.0"
+API_VERSION = "0.72.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -2656,6 +2656,7 @@ def docs_payload():
             {"method": "GET", "path": "/api/v1/admin/support-tickets", "purpose": "Admin-only encrypted support inbox"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/action", "purpose": "Admin-only acknowledge, resolve, close, note, and reply action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/read", "purpose": "Admin-only mark-customer-messages-read action"},
+            {"method": "POST", "path": "/api/v1/admin/support-tickets/read-all", "purpose": "Admin-only aggregate mark-all-customer-messages-read action"},
             {"method": "POST", "path": "/api/v1/admin/support-tickets/delete", "purpose": "Admin-only permanent support-ticket deletion"},
             {"method": "POST", "path": "/api/v1/announcements/mine", "purpose": "Licensed read-only owner announcements for this plan rank"},
             {"method": "GET", "path": "/api/v1/admin/announcements", "purpose": "Admin-only announcement inventory"},
@@ -5275,8 +5276,8 @@ def owner_portal_html():
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
     .ticket-actions { grid-template-columns:minmax(130px,.45fr) minmax(200px,1fr) minmax(200px,1fr) auto auto; align-items:start; }
-    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(160px,.55fr) minmax(150px,.5fr) auto; margin-top:12px; }
-    .support-tool-buttons { display:flex; gap:8px; align-items:end; }
+    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(160px,.55fr) minmax(150px,.5fr); margin-top:12px; }
+    .support-owner-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
     .stats { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
@@ -5297,6 +5298,10 @@ def owner_portal_html():
     .status.good { color:var(--green); }
     .record { margin-top:10px; padding:15px; border:1px solid var(--line); border-radius:6px; background:var(--panel); outline:none; }
     .record:focus { outline:2px solid var(--blue); outline-offset:3px; }
+    .support-ticket > summary { cursor:pointer; list-style:none; }
+    .support-ticket > summary::-webkit-details-marker { display:none; }
+    .support-ticket > summary::before { content:"+"; float:left; margin-right:9px; color:var(--blue); font-weight:900; }
+    .support-ticket[open] > summary::before { content:"-"; }
     .record strong { font-size:15px; overflow-wrap:anywhere; }
     .meta { color:var(--muted); font-size:12px; margin-top:4px; }
     .badge { display:inline-block; min-width:72px; padding:4px 8px; border-radius:4px; text-align:center; text-transform:uppercase; font-size:11px; font-weight:800; background:#25302a; color:var(--green); }
@@ -5312,7 +5317,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .support-tool-buttons{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5444,7 +5449,8 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div><div class="support-tool-buttons"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div></div>
+      <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
@@ -5461,7 +5467,7 @@ def owner_portal_html():
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], supportSummary: {}, supportAlertReady: false, supportUnreadBaseline: 0, auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
+    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], supportSummary: {}, supportExpandedIds: new Set(), supportKnownUnreadIds: new Set(), supportAlertReady: false, supportUnreadBaseline: 0, auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
     const AUTO_REFRESH_MS = 30000;
 
     function setStatus(message, kind="") {
@@ -5485,6 +5491,7 @@ def owner_portal_html():
       $("downloadActivity").disabled = !value || state.busy;
       $("testRelease").disabled = !value || state.busy;
       $("nextOwnerUnread").disabled = !value || !(state.supportSummary.unread_message_count > 0);
+      $("markAllOwnerRead").disabled = !value || !(state.supportSummary.unread_message_count > 0);
     }
 
     async function api(path, options={}) {
@@ -5565,6 +5572,7 @@ def owner_portal_html():
       state.accountItems = accounts.items || [];
       state.supportItems = support.items || [];
       state.supportSummary = support.summary || {};
+      syncOwnerSupportExpansion();
       updateOwnerSupportAlerts(Number(state.supportSummary.unread_message_count || 0));
       state.auditItems = audits.items || [];
       state.announcementItems = announcements.items || [];
@@ -5798,6 +5806,22 @@ def owner_portal_html():
       return Number.isFinite(value) ? value : 0;
     }
 
+    function syncOwnerSupportExpansion() {
+      const validIds = new Set(state.supportItems.map((item) => item.ticket_id).filter(Boolean));
+      for (const id of [...state.supportExpandedIds]) {
+        if (!validIds.has(id)) state.supportExpandedIds.delete(id);
+      }
+      const nextUnread = new Set(
+        state.supportItems
+          .filter((item) => item.has_unread_customer_message)
+          .map((item) => item.ticket_id)
+      );
+      for (const id of nextUnread) {
+        if (!state.supportKnownUnreadIds.has(id)) state.supportExpandedIds.add(id);
+      }
+      state.supportKnownUnreadIds = nextUnread;
+    }
+
     function visibleOwnerSupportItems() {
       const query = $("supportSearch").value.trim().toLowerCase();
       const view = $("supportFilter").value;
@@ -5863,6 +5887,7 @@ def owner_portal_html():
         .filter((item) => item.has_unread_customer_message)
         .sort((a, b) => ownerSupportTime(b, "updated_at_utc") - ownerSupportTime(a, "updated_at_utc"))[0];
       if (!next) return setStatus("No unread customer messages.", "good");
+      state.supportExpandedIds.add(next.ticket_id);
       $("supportSearch").value = "";
       $("supportFilter").value = "unread";
       $("supportSort").value = "updated_desc";
@@ -5876,12 +5901,25 @@ def owner_portal_html():
       });
     }
 
+    function expandOwnerUnread() {
+      for (const item of state.supportItems) {
+        if (item.has_unread_customer_message) state.supportExpandedIds.add(item.ticket_id);
+      }
+      renderSupport();
+    }
+
+    function collapseOwnerSupport() {
+      state.supportExpandedIds.clear();
+      renderSupport();
+    }
+
     function renderSupport() {
       const host = $("supportRecords");
       host.replaceChildren();
       const visible = visibleOwnerSupportItems();
       const summary = state.supportSummary || {};
       $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
+      $("markAllOwnerRead").disabled = !state.connected || !(summary.unread_message_count > 0);
       $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Owner action ${summary.waiting_on_owner_count || 0} | Waiting on customer ${summary.waiting_on_customer_count || 0} | Finished ${summary.finished_count || 0} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
@@ -5893,10 +5931,15 @@ def owner_portal_html():
         return;
       }
       for (const item of visible) {
-        const record = document.createElement("article");
-        record.className = "record";
+        const record = document.createElement("details");
+        const summaryRow = document.createElement("summary");
+        record.className = "record support-ticket";
         record.id = `owner-support-${item.ticket_id || "unknown"}`;
         record.tabIndex = -1;
+        record.open = state.supportExpandedIds.has(item.ticket_id);
+        record.ontoggle = () => record.open
+          ? state.supportExpandedIds.add(item.ticket_id)
+          : state.supportExpandedIds.delete(item.ticket_id);
         const head = document.createElement("div");
         head.className = "record-head";
         const identity = document.createElement("div");
@@ -5932,7 +5975,8 @@ def owner_portal_html():
           message.textContent = `${entry.author === "owner" ? "OWNER" : "CUSTOMER"} | ${entry.time_utc || "unknown time"}\n${entry.message || ""}`;
           conversation.append(message);
         }
-        record.append(head, conversation);
+        summaryRow.append(head);
+        record.append(summaryRow, conversation);
         if (item.steps) {
           const stepsLabel = document.createElement("label");
           stepsLabel.textContent = "Steps to reproduce";
@@ -6224,6 +6268,65 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
+    function downloadOwnerJson(filename, data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function exportOwnerSupportQueue() {
+      const summary = state.supportSummary || {};
+      const status = summary.status_counts || {};
+      const workflow = summary.workflow_counts || {};
+      downloadOwnerJson("vaultlink-owner-support-queue.json", {
+        schema:"vaultlink-owner-support-queue-v1",
+        api_version:(state.dashboard?.release || {}).api_version || "",
+        exported_at_utc:new Date().toISOString(),
+        summary:{
+          total_count:state.supportItems.length,
+          active_count:Number(summary.active_count || 0),
+          finished_count:Number(summary.finished_count || 0),
+          unread_ticket_count:Number(summary.unread_ticket_count || 0),
+          unread_message_count:Number(summary.unread_message_count || 0),
+          waiting_on_owner_count:Number(summary.waiting_on_owner_count || 0),
+          waiting_on_customer_count:Number(summary.waiting_on_customer_count || 0),
+          status_counts:{
+            open:Number(status.open || 0),
+            acknowledged:Number(status.acknowledged || 0),
+            in_progress:Number(status.in_progress || 0),
+            resolved:Number(status.resolved || 0),
+            closed:Number(status.closed || 0)
+          },
+          workflow_counts:{
+            waiting_on_owner:Number(workflow.waiting_on_owner || 0),
+            waiting_on_customer:Number(workflow.waiting_on_customer || 0),
+            finished:Number(workflow.finished || 0)
+          }
+        },
+        items:state.supportItems.map((item) => ({
+          ticket_id:item.ticket_id || "",
+          source:item.source || "",
+          category:item.category || "other",
+          status:item.status || "open",
+          workflow_state:item.workflow_state || "",
+          created_at_utc:item.created_at_utc || "",
+          updated_at_utc:item.updated_at_utc || "",
+          last_message_at_utc:item.last_message_at_utc || "",
+          last_author:item.last_author || "",
+          message_count:Number(item.message_count || 0),
+          unread_customer_messages:Number(item.unread_customer_messages || 0)
+        })),
+        privacy:"Metadata only. No customer username, account id, subject, message, conversation, owner reply, private note, license, machine id, device, file, path, PIN, password, admin token, or USB secret is included."
+      });
+      setStatus("Privacy-safe owner support queue exported.", "good");
+    }
+
     async function deleteAnnouncement(item) {
       if (!confirm(`PERMANENTLY DELETE ${item.announcement_id}?`)) return;
       try {
@@ -6350,6 +6453,25 @@ def owner_portal_html():
       } catch (error) { setStatus(error.message, "bad"); }
     }
 
+    async function markAllOwnerSupportRead() {
+      if (!(state.supportSummary.unread_message_count > 0)) return;
+      if (!confirm("Mark every unread customer support message as read?")) return;
+      const button = $("markAllOwnerRead");
+      button.disabled = true;
+      try {
+        const result = await api("/api/v1/admin/support-tickets/read-all", {
+          method:"POST",
+          body:"{}"
+        });
+        await loadLicenses(true);
+        setStatus(result.message || "All customer support messages marked read.", "good");
+      } catch (error) {
+        setStatus(error.message, "bad");
+      } finally {
+        button.disabled = !state.connected || !(state.supportSummary.unread_message_count > 0);
+      }
+    }
+
     async function deleteSupport(item) {
       if (!confirm(`PERMANENTLY DELETE ${item.ticket_id}? This removes the report and owner reply.`)) return;
       try {
@@ -6384,7 +6506,7 @@ def owner_portal_html():
     }
 
     $("connect").addEventListener("click", connect);
-    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.supportSummary={}; state.supportAlertReady=false; state.supportUnreadBaseline=0; document.title="VaultLink Owner Console"; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
+    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.supportSummary={}; state.supportExpandedIds.clear(); state.supportKnownUnreadIds.clear(); state.supportAlertReady=false; state.supportUnreadBaseline=0; document.title="VaultLink Owner Console"; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
     $("issue").addEventListener("click", issueLicense);
     $("issueGiveaway").addEventListener("click", issueGiveaway);
     $("refresh").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
@@ -6393,6 +6515,10 @@ def owner_portal_html():
     $("supportFilter").addEventListener("change", renderSupport);
     $("supportSort").addEventListener("change", renderSupport);
     $("nextOwnerUnread").addEventListener("click", focusNextOwnerUnread);
+    $("markAllOwnerRead").addEventListener("click", markAllOwnerSupportRead);
+    $("expandOwnerUnread").addEventListener("click", expandOwnerUnread);
+    $("collapseOwnerSupport").addEventListener("click", collapseOwnerSupport);
+    $("exportOwnerSupport").addEventListener("click", exportOwnerSupportQueue);
     $("enableOwnerAlerts").addEventListener("click", enableOwnerAlerts);
     $("refreshLogs").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("publishAnnouncement").addEventListener("click", publishAnnouncement);
@@ -9365,6 +9491,53 @@ def admin_mark_support_ticket_read(payload):
     }
 
 
+def admin_mark_all_support_tickets_read():
+    marked_ticket_count = 0
+    marked_message_count = 0
+    skipped_damaged_count = 0
+    now = utc_now()
+    with LICENSE_STATE_LOCK:
+        for record in support_ticket_records():
+            try:
+                private = support_ticket_private_fields(record)
+                conversation = support_ticket_conversation(record, private)
+                _unread_owner_messages, unread_customer_messages = support_ticket_unread_counts(
+                    record,
+                    conversation,
+                )
+            except (InvalidTag, OSError, ValueError, json.JSONDecodeError):
+                skipped_damaged_count += 1
+                continue
+            if unread_customer_messages <= 0:
+                continue
+            record["owner_last_read_at_utc"] = now
+            record["owner_read_customer_messages"] = sum(
+                entry.get("author") == "customer" for entry in conversation
+            )
+            write_private_json(support_ticket_path(record["ticket_id"]), record)
+            marked_ticket_count += 1
+            marked_message_count += unread_customer_messages
+    record_api_activity(
+        "support_ticket_owner_read_all",
+        "ok",
+        "support_ticket",
+        "aggregate",
+        actor="owner",
+    )
+    return {
+        "ok": True,
+        "marked_read": True,
+        "marked_ticket_count": marked_ticket_count,
+        "marked_message_count": marked_message_count,
+        "skipped_damaged_count": skipped_damaged_count,
+        "message": (
+            f"Marked {marked_message_count} customer message(s) read across "
+            f"{marked_ticket_count} help request(s)."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
 def admin_delete_support_ticket(payload):
     ticket_id = validated_support_ticket_id(payload.get("ticket_id"))
     with LICENSE_STATE_LOCK:
@@ -11492,6 +11665,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_account_support_unread_enabled": True,
                     "customer_account_support_bulk_read_enabled": True,
                     "customer_account_support_workflow_enabled": True,
+                    "owner_support_bulk_read_enabled": True,
+                    "support_queue_safe_export_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
@@ -12157,6 +12332,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/support-tickets/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/action": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/read": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/admin/support-tickets/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/support-tickets/delete": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/announcements/mine": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/admin/announcements/create": MAX_SUPPORT_JSON_BODY_BYTES,
@@ -12368,6 +12544,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/support-tickets/read":
                 self.require_admin_token()
                 self.send_json(admin_mark_support_ticket_read(payload))
+                return
+            if path == "/api/v1/admin/support-tickets/read-all":
+                self.require_admin_token()
+                self.send_json(admin_mark_all_support_tickets_read())
                 return
             if path == "/api/v1/admin/support-tickets/delete":
                 self.require_admin_token()

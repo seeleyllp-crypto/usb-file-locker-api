@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.71.0")
+        self.assertEqual(api.API_VERSION, "0.72.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.71.0")
+        self.assertEqual(payload["api_version"], "0.72.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.71.0")
+        self.assertEqual(payload["api_version"], "0.72.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2703,6 +2703,16 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(inbox["count"], 0)
         self.assertEqual(inbox["damaged_count"], 1)
+        status, bulk_read = self.call(
+            "/api/v1/admin/support-tickets/read-all",
+            method="POST",
+            payload={},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(bulk_read["marked_ticket_count"], 0)
+        self.assertEqual(bulk_read["marked_message_count"], 0)
+        self.assertEqual(bulk_read["skipped_damaged_count"], 1)
         status, dashboard = self.call(
             "/api/v1/admin/dashboard",
             headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
@@ -3924,6 +3934,13 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 401)
         self.assertEqual(unauthorized["error"], "unauthorized")
+        status, forbidden_owner_bulk = self.call(
+            "/api/v1/admin/support-tickets/read-all",
+            method="POST",
+            payload={},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(forbidden_owner_bulk["error"], "forbidden")
         status, unauthorized = self.call(
             "/api/v1/accounts/support",
             method="POST",
@@ -4017,6 +4034,25 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(owner_ticket["unread_customer_messages"], 1)
         self.assertTrue(owner_ticket["has_unread_customer_message"])
         self.assertEqual(owner_ticket["workflow_state"], "waiting_on_owner")
+        status, owner_bulk_read = self.call(
+            "/api/v1/admin/support-tickets/read-all",
+            method="POST",
+            payload={},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(owner_bulk_read["marked_ticket_count"], 1)
+        self.assertEqual(owner_bulk_read["marked_message_count"], 1)
+        self.assertEqual(owner_bulk_read["skipped_damaged_count"], 0)
+        status, owner_after_bulk = self.call(
+            "/api/v1/admin/support-tickets",
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        owner_ticket_after_bulk = next(
+            item for item in owner_after_bulk["items"] if item["ticket_id"] == ticket_id
+        )
+        self.assertEqual(owner_ticket_after_bulk["unread_customer_messages"], 0)
 
         status, forbidden_read = self.call(
             "/api/v1/admin/support-tickets/read",
@@ -4281,6 +4317,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"NEXT UNREAD", page)
         self.assertIn(b"ENABLE REPLY ALERTS", page)
         self.assertIn(b"Notification.requestPermission", page)
+        self.assertIn(b"EXPAND UNREAD", page)
+        self.assertIn(b"COLLAPSE ALL", page)
+        self.assertIn(b"EXPORT SAFE QUEUE", page)
+        self.assertIn(b"vaultlink-support-queue-v1", page)
+        self.assertIn(b'createElement("details")', page)
         self.assertIn(b"SEND FOLLOW-UP", page)
         self.assertIn(b"CLOSE REQUEST", page)
         self.assertIn(b"COPY FAILED", page)
@@ -4299,6 +4340,11 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"WAITING ON CUSTOMER", owner_page)
         self.assertIn(b"nextOwnerUnread", owner_page)
         self.assertIn(b"enableOwnerAlerts", owner_page)
+        self.assertIn(b"/api/v1/admin/support-tickets/read-all", owner_page)
+        self.assertIn(b"markAllOwnerRead", owner_page)
+        self.assertIn(b"expandOwnerUnread", owner_page)
+        self.assertIn(b"collapseOwnerSupport", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v1", owner_page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(
