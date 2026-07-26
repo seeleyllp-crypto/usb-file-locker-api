@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.70.0")
+        self.assertEqual(api.API_VERSION, "0.71.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.70.0")
+        self.assertEqual(payload["api_version"], "0.71.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.70.0")
+        self.assertEqual(payload["api_version"], "0.71.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -3975,8 +3975,14 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["summary"]["active_count"], 1)
         self.assertEqual(mine["summary"]["finished_count"], 0)
         self.assertEqual(mine["summary"]["unread_ticket_count"], 0)
+        self.assertEqual(mine["summary"]["waiting_on_owner_count"], 1)
+        self.assertEqual(mine["summary"]["waiting_on_customer_count"], 0)
         self.assertEqual(mine["summary"]["status_counts"]["open"], 1)
+        self.assertEqual(mine["summary"]["workflow_counts"]["waiting_on_owner"], 1)
         self.assertEqual(mine["items"][0]["message"], private_message)
+        self.assertEqual(mine["items"][0]["message_count"], 1)
+        self.assertEqual(mine["items"][0]["last_author"], "customer")
+        self.assertEqual(mine["items"][0]["workflow_state"], "waiting_on_owner")
         self.assertEqual(mine["items"][0]["unread_owner_messages"], 0)
         self.assertFalse(mine["items"][0]["has_unread_owner_reply"])
         self.assertNotIn("owner_note", mine["items"][0])
@@ -4007,8 +4013,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertGreaterEqual(owner_inbox["unread_customer_count"], 1)
         self.assertGreaterEqual(owner_inbox["summary"]["active_count"], 1)
         self.assertGreaterEqual(owner_inbox["summary"]["unread_ticket_count"], 1)
+        self.assertGreaterEqual(owner_inbox["summary"]["waiting_on_owner_count"], 1)
         self.assertEqual(owner_ticket["unread_customer_messages"], 1)
         self.assertTrue(owner_ticket["has_unread_customer_message"])
+        self.assertEqual(owner_ticket["workflow_state"], "waiting_on_owner")
 
         status, forbidden_read = self.call(
             "/api/v1/admin/support-tickets/read",
@@ -4049,6 +4057,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["unread_owner_count"], 1)
         self.assertEqual(mine["items"][0]["unread_owner_messages"], 1)
         self.assertTrue(mine["items"][0]["has_unread_owner_reply"])
+        self.assertEqual(mine["items"][0]["message_count"], 2)
+        self.assertEqual(mine["items"][0]["last_author"], "owner")
+        self.assertEqual(mine["items"][0]["workflow_state"], "waiting_on_customer")
+        self.assertGreaterEqual(mine["summary"]["waiting_on_customer_count"], 1)
         self.assertNotIn("owner_note", mine["items"][0])
         self.assertEqual(
             [entry["author"] for entry in mine["items"][0]["conversation"]],
@@ -4263,6 +4275,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"MARK ALL READ", page)
         self.assertIn(b"supportSearch", page)
         self.assertIn(b"supportView", page)
+        self.assertIn(b"supportSort", page)
+        self.assertIn(b"WAITING ON OWNER", page)
+        self.assertIn(b"OWNER REPLIED", page)
+        self.assertIn(b"NEXT UNREAD", page)
+        self.assertIn(b"ENABLE REPLY ALERTS", page)
+        self.assertIn(b"Notification.requestPermission", page)
         self.assertIn(b"SEND FOLLOW-UP", page)
         self.assertIn(b"CLOSE REQUEST", page)
         self.assertIn(b"COPY FAILED", page)
@@ -4275,7 +4293,12 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"NEW MESSAGE", owner_page)
         self.assertIn(b"supportSearch", owner_page)
         self.assertIn(b"supportFilter", owner_page)
+        self.assertIn(b"supportSort", owner_page)
         self.assertIn(b"UNREAD CUSTOMER MESSAGES", owner_page)
+        self.assertIn(b"OWNER ACTION NEEDED", owner_page)
+        self.assertIn(b"WAITING ON CUSTOMER", owner_page)
+        self.assertIn(b"nextOwnerUnread", owner_page)
+        self.assertIn(b"enableOwnerAlerts", owner_page)
 
     def test_account_username_change_requires_password_and_invalidates_sessions(self):
         status, registered = self.call(

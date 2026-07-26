@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.70.0"
+API_VERSION = "0.71.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -5275,7 +5275,8 @@ def owner_portal_html():
     .record-head { grid-template-columns:minmax(180px,1fr) minmax(160px,.7fr) auto; align-items:start; }
     .record-actions { grid-template-columns:minmax(180px,1fr) auto auto auto auto auto; }
     .ticket-actions { grid-template-columns:minmax(130px,.45fr) minmax(200px,1fr) minmax(200px,1fr) auto auto; align-items:start; }
-    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(170px,.5fr); margin-top:12px; }
+    .support-filters { grid-template-columns:minmax(220px,1fr) minmax(160px,.55fr) minmax(150px,.5fr) auto; margin-top:12px; }
+    .support-tool-buttons { display:flex; gap:8px; align-items:end; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
     .stats { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
@@ -5294,7 +5295,8 @@ def owner_portal_html():
     .status { min-height:22px; margin-top:10px; color:var(--muted); }
     .status.bad { color:var(--red); }
     .status.good { color:var(--green); }
-    .record { margin-top:10px; padding:15px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+    .record { margin-top:10px; padding:15px; border:1px solid var(--line); border-radius:6px; background:var(--panel); outline:none; }
+    .record:focus { outline:2px solid var(--blue); outline-offset:3px; }
     .record strong { font-size:15px; overflow-wrap:anywhere; }
     .meta { color:var(--muted); font-size:12px; margin-top:4px; }
     .badge { display:inline-block; min-width:72px; padding:4px 8px; border-radius:4px; text-align:center; text-transform:uppercase; font-size:11px; font-weight:800; background:#25302a; color:var(--green); }
@@ -5310,7 +5312,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters { grid-template-columns:1fr; } .support-tool-buttons{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5442,7 +5444,7 @@ def owner_portal_html():
 
     <section>
       <div class="record-head"><h2>Support Inbox</h2><div id="supportUnread" class="meta">0 NEW</div><div id="supportStorage" class="meta"></div><button id="refreshSupport" disabled>REFRESH REQUESTS</button></div>
-      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div></div>
+      <div class="support-filters"><div><label for="supportSearch">Find requests</label><input id="supportSearch" maxlength="80" autocomplete="off" placeholder="Subject, account, ticket, category"></div><div><label for="supportFilter">View</label><select id="supportFilter"><option value="all">ALL REQUESTS</option><option value="unread">UNREAD CUSTOMER MESSAGES</option><option value="owner_action">OWNER ACTION NEEDED</option><option value="waiting_customer">WAITING ON CUSTOMER</option><option value="active">ACTIVE</option><option value="finished">RESOLVED OR CLOSED</option><option value="account">SIGNED-IN ACCOUNTS</option><option value="device">LICENSED DEVICES</option></select></div><div><label for="supportSort">Sort</label><select id="supportSort"><option value="updated_desc">RECENTLY UPDATED</option><option value="updated_asc">OLDEST UPDATE</option><option value="created_desc">NEWEST CREATED</option><option value="created_asc">OLDEST CREATED</option></select></div><div class="support-tool-buttons"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
@@ -5459,7 +5461,7 @@ def owner_portal_html():
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], supportSummary: {}, auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
+    const state = { token: "", connected: false, busy: false, loading: false, items: [], accountItems: [], supportItems: [], supportSummary: {}, supportAlertReady: false, supportUnreadBaseline: 0, auditItems: [], announcementItems: [], activityItems: [], activityIntegrity: null, serviceStatus: null, dashboard: null, releaseStatus: null };
     const AUTO_REFRESH_MS = 30000;
 
     function setStatus(message, kind="") {
@@ -5482,6 +5484,7 @@ def owner_portal_html():
       $("refreshActivity").disabled = !value || state.busy;
       $("downloadActivity").disabled = !value || state.busy;
       $("testRelease").disabled = !value || state.busy;
+      $("nextOwnerUnread").disabled = !value || !(state.supportSummary.unread_message_count > 0);
     }
 
     async function api(path, options={}) {
@@ -5562,6 +5565,7 @@ def owner_portal_html():
       state.accountItems = accounts.items || [];
       state.supportItems = support.items || [];
       state.supportSummary = support.summary || {};
+      updateOwnerSupportAlerts(Number(state.supportSummary.unread_message_count || 0));
       state.auditItems = audits.items || [];
       state.announcementItems = announcements.items || [];
       state.serviceStatus = serviceStatus.service_status || null;
@@ -5789,19 +5793,86 @@ def owner_portal_html():
       }
     }
 
+    function ownerSupportTime(item, field) {
+      const value = new Date(item[field] || 0).getTime();
+      return Number.isFinite(value) ? value : 0;
+    }
+
     function visibleOwnerSupportItems() {
       const query = $("supportSearch").value.trim().toLowerCase();
       const view = $("supportFilter").value;
-      return state.supportItems.filter((item) => {
-        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
+      const sort = $("supportSort").value;
+      const items = state.supportItems.filter((item) => {
+        const text = `${item.subject || ""} ${item.ticket_id || ""} ${item.category || ""} ${item.status || ""} ${item.workflow_state || ""} ${item.account_username || ""} ${item.account_id || ""} ${item.license_id || ""}`.toLowerCase();
         const active = !["resolved", "closed"].includes(item.status);
         const matchesView = view === "all"
           || (view === "unread" && item.has_unread_customer_message)
+          || (view === "owner_action" && item.workflow_state === "waiting_on_owner")
+          || (view === "waiting_customer" && item.workflow_state === "waiting_on_customer")
           || (view === "active" && active)
           || (view === "finished" && !active)
           || (view === "account" && item.source === "account")
           || (view === "device" && item.source !== "account");
         return matchesView && (!query || text.includes(query));
+      });
+      const field = sort.startsWith("created") ? "created_at_utc" : "updated_at_utc";
+      const direction = sort.endsWith("_asc") ? 1 : -1;
+      return items.sort((a, b) => direction * (ownerSupportTime(a, field) - ownerSupportTime(b, field)) || String(a.ticket_id || "").localeCompare(String(b.ticket_id || "")));
+    }
+
+    function ownerWorkflowLabel(item) {
+      if (item.workflow_state === "waiting_on_owner") return "OWNER ACTION";
+      if (item.workflow_state === "waiting_on_customer") return "WAITING ON CUSTOMER";
+      return (item.status || "open").replace("_", " ").toUpperCase();
+    }
+
+    function updateOwnerAlertButton() {
+      const button = $("enableOwnerAlerts");
+      if (!("Notification" in window)) {
+        button.textContent = "ALERTS UNAVAILABLE";
+        button.disabled = true;
+        return;
+      }
+      button.disabled = Notification.permission === "denied";
+      button.textContent = Notification.permission === "granted"
+        ? "SUPPORT ALERTS ON"
+        : Notification.permission === "denied" ? "ALERTS BLOCKED" : "ENABLE ALERTS";
+    }
+
+    function updateOwnerSupportAlerts(unread) {
+      document.title = unread ? `(${unread}) VaultLink Owner Console` : "VaultLink Owner Console";
+      if (state.supportAlertReady && unread > state.supportUnreadBaseline && "Notification" in window && Notification.permission === "granted") {
+        new Notification("VaultLink Owner Support", {
+          body: `${unread} unread customer message${unread === 1 ? "" : "s"} need review. No customer text is included in this alert.`
+        });
+      }
+      state.supportUnreadBaseline = unread;
+      state.supportAlertReady = true;
+      updateOwnerAlertButton();
+    }
+
+    async function enableOwnerAlerts() {
+      if (!("Notification" in window)) return setStatus("Browser notifications are not available here.", "bad");
+      const permission = await Notification.requestPermission();
+      updateOwnerAlertButton();
+      setStatus(permission === "granted" ? "Privacy-safe owner support alerts enabled." : "Owner support alerts were not enabled.", permission === "granted" ? "good" : "bad");
+    }
+
+    function focusNextOwnerUnread() {
+      const next = state.supportItems
+        .filter((item) => item.has_unread_customer_message)
+        .sort((a, b) => ownerSupportTime(b, "updated_at_utc") - ownerSupportTime(a, "updated_at_utc"))[0];
+      if (!next) return setStatus("No unread customer messages.", "good");
+      $("supportSearch").value = "";
+      $("supportFilter").value = "unread";
+      $("supportSort").value = "updated_desc";
+      renderSupport();
+      requestAnimationFrame(() => {
+        const row = $(`owner-support-${next.ticket_id}`);
+        if (row) {
+          row.scrollIntoView({ behavior:"smooth", block:"center" });
+          row.focus({ preventScroll:true });
+        }
       });
     }
 
@@ -5810,7 +5881,8 @@ def owner_portal_html():
       host.replaceChildren();
       const visible = visibleOwnerSupportItems();
       const summary = state.supportSummary || {};
-      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Active ${summary.active_count || 0} | Finished ${summary.finished_count || 0} | Unread requests ${summary.unread_ticket_count || 0}`;
+      $("nextOwnerUnread").disabled = !state.connected || !(summary.unread_message_count > 0);
+      $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | Owner action ${summary.waiting_on_owner_count || 0} | Waiting on customer ${summary.waiting_on_customer_count || 0} | Finished ${summary.finished_count || 0} | Unread ${summary.unread_ticket_count || 0}`;
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -5823,6 +5895,8 @@ def owner_portal_html():
       for (const item of visible) {
         const record = document.createElement("article");
         record.className = "record";
+        record.id = `owner-support-${item.ticket_id || "unknown"}`;
+        record.tabIndex = -1;
         const head = document.createElement("div");
         head.className = "record-head";
         const identity = document.createElement("div");
@@ -5834,7 +5908,7 @@ def owner_portal_html():
         const customer = accountSource
           ? `${item.account_username || "unknown account"} | ${item.account_id || "missing account id"}`
           : item.license_id || "unknown license";
-        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${customer} | ${item.created_at_utc || "unknown time"}`;
+        meta.textContent = `${item.ticket_id || "unknown"} | ${item.category || "other"} | ${item.message_count || 0} messages | ${customer} | updated ${item.updated_at_utc || "unknown time"}`;
         identity.append(title, meta);
         const source = document.createElement("div");
         source.className = "meta";
@@ -5845,7 +5919,7 @@ def owner_portal_html():
         badge.className = `badge ${item.status || "open"}`;
         badge.textContent = item.has_unread_customer_message
           ? "NEW MESSAGE"
-          : (item.status || "open").replace("_", " ");
+          : ownerWorkflowLabel(item);
         head.append(identity, source, badge);
 
         const conversation = document.createElement("div");
@@ -6310,13 +6384,16 @@ def owner_portal_html():
     }
 
     $("connect").addEventListener("click", connect);
-    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.supportSummary={}; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
+    $("clearToken").addEventListener("click", () => { state.token=""; $("token").value=""; state.items=[]; state.supportItems=[]; state.supportSummary={}; state.supportAlertReady=false; state.supportUnreadBaseline=0; document.title="VaultLink Owner Console"; state.auditItems=[]; state.announcementItems=[]; state.activityItems=[]; state.activityIntegrity=null; state.serviceStatus=null; state.dashboard=null; state.releaseStatus=null; setConnected(false); renderDashboard(null); renderReleaseStatus(null); renderRecords(); renderSupport(); renderAudits(); renderAnnouncements(); renderActivity(); setStatus("Admin token cleared from page memory."); });
     $("issue").addEventListener("click", issueLicense);
     $("issueGiveaway").addEventListener("click", issueGiveaway);
     $("refresh").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("refreshSupport").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("supportSearch").addEventListener("input", renderSupport);
     $("supportFilter").addEventListener("change", renderSupport);
+    $("supportSort").addEventListener("change", renderSupport);
+    $("nextOwnerUnread").addEventListener("click", focusNextOwnerUnread);
+    $("enableOwnerAlerts").addEventListener("click", enableOwnerAlerts);
     $("refreshLogs").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
     $("publishAnnouncement").addEventListener("click", publishAnnouncement);
     $("refreshAnnouncements").addEventListener("click", () => loadLicenses().catch((error) => setStatus(error.message,"bad")));
@@ -6327,6 +6404,7 @@ def owner_portal_html():
     $("copyLatest").addEventListener("click", () => copyText($("latestKey").value));
     $("token").addEventListener("keydown", (event) => { if (event.key === "Enter") connect(); });
     window.setInterval(autoRefresh, AUTO_REFRESH_MS);
+    updateOwnerAlertButton();
     loadRanks().catch((error) => setStatus(error.message,"bad"));
   </script>
 </body>
@@ -8648,6 +8726,14 @@ def support_ticket_unread_counts(record, conversation):
     return owner_message_count - customer_read_count, customer_message_count - owner_read_count
 
 
+def support_ticket_workflow_state(status, conversation):
+    if str(status) in {"resolved", "closed"}:
+        return "finished"
+    if conversation and conversation[-1].get("author") == "owner":
+        return "waiting_on_customer"
+    return "waiting_on_owner"
+
+
 def support_ticket_view(record, audience="admin"):
     private = support_ticket_private_fields(record)
     conversation = support_ticket_conversation(record, private)
@@ -8655,11 +8741,13 @@ def support_ticket_view(record, audience="admin"):
         record,
         conversation,
     )
+    status = str(record.get("status", "open"))
+    last_message = conversation[-1] if conversation else {}
     item = {
         "ticket_id": str(record.get("ticket_id", "")),
         "source": str(record.get("source", "licensed_device")),
         "category": str(record.get("category", "other")),
-        "status": str(record.get("status", "open")),
+        "status": status,
         "created_at_utc": str(record.get("created_at_utc", "")),
         "updated_at_utc": str(record.get("updated_at_utc", "")),
         "acknowledged_at_utc": str(record.get("acknowledged_at_utc", "")),
@@ -8671,6 +8759,10 @@ def support_ticket_view(record, audience="admin"):
         "steps": str(private.get("steps", "")),
         "owner_reply": str(private.get("owner_reply", "")),
         "conversation": conversation,
+        "message_count": len(conversation),
+        "last_author": str(last_message.get("author", "")),
+        "last_message_at_utc": str(last_message.get("time_utc", "")),
+        "workflow_state": support_ticket_workflow_state(status, conversation),
         "history": list(record.get("history", []))[-50:],
     }
     if audience == "customer":
@@ -8895,6 +8987,11 @@ def create_account_support_ticket(payload, token):
 
 def support_ticket_summary(items, unread_field):
     status_counts = {status: 0 for status in SUPPORT_TICKET_STATUSES}
+    workflow_counts = {
+        "waiting_on_owner": 0,
+        "waiting_on_customer": 0,
+        "finished": 0,
+    }
     unread_ticket_count = 0
     unread_message_count = 0
     for item in items:
@@ -8904,14 +9001,20 @@ def support_ticket_summary(items, unread_field):
         unread_messages = max(0, int(item.get(unread_field, 0)))
         unread_message_count += unread_messages
         unread_ticket_count += unread_messages > 0
+        workflow_state = str(item.get("workflow_state", ""))
+        if workflow_state in workflow_counts:
+            workflow_counts[workflow_state] += 1
     active_count = sum(
         status_counts[status] for status in ("open", "acknowledged", "in_progress")
     )
     finished_count = status_counts["resolved"] + status_counts["closed"]
     return {
         "status_counts": status_counts,
+        "workflow_counts": workflow_counts,
         "active_count": active_count,
         "finished_count": finished_count,
+        "waiting_on_owner_count": workflow_counts["waiting_on_owner"],
+        "waiting_on_customer_count": workflow_counts["waiting_on_customer"],
         "unread_ticket_count": unread_ticket_count,
         "unread_message_count": unread_message_count,
     }
@@ -11388,6 +11491,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "customer_account_support_conversations_enabled": True,
                     "customer_account_support_unread_enabled": True,
                     "customer_account_support_bulk_read_enabled": True,
+                    "customer_account_support_workflow_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,
                     "customer_workspace_enabled": True,
