@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.78.0"
+API_VERSION = "0.79.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -5317,6 +5317,12 @@ def owner_portal_html():
     .support-filters { grid-template-columns:minmax(190px,1fr) minmax(145px,.58fr) minmax(120px,.4fr) minmax(135px,.46fr) minmax(120px,.42fr) minmax(140px,.48fr); margin-top:12px; }
     .support-bulk-priority { display:grid; grid-template-columns:minmax(145px,200px) auto minmax(145px,200px) auto minmax(180px,1fr); gap:10px; align-items:end; margin-top:10px; }
     .support-owner-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .support-queue-health { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .queue-health-button { min-height:78px; padding:10px 12px; border:1px solid var(--line); background:var(--panel); text-align:left; }
+    .queue-health-button.active { border-color:var(--green); background:#17231b; }
+    .queue-health-button strong { display:block; color:var(--text); font-size:12px; }
+    .queue-health-button span { display:block; margin-top:4px; color:var(--muted); font-size:11px; font-weight:600; line-height:1.35; }
+    .queue-health-button.urgent span { color:#ff9aa2; }
     .audit-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.5fr) auto; align-items:center; }
     .activity-row { grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) auto; align-items:center; }
     .stats { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
@@ -5377,7 +5383,7 @@ def owner_portal_html():
     .page-links a { color:var(--blue); text-decoration:none; font-weight:700; }
     .split { grid-column:1 / -1; }
     @media (max-width:900px) { .stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters,.support-bulk-priority,.support-review-actions { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
+    @media (max-width:760px) { .auth,.grid,.latest,.record-head,.record-actions,.ticket-actions,.audit-row,.activity-row,.device-row,.support-filters,.support-bulk-priority,.support-review-actions { grid-template-columns:1fr; } .support-owner-actions{display:grid;grid-template-columns:1fr 1fr}.support-queue-health{grid-template-columns:1fr 1fr}.stats { grid-template-columns:repeat(2,minmax(0,1fr)); } header > div { align-items:flex-start; flex-direction:column; padding:16px 0; } button { width:100%; } }
   </style>
 </head>
 <body>
@@ -5513,6 +5519,7 @@ def owner_portal_html():
       <div class="support-bulk-priority"><div><label for="bulkOwnerPriority">Filtered priority</label><select id="bulkOwnerPriority"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="urgent">URGENT</option></select></div><button id="applyFilteredPriority" class="warn" disabled>APPLY PRIORITY</button><div><label for="bulkOwnerQueue">Filtered route</label><select id="bulkOwnerQueue"><option value="unassigned">UNASSIGNED</option><option value="general">GENERAL</option><option value="technical">TECHNICAL</option><option value="licensing">LICENSING</option><option value="security">SECURITY</option><option value="billing">BILLING</option></select></div><button id="applyFilteredQueue" class="primary" disabled>APPLY ROUTE</button><div class="meta">Updates only fixed metadata for up to 100 requests currently shown by the filters.</div></div>
       <div class="support-owner-actions"><button id="nextOwnerUnread" class="blue" disabled>NEXT UNREAD</button><button id="markAllOwnerRead" class="primary" disabled>MARK ALL READ</button><button id="expandOwnerUnread">EXPAND UNREAD</button><button id="collapseOwnerSupport">COLLAPSE ALL</button><button id="exportOwnerSupport">EXPORT SAFE QUEUE</button><button id="enableOwnerAlerts">ENABLE ALERTS</button></div>
       <div id="supportSummary" class="meta">No help requests loaded.</div>
+      <div id="supportQueueHealth" class="support-queue-health" aria-label="Owner queue health"></div>
       <div id="supportRecords"><div class="empty">Connect to load customer help requests.</div></div>
     </section>
 
@@ -6086,6 +6093,32 @@ def owner_portal_html():
       renderSupport();
     }
 
+    function renderOwnerQueueHealth() {
+      const host = $("supportQueueHealth");
+      host.replaceChildren();
+      const queueHealth = state.supportSummary?.owner_queue_health || {};
+      const selectedQueue = $("supportQueue").value;
+      for (const queue of ["unassigned", "general", "technical", "licensing", "security", "billing"]) {
+        const metrics = queueHealth[queue] || {};
+        const button = document.createElement("button");
+        const title = document.createElement("strong");
+        const detail = document.createElement("span");
+        const urgent = Number(metrics.overdue_count || 0) > 0 || Number(metrics.urgent_count || 0) > 0;
+        button.type = "button";
+        button.className = `queue-health-button${selectedQueue === queue ? " active" : ""}${urgent ? " urgent" : ""}`;
+        button.setAttribute("aria-pressed", selectedQueue === queue ? "true" : "false");
+        title.textContent = `${ownerFixedLabel(queue)} | ${Number(metrics.total_count || 0)}`;
+        detail.textContent = `Action ${Number(metrics.needs_action_count || 0)} | Overdue ${Number(metrics.overdue_count || 0)} | Due soon ${Number(metrics.due_soon_count || 0)} | Unread ${Number(metrics.unread_ticket_count || 0)} | Oldest ${ownerSupportAgeLabel(metrics.oldest_waiting_on_owner_seconds || 0)}`;
+        button.onclick = () => {
+          $("supportQueue").value = selectedQueue === queue ? "all" : queue;
+          $("supportFilter").value = "all";
+          renderSupport();
+        };
+        button.append(title, detail);
+        host.append(button);
+      }
+    }
+
     function renderSupport() {
       const host = $("supportRecords");
       host.replaceChildren();
@@ -6102,6 +6135,7 @@ def owner_portal_html():
       $("applyFilteredPriority").disabled = !state.connected || visible.length === 0;
       $("applyFilteredQueue").disabled = !state.connected || visible.length === 0;
       $("supportSummary").textContent = `Showing ${visible.length} of ${state.supportItems.length} | High attention ${attention.high || 0} | Unassigned ${ownerQueues.unassigned || 0} | Pinned ${summary.pinned_count || 0} | Not resolved ${feedback.not_resolved || 0} | Review due ${reviews.due || 0} | Scheduled ${reviews.scheduled || 0} | Urgent ${priorities.urgent || 0} | High ${priorities.high || 0} | Overdue ${targets.overdue || 0} | Due soon ${targets.due_soon || 0} | Owner action ${summary.waiting_on_owner_count || 0} | Unread ${summary.unread_ticket_count || 0}`;
+      renderOwnerQueueHealth();
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
@@ -6610,10 +6644,12 @@ def owner_portal_html():
       const feedback = summary.feedback_counts || {};
       const ownerLabels = summary.owner_label_counts || {};
       const ownerQueues = summary.owner_queue_counts || {};
+      const ownerQueueHealth = summary.owner_queue_health || {};
       const progress = summary.customer_progress_counts || {};
+      const customerActions = summary.customer_action_counts || {};
       const attention = summary.attention_counts || {};
       downloadOwnerJson("vaultlink-owner-support-queue.json", {
-        schema:"vaultlink-owner-support-queue-v6",
+        schema:"vaultlink-owner-support-queue-v7",
         api_version:(state.dashboard?.release || {}).api_version || "",
         exported_at_utc:new Date().toISOString(),
         summary:{
@@ -6667,6 +6703,29 @@ def owner_portal_html():
             licensing:Number(ownerQueues.licensing || 0),
             security:Number(ownerQueues.security || 0),
             billing:Number(ownerQueues.billing || 0)
+          },
+          owner_queue_health:Object.fromEntries(
+            ["unassigned", "general", "technical", "licensing", "security", "billing"].map((queue) => {
+              const metrics = ownerQueueHealth[queue] || {};
+              return [queue, {
+                total_count:Number(metrics.total_count || 0),
+                active_count:Number(metrics.active_count || 0),
+                needs_action_count:Number(metrics.needs_action_count || 0),
+                waiting_on_customer_count:Number(metrics.waiting_on_customer_count || 0),
+                unread_ticket_count:Number(metrics.unread_ticket_count || 0),
+                overdue_count:Number(metrics.overdue_count || 0),
+                due_soon_count:Number(metrics.due_soon_count || 0),
+                urgent_count:Number(metrics.urgent_count || 0),
+                high_attention_count:Number(metrics.high_attention_count || 0),
+                oldest_waiting_on_owner_seconds:Number(metrics.oldest_waiting_on_owner_seconds || 0)
+              }];
+            })
+          ),
+          customer_action_counts:{
+            needs_your_action:Number(customerActions.needs_your_action || 0),
+            reply_needed:Number(customerActions.reply_needed || 0),
+            outcome_needed:Number(customerActions.outcome_needed || 0),
+            no_action_needed:Number(customerActions.no_action_needed || 0)
           },
           customer_progress_counts:{
             received:Number(progress.received || 0),
@@ -6726,6 +6785,8 @@ def owner_portal_html():
           customer_progress_stage:item.customer_progress_stage || "received",
           customer_progress_step:Number(item.customer_progress_step || 1),
           customer_progress_total_steps:Number(item.customer_progress_total_steps || 4),
+          customer_action_required:!!item.customer_action_required,
+          customer_next_action_code:item.customer_next_action_code || "none",
           resolution_feedback:item.resolution_feedback || "",
           resolution_feedback_at_utc:item.resolution_feedback_at_utc || "",
           attention_score:Number(item.attention_score || 0),
@@ -6738,7 +6799,7 @@ def owner_portal_html():
           message_count:Number(item.message_count || 0),
           unread_customer_messages:Number(item.unread_customer_messages || 0)
         })),
-        privacy:"Metadata only. Fixed owner labels, fixed routing queues, derived progress stages, and fixed customer resolution outcomes are included. No customer username, account id, subject, message, conversation, owner reply, private note, license, machine id, device, file, path, PIN, password, admin token, or USB secret is included."
+        privacy:"Metadata only. Fixed owner labels, fixed routing queues, aggregate queue health, derived progress stages, fixed next-action codes, and fixed customer resolution outcomes are included. No customer username, account id, subject, message, conversation, owner reply, private note, license, machine id, device, file, path, PIN, password, admin token, or USB secret is included."
       });
       setStatus("Privacy-safe owner support queue exported.", "good");
     }
@@ -9480,6 +9541,90 @@ def support_ticket_customer_progress(status, workflow_state):
     }
 
 
+def support_ticket_customer_next_action(status, workflow_state, resolution_feedback):
+    if str(status) in {"resolved", "closed"} or workflow_state == "finished":
+        if support_ticket_resolution_feedback(resolution_feedback):
+            return {
+                "customer_action_required": False,
+                "customer_next_action_code": "none",
+                "customer_next_action_label": "No action needed",
+                "customer_next_action_guidance": "Your outcome is saved. Reopen the request only if you need more help.",
+            }
+        return {
+            "customer_action_required": True,
+            "customer_next_action_code": "share_outcome",
+            "customer_next_action_label": "Share the outcome",
+            "customer_next_action_guidance": "Choose whether the finished request resolved the issue.",
+        }
+    if workflow_state == "waiting_on_customer":
+        return {
+            "customer_action_required": True,
+            "customer_next_action_code": "reply_to_owner",
+            "customer_next_action_label": "Review owner reply",
+            "customer_next_action_guidance": "Read the latest owner message and send a safe follow-up if needed.",
+        }
+    return {
+        "customer_action_required": False,
+        "customer_next_action_code": "wait_for_owner",
+        "customer_next_action_label": "No action needed",
+        "customer_next_action_guidance": "The owner has the request. You can wait for the next update.",
+    }
+
+
+def support_ticket_customer_timeline(progress_step, record, conversation):
+    current_step = max(1, min(4, int(progress_step or 1)))
+    first_owner_at = next(
+        (
+            str(entry.get("time_utc", ""))
+            for entry in conversation
+            if str(entry.get("author", "")) == "owner"
+        ),
+        "",
+    )
+    latest_owner_at = next(
+        (
+            str(entry.get("time_utc", ""))
+            for entry in reversed(conversation)
+            if str(entry.get("author", "")) == "owner"
+        ),
+        "",
+    )
+    completed_at = str(
+        record.get("closed_at_utc")
+        or record.get("resolved_at_utc")
+        or record.get("updated_at_utc")
+        or ""
+    )
+    milestones = (
+        ("received", "Received", str(record.get("created_at_utc", ""))),
+        (
+            "under_review",
+            "Under review",
+            str(record.get("acknowledged_at_utc") or first_owner_at),
+        ),
+        ("waiting_for_you", "Waiting for you", latest_owner_at),
+        ("completed", "Completed", completed_at),
+    )
+    timeline = []
+    for step, (stage, label, time_utc) in enumerate(milestones, start=1):
+        if current_step == 4 or step < current_step:
+            state = "complete"
+        elif step == current_step:
+            state = "current"
+        else:
+            state = "pending"
+        timeline.append(
+            {
+                "stage": stage,
+                "label": label,
+                "step": step,
+                "state": state,
+                "time_utc": time_utc if state in {"complete", "current"} else "",
+            }
+        )
+    return timeline
+
+
 def support_ticket_wait_metadata(status, workflow_state, started_at_utc, now=None):
     if str(status) in {"resolved", "closed"} or workflow_state == "finished":
         return {
@@ -9668,6 +9813,18 @@ def support_ticket_view(record, audience="admin"):
         )
     )
     item.update(support_ticket_customer_progress(status, workflow_state))
+    item.update(
+        support_ticket_customer_next_action(
+            status,
+            workflow_state,
+            item.get("resolution_feedback"),
+        )
+    )
+    item["customer_timeline"] = support_ticket_customer_timeline(
+        item["customer_progress_step"],
+        record,
+        conversation,
+    )
     if audience == "customer":
         item.update(
             {
@@ -9952,6 +10109,27 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "waiting_for_you": 0,
         "completed": 0,
     }
+    customer_action_counts = {
+        "needs_your_action": 0,
+        "reply_needed": 0,
+        "outcome_needed": 0,
+        "no_action_needed": 0,
+    }
+    owner_queue_health = {
+        queue: {
+            "total_count": 0,
+            "active_count": 0,
+            "needs_action_count": 0,
+            "waiting_on_customer_count": 0,
+            "unread_ticket_count": 0,
+            "overdue_count": 0,
+            "due_soon_count": 0,
+            "urgent_count": 0,
+            "high_attention_count": 0,
+            "oldest_waiting_on_owner_seconds": 0,
+        }
+        for queue in SUPPORT_OWNER_QUEUES
+    }
     attention_counts = {"normal": 0, "medium": 0, "high": 0}
     pinned_count = 0
     max_attention_score = 0
@@ -9988,6 +10166,15 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         if progress_stage not in progress_counts:
             progress_stage = "received"
         progress_counts[progress_stage] += 1
+        if bool(item.get("customer_action_required")):
+            customer_action_counts["needs_your_action"] += 1
+            action_code = str(item.get("customer_next_action_code", ""))
+            if action_code == "reply_to_owner":
+                customer_action_counts["reply_needed"] += 1
+            elif action_code == "share_outcome":
+                customer_action_counts["outcome_needed"] += 1
+        else:
+            customer_action_counts["no_action_needed"] += 1
         if include_priority:
             priority_counts[support_ticket_priority(item.get("priority"))] += 1
             target_state = str(item.get("response_target_state", "unknown"))
@@ -10025,13 +10212,37 @@ def support_ticket_summary(items, unread_field, include_priority=False):
             pinned_count += bool(item.get("owner_pinned"))
             for label in support_ticket_owner_labels(item.get("owner_labels")):
                 owner_label_counts[label] += 1
-            owner_queue_counts[
-                support_ticket_owner_queue(item.get("owner_queue"))
-            ] += 1
+            owner_queue = support_ticket_owner_queue(item.get("owner_queue"))
+            owner_queue_counts[owner_queue] += 1
+            queue_health = owner_queue_health[owner_queue]
+            queue_health["total_count"] += 1
+            queue_health["active_count"] += status in {
+                "open",
+                "acknowledged",
+                "in_progress",
+            }
+            queue_health["needs_action_count"] += (
+                workflow_state == "waiting_on_owner"
+            )
+            queue_health["waiting_on_customer_count"] += (
+                workflow_state == "waiting_on_customer"
+            )
+            queue_health["unread_ticket_count"] += unread_messages > 0
+            queue_health["overdue_count"] += target_state == "overdue"
+            queue_health["due_soon_count"] += target_state == "due_soon"
+            queue_health["urgent_count"] += (
+                support_ticket_priority(item.get("priority")) == "urgent"
+            )
             attention_level = str(item.get("attention_level", "normal"))
             if attention_level not in attention_counts:
                 attention_level = "normal"
             attention_counts[attention_level] += 1
+            queue_health["high_attention_count"] += attention_level == "high"
+            if workflow_state == "waiting_on_owner":
+                queue_health["oldest_waiting_on_owner_seconds"] = max(
+                    queue_health["oldest_waiting_on_owner_seconds"],
+                    max(0, int(item.get("wait_age_seconds", 0))),
+                )
             max_attention_score = max(
                 max_attention_score,
                 max(0, min(100, int(item.get("attention_score", 0)))),
@@ -10053,6 +10264,7 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         "oldest_waiting_on_owner_seconds": oldest_waiting_on_owner_seconds,
         "feedback_counts": feedback_counts,
         "customer_progress_counts": progress_counts,
+        "customer_action_counts": customer_action_counts,
     }
     if include_priority:
         summary["priority_counts"] = priority_counts
@@ -10071,6 +10283,7 @@ def support_ticket_summary(items, unread_field, include_priority=False):
         summary["pinned_count"] = pinned_count
         summary["owner_label_counts"] = owner_label_counts
         summary["owner_queue_counts"] = owner_queue_counts
+        summary["owner_queue_health"] = owner_queue_health
         summary["unassigned_count"] = owner_queue_counts["unassigned"]
         summary["attention_counts"] = attention_counts
         summary["max_attention_score"] = max_attention_score
@@ -12856,6 +13069,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "owner_support_fixed_routing_enabled": True,
                     "owner_support_bulk_routing_enabled": True,
                     "customer_support_progress_tracker_enabled": True,
+                    "customer_support_next_action_enabled": True,
+                    "customer_support_timeline_enabled": True,
+                    "owner_support_queue_health_enabled": True,
                     "customer_support_tab_drafts_enabled": True,
                     "customer_passwords_one_way_hashed": True,
                     "customer_account_sessions_hours": ACCOUNT_SESSION_HOURS,

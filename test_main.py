@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.78.0")
+        self.assertEqual(api.API_VERSION, "0.79.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.78.0")
+        self.assertEqual(payload["api_version"], "0.79.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.78.0")
+        self.assertEqual(payload["api_version"], "0.79.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -2734,6 +2734,13 @@ class VaultLinkApiTests(unittest.TestCase):
                         "waiting_for_you",
                         "completed",
                     )[index],
+                    "customer_action_required": (False, False, True, True)[index],
+                    "customer_next_action_code": (
+                        "wait_for_owner",
+                        "wait_for_owner",
+                        "reply_to_owner",
+                        "share_outcome",
+                    )[index],
                     "resolution_feedback": (
                         "",
                         "resolved",
@@ -2823,6 +2830,34 @@ class VaultLinkApiTests(unittest.TestCase):
                 "waiting_for_you": 1,
                 "completed": 1,
             },
+        )
+        self.assertEqual(
+            summary["customer_action_counts"],
+            {
+                "needs_your_action": 2,
+                "reply_needed": 1,
+                "outcome_needed": 1,
+                "no_action_needed": 2,
+            },
+        )
+        self.assertEqual(
+            summary["owner_queue_health"]["security"],
+            {
+                "total_count": 1,
+                "active_count": 1,
+                "needs_action_count": 1,
+                "waiting_on_customer_count": 0,
+                "unread_ticket_count": 1,
+                "overdue_count": 1,
+                "due_soon_count": 0,
+                "urgent_count": 1,
+                "high_attention_count": 1,
+                "oldest_waiting_on_owner_seconds": 2 * 24 * 60 * 60,
+            },
+        )
+        self.assertEqual(
+            summary["owner_queue_health"]["general"]["total_count"],
+            0,
         )
         self.assertEqual(
             summary["attention_counts"],
@@ -2980,6 +3015,68 @@ class VaultLinkApiTests(unittest.TestCase):
             )["customer_progress_stage"],
             "completed",
         )
+        self.assertEqual(
+            api.support_ticket_customer_next_action(
+                "open",
+                "waiting_on_owner",
+                "",
+            )["customer_next_action_code"],
+            "wait_for_owner",
+        )
+        self.assertEqual(
+            api.support_ticket_customer_next_action(
+                "in_progress",
+                "waiting_on_customer",
+                "",
+            ),
+            {
+                "customer_action_required": True,
+                "customer_next_action_code": "reply_to_owner",
+                "customer_next_action_label": "Review owner reply",
+                "customer_next_action_guidance": "Read the latest owner message and send a safe follow-up if needed.",
+            },
+        )
+        self.assertEqual(
+            api.support_ticket_customer_next_action(
+                "resolved",
+                "finished",
+                "",
+            )["customer_next_action_code"],
+            "share_outcome",
+        )
+        self.assertFalse(
+            api.support_ticket_customer_next_action(
+                "resolved",
+                "finished",
+                "resolved",
+            )["customer_action_required"]
+        )
+        timeline = api.support_ticket_customer_timeline(
+            3,
+            {
+                "created_at_utc": "2026-07-26T12:00:00Z",
+                "acknowledged_at_utc": "2026-07-26T12:05:00Z",
+            },
+            [
+                {
+                    "author": "customer",
+                    "time_utc": "2026-07-26T12:00:00Z",
+                    "message": "private text",
+                },
+                {
+                    "author": "owner",
+                    "time_utc": "2026-07-26T12:10:00Z",
+                    "message": "private reply",
+                },
+            ],
+        )
+        self.assertEqual(
+            [item["state"] for item in timeline],
+            ["complete", "complete", "current", "pending"],
+        )
+        self.assertEqual(timeline[1]["time_utc"], "2026-07-26T12:05:00Z")
+        self.assertEqual(timeline[2]["time_utc"], "2026-07-26T12:10:00Z")
+        self.assertNotIn("message", timeline[0])
         self.assertEqual(
             {
                 category: api.support_ticket_suggested_owner_queue(category)
@@ -4373,6 +4470,8 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["summary"]["age_counts"]["under_1h"], 1)
         self.assertEqual(mine["summary"]["customer_progress_counts"]["received"], 1)
         self.assertEqual(mine["summary"]["customer_progress_counts"]["under_review"], 0)
+        self.assertEqual(mine["summary"]["customer_action_counts"]["needs_your_action"], 0)
+        self.assertEqual(mine["summary"]["customer_action_counts"]["no_action_needed"], 1)
         self.assertGreaterEqual(mine["summary"]["oldest_waiting_on_owner_seconds"], 0)
         self.assertEqual(mine["items"][0]["message"], private_message)
         self.assertEqual(mine["items"][0]["message_count"], 1)
@@ -4382,6 +4481,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["items"][0]["customer_progress_step"], 1)
         self.assertEqual(mine["items"][0]["customer_progress_total_steps"], 4)
         self.assertEqual(mine["items"][0]["customer_progress_label"], "Received")
+        self.assertFalse(mine["items"][0]["customer_action_required"])
+        self.assertEqual(
+            mine["items"][0]["customer_next_action_code"],
+            "wait_for_owner",
+        )
+        self.assertEqual(
+            [step["state"] for step in mine["items"][0]["customer_timeline"]],
+            ["current", "pending", "pending", "pending"],
+        )
+        self.assertEqual(
+            mine["items"][0]["customer_timeline"][0]["time_utc"],
+            mine["items"][0]["created_at_utc"],
+        )
         self.assertEqual(mine["items"][0]["wait_age_band"], "under_1h")
         self.assertGreaterEqual(mine["items"][0]["wait_age_seconds"], 0)
         self.assertEqual(mine["items"][0]["unread_owner_messages"], 0)
@@ -4465,6 +4577,24 @@ class VaultLinkApiTests(unittest.TestCase):
             1,
         )
         self.assertEqual(owner_inbox["summary"]["unassigned_count"], 1)
+        self.assertEqual(
+            owner_inbox["summary"]["owner_queue_health"]["unassigned"][
+                "needs_action_count"
+            ],
+            1,
+        )
+        self.assertEqual(
+            owner_inbox["summary"]["owner_queue_health"]["unassigned"][
+                "unread_ticket_count"
+            ],
+            1,
+        )
+        self.assertEqual(
+            owner_inbox["summary"]["owner_queue_health"]["general"][
+                "total_count"
+            ],
+            0,
+        )
         self.assertEqual(owner_ticket["resolution_feedback"], "")
         self.assertEqual(owner_ticket["attention_score"], 25)
         self.assertEqual(owner_ticket["attention_level"], "normal")
@@ -4703,6 +4833,19 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(mine["items"][0]["message_count"], 2)
         self.assertEqual(mine["items"][0]["last_author"], "owner")
         self.assertEqual(mine["items"][0]["workflow_state"], "waiting_on_customer")
+        self.assertTrue(mine["items"][0]["customer_action_required"])
+        self.assertEqual(
+            mine["items"][0]["customer_next_action_code"],
+            "reply_to_owner",
+        )
+        self.assertEqual(
+            [step["state"] for step in mine["items"][0]["customer_timeline"]],
+            ["complete", "complete", "current", "pending"],
+        )
+        self.assertGreaterEqual(
+            mine["summary"]["customer_action_counts"]["reply_needed"],
+            1,
+        )
         self.assertNotIn("priority", mine["items"][0])
         self.assertGreaterEqual(mine["summary"]["waiting_on_customer_count"], 1)
         self.assertNotIn("owner_note", mine["items"][0])
@@ -4865,6 +5008,15 @@ class VaultLinkApiTests(unittest.TestCase):
             "completed",
         )
         self.assertEqual(resolved["ticket"]["customer_progress_step"], 4)
+        self.assertTrue(resolved["ticket"]["customer_action_required"])
+        self.assertEqual(
+            resolved["ticket"]["customer_next_action_code"],
+            "share_outcome",
+        )
+        self.assertEqual(
+            [step["state"] for step in resolved["ticket"]["customer_timeline"]],
+            ["complete", "complete", "complete", "complete"],
+        )
         self.assertEqual(resolved["ticket"]["review_state"], "none")
         self.assertEqual(resolved["ticket"]["review_after_utc"], "")
         status, invalid_feedback = self.call(
@@ -4897,6 +5049,11 @@ class VaultLinkApiTests(unittest.TestCase):
         )
         self.assertTrue(
             feedback_saved["ticket"]["resolution_feedback_at_utc"]
+        )
+        self.assertFalse(feedback_saved["ticket"]["customer_action_required"])
+        self.assertEqual(
+            feedback_saved["ticket"]["customer_next_action_code"],
+            "none",
         )
         self.assertNotIn("owner_labels", feedback_saved["ticket"])
         status, owner_with_feedback = self.call(
@@ -5031,6 +5188,9 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertTrue(health["owner_support_fixed_routing_enabled"])
         self.assertTrue(health["owner_support_bulk_routing_enabled"])
         self.assertTrue(health["customer_support_progress_tracker_enabled"])
+        self.assertTrue(health["customer_support_next_action_enabled"])
+        self.assertTrue(health["customer_support_timeline_enabled"])
+        self.assertTrue(health["owner_support_queue_health_enabled"])
 
         status, _headers, page = self.call_bytes("/account")
         self.assertEqual(status, 200)
@@ -5059,14 +5219,22 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"EXPAND UNREAD", page)
         self.assertIn(b"COLLAPSE ALL", page)
         self.assertIn(b"EXPORT SAFE QUEUE", page)
-        self.assertIn(b"vaultlink-support-queue-v4", page)
+        self.assertIn(b"vaultlink-support-queue-v5", page)
         self.assertIn(b"REQUEST RECEIVED", page)
         self.assertIn(b"UNDER REVIEW", page)
         self.assertIn(b"WAITING FOR ME", page)
         self.assertIn(b"PROGRESS STAGE", page)
+        self.assertIn(b"MY ACTION NEEDED", page)
+        self.assertIn(b"MY ACTION FIRST", page)
         self.assertIn(b"customer_progress_counts", page)
         self.assertIn(b"customer_progress_stage", page)
+        self.assertIn(b"customer_action_counts", page)
+        self.assertIn(b"customer_action_required", page)
+        self.assertIn(b"customer_next_action_code", page)
+        self.assertIn(b"customer_timeline", page)
         self.assertIn(b"progress-chip", page)
+        self.assertIn(b"support-timeline", page)
+        self.assertIn(b"YOUR NEXT ACTION", page)
         self.assertIn(b"RESOLUTION FEEDBACK NEEDED", page)
         self.assertIn(b"MARKED NOT RESOLVED", page)
         self.assertIn(b"Did this solve the issue?", page)
@@ -5081,7 +5249,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"CLOSE REQUEST", page)
         self.assertIn(b"SAFE RECEIPT", page)
         self.assertIn(b"COPY ID", page)
-        self.assertIn(b"vaultlink-support-receipt-v3", page)
+        self.assertIn(b"vaultlink-support-receipt-v4", page)
         self.assertIn(b"SUPPORT_DRAFT_PREFIX", page)
         self.assertIn(b"DRAFT SAVED IN THIS TAB", page)
         self.assertIn(b"supportSubjectCount", page)
@@ -5108,7 +5276,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"markAllOwnerRead", owner_page)
         self.assertIn(b"expandOwnerUnread", owner_page)
         self.assertIn(b"collapseOwnerSupport", owner_page)
-        self.assertIn(b"vaultlink-owner-support-queue-v6", owner_page)
+        self.assertIn(b"vaultlink-owner-support-queue-v7", owner_page)
         self.assertIn(b"HIGH ATTENTION", owner_page)
         self.assertIn(b"PINNED REQUESTS", owner_page)
         self.assertIn(b"CUSTOMER SAYS NOT RESOLVED", owner_page)
@@ -5118,6 +5286,10 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"QUEUE THEN ATTENTION", owner_page)
         self.assertIn(b"Owner routing queue", owner_page)
         self.assertIn(b"owner_queue_counts", owner_page)
+        self.assertIn(b"owner_queue_health", owner_page)
+        self.assertIn(b"supportQueueHealth", owner_page)
+        self.assertIn(b"queue-health-button", owner_page)
+        self.assertIn(b"renderOwnerQueueHealth", owner_page)
         self.assertIn(b"owner_queue", owner_page)
         self.assertIn(b"suggested_owner_queue", owner_page)
         self.assertIn(b"USE SUGGESTED", owner_page)
