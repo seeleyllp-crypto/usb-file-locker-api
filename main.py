@@ -13318,8 +13318,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         view = memoryview(body)
-        for offset in range(0, len(view), 64 * 1024):
-            self.wfile.write(view[offset : offset + 64 * 1024])
+        for offset in range(0, len(view), 8 * 1024):
+            self.wfile.write(view[offset : offset + 8 * 1024])
             self.wfile.flush()
         self.close_connection = True
 

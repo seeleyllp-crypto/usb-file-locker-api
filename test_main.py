@@ -3898,7 +3898,7 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertEqual(headers["Connection"], "close")
         self.assertEqual(body, package.read_bytes())
         download_source = inspect.getsource(api.ApiHandler.send_download)
-        self.assertIn("64 * 1024", download_source)
+        self.assertIn("8 * 1024", download_source)
         self.assertIn("self.wfile.flush()", download_source)
 
         tampered_manifest = dict(manifest)
