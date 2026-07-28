@@ -1,4 +1,5 @@
 import base64
+import inspect
 import json
 import hashlib
 import os
@@ -3893,7 +3894,12 @@ class VaultLinkApiTests(unittest.TestCase):
         status, headers, body = self.call_bytes("/api/v1/updates/windows/download")
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "application/zip")
+        self.assertEqual(headers["Content-Length"], str(package.stat().st_size))
+        self.assertEqual(headers["Connection"], "close")
         self.assertEqual(body, package.read_bytes())
+        download_source = inspect.getsource(api.ApiHandler.send_download)
+        self.assertIn("64 * 1024", download_source)
+        self.assertIn("self.wfile.flush()", download_source)
 
         tampered_manifest = dict(manifest)
         tampered_manifest["signature"] = ("A" if manifest["signature"][0] != "A" else "B") + manifest["signature"][1:]

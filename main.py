@@ -13315,8 +13315,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(body)
+        view = memoryview(body)
+        for offset in range(0, len(view), 64 * 1024):
+            self.wfile.write(view[offset : offset + 64 * 1024])
+            self.wfile.flush()
+        self.close_connection = True
 
     def read_json(self, max_bytes):
         if self.headers.get("Transfer-Encoding", "").strip():
