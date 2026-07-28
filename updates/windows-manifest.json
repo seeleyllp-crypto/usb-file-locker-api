@@ -2,13 +2,13 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.18.39",
+  "version": "2026.07.18.40",
   "minimum_supported_version": "2026.07.12.9",
-  "published_at_utc": "2026-07-28T17:58:42Z",
-  "package_filename": "VaultLink-Windows-2026.07.18.39.zip",
+  "published_at_utc": "2026-07-28T18:57:30Z",
+  "package_filename": "VaultLink-Windows-2026.07.18.40.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "4ff4b312821f93c428f842412abe7d5cd3a36820f8975ced034999731af74198",
-  "size_bytes": 390375,
+  "sha256": "a3ef66b73837bed5722ae2d88f1ca6821a5f3aa06d8d4873bcdc2f17ee350641",
+  "size_bytes": 248595,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
     "Every local customer tool is available without a license.",
@@ -19,10 +19,11 @@
     "Optional signed account sessions stay only in app memory and clear at sign-out or exit.",
     "Existing online plans remain compatible with account services and cloud audit authorization.",
     "Local customer tools remain available without a license or account sign-in.",
+    "The compact signed full-release package keeps every customer file and verifies its pinned payload hash.",
     "USB-key, optional PIN, and owner-USB controls are unchanged.",
     "The private Update Lab still requires the registered removable owner USB.",
     "Tests, Defender scanning, signed-package identity, and explicit owner publishing remain required."
   ],
   "preserves_local_app_data": true,
-  "signature": "HiZt3l8eBKdgTSUU6itsdVFhDs37KoRfBl0FXec2RG0Pfvv-SOZyDF2V7xavdugRToQDR1VVkhleiVeththCBQ"
+  "signature": "o4W3-lExpYEWArrYepNFuORBb4MGk_5BFrltp0Y3KcMaS43-Y5UqCzTkH_4tvNawmUV7UM0bav4xj4IoY_SzDA"
 }
