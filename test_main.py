@@ -236,7 +236,7 @@ class VaultLinkApiTests(unittest.TestCase):
         )
 
     def test_support_redactor_is_published_as_a_privacy_safe_customer_companion(self):
-        self.assertEqual(api.API_VERSION, "0.80.0")
+        self.assertEqual(api.API_VERSION, "0.81.0")
         product = api.product_payload()
         self.assertIn("support_redactor.py", product["desktop_scripts"])
         companion = next(item for item in api.COMPANION_APPS if item["script"] == "support_redactor.py")
@@ -915,7 +915,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-answers")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.80.0")
+        self.assertEqual(payload["api_version"], "0.81.0")
         self.assertEqual(payload["category_count"], 6)
         self.assertEqual(payload["count"], 30)
         self.assertEqual(set(payload["category_counts"].values()), {5})
@@ -985,7 +985,7 @@ class VaultLinkApiTests(unittest.TestCase):
         status, payload = self.call("/api/v1/customer-decisions")
         self.assertEqual(status, 200)
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["api_version"], "0.80.0")
+        self.assertEqual(payload["api_version"], "0.81.0")
         self.assertEqual(payload["scenario_count"], 10)
         self.assertEqual(payload["decision_count"], 30)
         self.assertEqual(payload["outcome_count"], 40)
@@ -4386,6 +4386,123 @@ class VaultLinkApiTests(unittest.TestCase):
         self.assertIn(b"error.status===401||error.status===403", page)
         self.assertNotIn(b"COPY LICENSE KEY", page)
         self.assertNotIn(b'<a href="/customer"><button>', page)
+
+    def test_account_session_inventory_targeted_logout_and_owner_logout(self):
+        status, registered = self.call(
+            "/api/v1/accounts/register",
+            method="POST",
+            payload={
+                "username": "Session_User_81",
+                "password": "SessionSecure81!",
+            },
+        )
+        self.assertEqual(status, 201)
+        account_id = registered["account"]["account_id"]
+        first_token = registered["session_token"]
+
+        status, second_login = self.call(
+            "/api/v1/accounts/login",
+            method="POST",
+            payload={
+                "username": "Session_User_81",
+                "password": "SessionSecure81!",
+            },
+        )
+        self.assertEqual(status, 200)
+        second_token = second_login["session_token"]
+
+        status, sessions = self.call(
+            "/api/v1/accounts/sessions",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(sessions["count"], 2)
+        self.assertEqual(sessions["summary"]["active_count"], 2)
+        self.assertEqual(sessions["summary"]["other_active_count"], 1)
+        current = next(item for item in sessions["items"] if item["current"])
+        other = next(item for item in sessions["items"] if not item["current"])
+        self.assertTrue(current["session_id"].startswith("vls_"))
+        self.assertTrue(other["revocable"])
+        serialized = json.dumps(sessions)
+        for forbidden in (
+            first_token,
+            second_token,
+            "SessionSecure81",
+            "ip_address",
+            "device_name",
+            "machine_id",
+            "browser_fingerprint",
+        ):
+            self.assertNotIn(forbidden, serialized)
+
+        status, revoked = self.call(
+            "/api/v1/accounts/sessions/revoke",
+            method="POST",
+            payload={"session_id": other["session_id"]},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(revoked["revoked"])
+        self.assertFalse(revoked["signed_out_current"])
+
+        status, first_still_active = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(first_still_active["account"]["account_id"], account_id)
+        status, second_signed_out = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {second_token}"},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("signed out", second_signed_out["message"])
+
+        status, current_logout = self.call(
+            "/api/v1/accounts/logout",
+            method="POST",
+            payload={},
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(current_logout["signed_out_current"])
+        self.assertTrue(current_logout["server_revoked"])
+        status, first_signed_out = self.call(
+            "/api/v1/accounts/me",
+            headers={"Authorization": f"Bearer {first_token}"},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("signed out", first_signed_out["message"])
+
+        active_tokens = []
+        for _index in range(2):
+            status, relogged = self.call(
+                "/api/v1/accounts/login",
+                method="POST",
+                payload={
+                    "username": "Session_User_81",
+                    "password": "SessionSecure81!",
+                },
+            )
+            self.assertEqual(status, 200)
+            active_tokens.append(relogged["session_token"])
+
+        status, owner_logout = self.call(
+            "/api/v1/admin/accounts/logout-sessions",
+            method="POST",
+            payload={"account_id": account_id},
+            headers={"X-License-Admin-Token": TEST_ADMIN_TOKEN},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(owner_logout["signed_out_all"])
+        self.assertEqual(owner_logout["invalidated_active_count"], 2)
+        for token in active_tokens:
+            status, blocked = self.call(
+                "/api/v1/accounts/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(status, 401)
+            self.assertIn("no longer valid", blocked["message"])
 
     def test_account_help_inbox_is_encrypted_isolated_and_rate_limited(self):
         status, unauthorized = self.call("/api/v1/accounts/support")

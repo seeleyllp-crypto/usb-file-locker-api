@@ -53,7 +53,7 @@ from account_pages import customer_account_html, owner_accounts_html
 
 
 API_NAME = "VaultLink API"
-API_VERSION = "0.80.0"
+API_VERSION = "0.81.0"
 LEGAL_DOCUMENT_VERSION = "2026-07-12-draft-1"
 ROOT_DIR = Path(__file__).resolve().parent
 LICENSE_KEY_PREFIX = "vlk1"
@@ -278,6 +278,7 @@ LICENSE_RECORD_AAD = b"VaultLinkLicenseRecordV1"
 ACCOUNT_RECORD_AAD = b"VaultLinkAccountRecordV1"
 MAX_ACCOUNTS = 5000
 ACCOUNT_SESSION_HOURS = 12
+MAX_ACCOUNT_SESSION_RECORDS = 50
 ACCOUNT_LOGIN_WINDOW_SECONDS = 15 * 60
 ACCOUNT_LOGIN_MAX_FAILURES = 8
 ACCOUNT_REGISTER_WINDOW_SECONDS = 60 * 60
@@ -1679,22 +1680,163 @@ def account_view(record, include_license_key=False):
         "updated_at_utc": str(record.get("updated_at_utc", "")),
         "last_login_at_utc": str(record.get("last_login_at_utc", "")),
         "license": account_license_view(record, include_license_key=include_license_key),
+        "session_summary": account_session_summary(record),
     }
+
+
+def validated_account_session_id(value):
+    text = str(value or "").strip()
+    if not re.fullmatch(r"vls_[A-Za-z0-9_-]{16,64}", text):
+        raise ValueError("Choose a valid account session id.")
+    return text
+
+
+def account_session_folder(account_id):
+    clean_id = validated_account_id(account_id)
+    digest = hashlib.sha256(clean_id.encode("utf-8")).hexdigest()
+    return LICENSE_STATE_DIR / "account_sessions" / digest
+
+
+def account_session_record_path(account_id, session_id):
+    clean_session_id = validated_account_session_id(session_id)
+    digest = hashlib.sha256(clean_session_id.encode("utf-8")).hexdigest()
+    return account_session_folder(account_id) / f"{digest}.json"
+
+
+def read_account_session_record(account_id, session_id):
+    clean_account_id = validated_account_id(account_id)
+    clean_session_id = validated_account_session_id(session_id)
+    path = account_session_record_path(clean_account_id, clean_session_id)
+    if not path.is_file():
+        return None
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(record, dict)
+        or record.get("account_id") != clean_account_id
+        or record.get("session_id") != clean_session_id
+    ):
+        raise ValueError("Stored account session identity did not verify.")
+    return record
+
+
+def list_account_session_records(account_id):
+    clean_account_id = validated_account_id(account_id)
+    folder = account_session_folder(clean_account_id)
+    if not folder.is_dir():
+        return []
+    records = []
+    paths = sorted(
+        folder.glob("*.json"),
+        key=lambda candidate: candidate.stat().st_mtime,
+        reverse=True,
+    )[:MAX_ACCOUNT_SESSION_RECORDS]
+    for path in paths:
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(record, dict) or record.get("account_id") != clean_account_id:
+                continue
+            validated_account_session_id(record.get("session_id"))
+            records.append(record)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return records
+
+
+def account_session_status(session_record, account_record, now=None):
+    status = str(session_record.get("status", "active")).strip().lower()
+    if status in {"revoked", "replaced"}:
+        return "revoked"
+    if int(session_record.get("session_version", 0) or 0) != int(
+        account_record.get("session_version", 1) or 1
+    ):
+        return "invalidated"
+    expires = parse_utc(session_record.get("expires_at_utc"))
+    if not expires or expires <= (now or datetime.now(timezone.utc)):
+        return "expired"
+    return "active"
+
+
+def account_session_summary(account_record):
+    counts = {"active": 0, "revoked": 0, "expired": 0, "invalidated": 0}
+    for session_record in list_account_session_records(account_record.get("account_id")):
+        status = account_session_status(session_record, account_record)
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "managed_record_count": sum(counts.values()),
+        "active_count": counts["active"],
+        "revoked_count": counts["revoked"],
+        "expired_count": counts["expired"],
+        "invalidated_count": counts["invalidated"],
+        "collects_ip_addresses": False,
+        "collects_device_names": False,
+    }
+
+
+def write_account_session_record(record):
+    account_id = validated_account_id(record.get("account_id"))
+    session_id = validated_account_session_id(record.get("session_id"))
+    stored = dict(record)
+    stored["schema_version"] = 1
+    stored["account_id"] = account_id
+    stored["session_id"] = session_id
+    stored["updated_at_utc"] = utc_now()
+    write_private_json(account_session_record_path(account_id, session_id), stored)
+    return stored
+
+
+def prune_account_session_records(account_record):
+    account_id = validated_account_id(account_record.get("account_id"))
+    folder = account_session_folder(account_id)
+    if not folder.is_dir():
+        return
+    paths = sorted(folder.glob("*.json"), key=lambda candidate: candidate.stat().st_mtime)
+    while len(paths) >= MAX_ACCOUNT_SESSION_RECORDS:
+        stale_path = None
+        for path in paths:
+            try:
+                stored = json.loads(path.read_text(encoding="utf-8"))
+                if account_session_status(stored, account_record) != "active":
+                    stale_path = path
+                    break
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                stale_path = path
+                break
+        target = stale_path or paths[0]
+        try:
+            target.unlink(missing_ok=True)
+        except OSError as exc:
+            raise ValueError("Old account session metadata could not be removed.") from exc
+        paths.remove(target)
 
 
 def issue_account_session(record):
     now = datetime.now(timezone.utc)
     expires = now + timedelta(hours=ACCOUNT_SESSION_HOURS)
+    session_id = f"vls_{secrets.token_urlsafe(18)}"
     token = sign_token(
         ACCOUNT_SESSION_PREFIX,
         {
             "account_id": validated_account_id(record.get("account_id")),
             "session_version": int(record.get("session_version", 1) or 1),
+            "session_id": session_id,
             "issued_at_utc": format_utc(now),
             "expires_at_utc": format_utc(expires),
             "nonce": secrets.token_hex(8),
         },
     )
+    with LICENSE_STATE_LOCK:
+        prune_account_session_records(record)
+        write_account_session_record(
+            {
+                "account_id": record.get("account_id"),
+                "session_id": session_id,
+                "session_version": int(record.get("session_version", 1) or 1),
+                "status": "active",
+                "issued_at_utc": format_utc(now),
+                "expires_at_utc": format_utc(expires),
+                "revoked_at_utc": "",
+            }
+        )
     return token, format_utc(expires)
 
 
@@ -1710,6 +1852,13 @@ def verify_account_session(token):
             raise PermissionError("Account access is disabled.")
         if int(payload.get("session_version", 0) or 0) != int(record.get("session_version", 1) or 1):
             raise PermissionError("Account session is no longer valid. Sign in again.")
+        session_id = str(payload.get("session_id", "")).strip()
+        if session_id:
+            session_record = read_account_session_record(account_id, session_id)
+            if not session_record:
+                raise PermissionError("Account session was signed out. Sign in again.")
+            if account_session_status(session_record, record) != "active":
+                raise PermissionError("Account session was signed out. Sign in again.")
         return record
     except PermissionError:
         raise
@@ -1860,6 +2009,154 @@ def account_me(token):
     }
 
 
+def account_session_public_item(session_record, account_record, current_session_id=""):
+    now = datetime.now(timezone.utc)
+    expires = parse_utc(session_record.get("expires_at_utc"))
+    status = account_session_status(session_record, account_record, now=now)
+    session_id = validated_account_session_id(session_record.get("session_id"))
+    return {
+        "session_id": session_id,
+        "current": bool(current_session_id and session_id == current_session_id),
+        "revocable": status == "active",
+        "status": status,
+        "issued_at_utc": str(session_record.get("issued_at_utc", "")),
+        "expires_at_utc": str(session_record.get("expires_at_utc", "")),
+        "expires_in_seconds": max(
+            0,
+            int((expires - now).total_seconds()) if expires else 0,
+        ),
+    }
+
+
+def list_account_sessions(token):
+    account = verify_account_session(token)
+    payload = verify_token(token, ACCOUNT_SESSION_PREFIX)
+    current_session_id = str(payload.get("session_id", "")).strip()
+    items = [
+        account_session_public_item(record, account, current_session_id)
+        for record in list_account_session_records(account.get("account_id"))
+    ]
+    if not current_session_id:
+        legacy_expires = parse_utc(payload.get("expires_at_utc"))
+        items.append(
+            {
+                "session_id": "",
+                "current": True,
+                "revocable": False,
+                "status": "active",
+                "issued_at_utc": str(payload.get("issued_at_utc", "")),
+                "expires_at_utc": str(payload.get("expires_at_utc", "")),
+                "expires_in_seconds": max(
+                    0,
+                    int((legacy_expires - datetime.now(timezone.utc)).total_seconds())
+                    if legacy_expires
+                    else 0,
+                ),
+            }
+        )
+    items.sort(
+        key=lambda item: (
+            not item["current"],
+            item["status"] != "active",
+            str(item["issued_at_utc"]),
+        )
+    )
+    counts = {
+        status: sum(1 for item in items if item["status"] == status)
+        for status in ("active", "revoked", "expired", "invalidated")
+    }
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+        "summary": {
+            "active_count": counts["active"],
+            "other_active_count": sum(
+                1
+                for item in items
+                if item["status"] == "active" and not item["current"]
+            ),
+            "revoked_count": counts["revoked"],
+            "expired_count": counts["expired"],
+            "invalidated_count": counts["invalidated"],
+            "current_session_managed": bool(current_session_id),
+        },
+        "privacy_notice": (
+            "Session metadata includes only random session ids and timestamps. "
+            "VaultLink does not collect session tokens, IP addresses, browser fingerprints, "
+            "device names, files, paths, passwords, PINs, or USB secrets here."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def revoke_account_session(payload, token):
+    with LICENSE_STATE_LOCK:
+        account = verify_account_session(token)
+        token_payload = verify_token(token, ACCOUNT_SESSION_PREFIX)
+        current_session_id = str(token_payload.get("session_id", "")).strip()
+        target_session_id = validated_account_session_id(payload.get("session_id"))
+        session_record = read_account_session_record(
+            account.get("account_id"),
+            target_session_id,
+        )
+        if not session_record:
+            raise FileNotFoundError("That account session was not found.")
+        previous_status = account_session_status(session_record, account)
+        already_inactive = previous_status != "active"
+        if not already_inactive:
+            session_record["status"] = "revoked"
+            session_record["revoked_at_utc"] = utc_now()
+            write_account_session_record(session_record)
+    record_api_activity(
+        "account_session_revoke",
+        "ok",
+        "account",
+        account["account_id"],
+        actor="customer",
+    )
+    return {
+        "ok": True,
+        "revoked": not already_inactive,
+        "already_inactive": already_inactive,
+        "signed_out_current": target_session_id == current_session_id,
+        "session": {
+            "session_id": target_session_id,
+            "status": "revoked" if not already_inactive else previous_status,
+        },
+        "message": (
+            "This browser session was signed out."
+            if target_session_id == current_session_id
+            else "The selected account session was signed out."
+        ),
+        "server_time_utc": utc_now(),
+    }
+
+
+def logout_current_account_session(token):
+    account = verify_account_session(token)
+    payload = verify_token(token, ACCOUNT_SESSION_PREFIX)
+    session_id = str(payload.get("session_id", "")).strip()
+    if not session_id:
+        record_api_activity(
+            "account_session_logout",
+            "ok",
+            "account",
+            account["account_id"],
+            actor="customer",
+        )
+        return {
+            "ok": True,
+            "signed_out_current": True,
+            "server_revoked": False,
+            "message": "This legacy browser session can now be removed locally.",
+            "server_time_utc": utc_now(),
+        }
+    result = revoke_account_session({"session_id": session_id}, token)
+    result["server_revoked"] = True
+    return result
+
+
 def account_username_availability(value, remote_key="unknown"):
     username, _normalized = validated_account_username(value)
     rate_key = account_rate_key(remote_key)
@@ -1900,6 +2197,31 @@ def logout_all_account_sessions(token):
     return {
         "ok": True,
         "signed_out_all": True,
+        "server_time_utc": utc_now(),
+    }
+
+
+def admin_logout_account_sessions(payload):
+    account_id = validated_account_id(payload.get("account_id"))
+    with LICENSE_STATE_LOCK:
+        record = read_account_record(account_id)
+        if not record:
+            raise FileNotFoundError("Account was not found.")
+        previous = account_session_summary(record)
+        record["session_version"] = int(record.get("session_version", 1) or 1) + 1
+        record = write_account_record(record)
+    record_api_activity(
+        "account_sessions_admin_logout",
+        "ok",
+        "account",
+        account_id,
+    )
+    return {
+        "ok": True,
+        "signed_out_all": True,
+        "invalidated_active_count": previous["active_count"],
+        "account": account_view(record, include_license_key=False),
+        "message": "All managed and legacy sessions for this account were signed out.",
         "server_time_utc": utc_now(),
     }
 
@@ -1970,6 +2292,9 @@ ACCOUNT_ACTIVITY_LABELS = {
     "account_register": "Account created",
     "account_login": "Successful sign-in",
     "account_logout_all": "All sessions signed out",
+    "account_session_logout": "Current session signed out",
+    "account_session_revoke": "Account session signed out",
+    "account_sessions_admin_logout": "Sessions signed out by owner",
     "account_username_change": "Username changed",
     "account_password_change": "Password changed",
     "account_support_create": "Help request sent",
@@ -13274,6 +13599,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                     status=HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
             return
+        if path == "/api/v1/accounts/sessions":
+            try:
+                self.send_json(list_account_sessions(self.account_session_token()))
+            except PermissionError as exc:
+                self.send_json(
+                    {"ok": False, "error": "unauthorized", "message": str(exc)},
+                    status=HTTPStatus.UNAUTHORIZED,
+                )
+            except Exception:
+                self.send_json(
+                    {"ok": False, "error": "server_error", "message": "Internal server error."},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
         if path == "/api/v1/accounts/support":
             try:
                 self.send_json(list_account_support_tickets(self.account_session_token()))
@@ -13823,7 +14162,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/login": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/change-username": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/change-password": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/logout": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/logout-all": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/accounts/sessions/revoke": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/accounts/support": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/reply": MAX_SUPPORT_JSON_BODY_BYTES,
             "/api/v1/accounts/support/close": MAX_ACCOUNT_JSON_BODY_BYTES,
@@ -13832,6 +14173,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/v1/accounts/support/read-all": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/assign": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/admin/accounts/status": MAX_ACCOUNT_JSON_BODY_BYTES,
+            "/api/v1/admin/accounts/logout-sessions": MAX_ACCOUNT_JSON_BODY_BYTES,
             "/api/v1/licenses/issue": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/activate": MAX_LICENSE_JSON_BODY_BYTES,
             "/api/v1/licenses/verify": MAX_LICENSE_JSON_BODY_BYTES,
@@ -13900,8 +14242,34 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/accounts/change-password":
                 self.send_json(change_account_password(payload, self.account_session_token()))
                 return
+            if path == "/api/v1/accounts/logout":
+                try:
+                    self.send_json(logout_current_account_session(self.account_session_token()))
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
             if path == "/api/v1/accounts/logout-all":
-                self.send_json(logout_all_account_sessions(self.account_session_token()))
+                try:
+                    self.send_json(logout_all_account_sessions(self.account_session_token()))
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
+                return
+            if path == "/api/v1/accounts/sessions/revoke":
+                try:
+                    self.send_json(
+                        revoke_account_session(payload, self.account_session_token())
+                    )
+                except PermissionError as exc:
+                    self.send_json(
+                        {"ok": False, "error": "unauthorized", "message": str(exc)},
+                        status=HTTPStatus.UNAUTHORIZED,
+                    )
                 return
             if path == "/api/v1/accounts/support":
                 try:
@@ -14005,6 +14373,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/admin/accounts/status":
                 self.require_admin_token()
                 self.send_json(update_account_status(payload))
+                return
+            if path == "/api/v1/admin/accounts/logout-sessions":
+                self.require_admin_token()
+                self.send_json(admin_logout_account_sessions(payload))
                 return
             if path == "/api/v1/licenses/issue":
                 self.require_admin_token()
