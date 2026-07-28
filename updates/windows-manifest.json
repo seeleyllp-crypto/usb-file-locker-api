@@ -2,21 +2,27 @@
   "schema_version": 1,
   "product": "USB File Locker",
   "platform": "windows-source",
-  "version": "2026.07.18.38",
+  "version": "2026.07.18.39",
   "minimum_supported_version": "2026.07.12.9",
-  "published_at_utc": "2026-07-28T17:39:19Z",
-  "package_filename": "VaultLink-Windows-2026.07.18.38.zip",
+  "published_at_utc": "2026-07-28T17:58:42Z",
+  "package_filename": "VaultLink-Windows-2026.07.18.39.zip",
   "download_path": "/api/v1/updates/windows/download",
-  "sha256": "14a822f7db2e80b782e182caefc5efe8af991aba373d2efb33a8853142e19454",
-  "size_bytes": 390918,
+  "sha256": "4ff4b312821f93c428f842412abe7d5cd3a36820f8975ced034999731af74198",
+  "size_bytes": 390375,
   "signing_key_id": "4f8fb9b8dbffd4c0",
   "notes": [
-    "Lock Protection Center adds Standard, Guarded, and Maximum workflow profiles.",
-    "Maximum protection requires an exact Preview Guard approval, current capacity headroom, a PIN, and a recent matching recovery test.",
-    "Capacity checks are bounded, metadata-only, privacy-safe, and never read file contents.",
-    "Account session controls add current-session logout, targeted session revocation, and owner logout-all without collecting IP addresses or device names.",
-    "Keys, licenses, settings, vault data, audit logs, and locked files remain untouched."
+    "Every local customer tool is available without a license.",
+    "Customer account sign-in is optional and no longer appears automatically at startup.",
+    "Signing out or losing an online session never disables local tools.",
+    "Diagnostics and Trust report free local access as ready instead of a missing-license warning.",
+    "Passwords are sent only to the configured HTTPS API and are never saved locally.",
+    "Optional signed account sessions stay only in app memory and clear at sign-out or exit.",
+    "Existing online plans remain compatible with account services and cloud audit authorization.",
+    "Local customer tools remain available without a license or account sign-in.",
+    "USB-key, optional PIN, and owner-USB controls are unchanged.",
+    "The private Update Lab still requires the registered removable owner USB.",
+    "Tests, Defender scanning, signed-package identity, and explicit owner publishing remain required."
   ],
   "preserves_local_app_data": true,
-  "signature": "96hQIJ9SU4__U79OJrQEvBImaDS7elf9ihVu32P9zAi5rtiOkN50maScKyKlnAiuTGGw418ChjL_TNUCmXqBCA"
+  "signature": "HiZt3l8eBKdgTSUU6itsdVFhDs37KoRfBl0FXec2RG0Pfvv-SOZyDF2V7xavdugRToQDR1VVkhleiVeththCBQ"
 }
